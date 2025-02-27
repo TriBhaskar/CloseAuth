@@ -1,0 +1,7 @@
+#log
+logging:
+  level:
+    org:
+      springframework:
+        web: TRACE
+

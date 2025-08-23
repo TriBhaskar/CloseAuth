@@ -38,7 +38,7 @@ CREATE TABLE users (
 CREATE TABLE credentials (
     user_id         INTEGER NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
-    algo            VARCHAR(50) DEFAULT 'argon2id',
+    algo            VARCHAR(50) DEFAULT 'bcrypt', -- e.g. bcrypt, argon2
     mfa_enabled     BOOLEAN DEFAULT FALSE,
     failed_attempts INTEGER DEFAULT 0,            -- Track failed login attempts
     locked_until    TIMESTAMP,                    -- Account lockout timestamp
@@ -51,6 +51,23 @@ CREATE TABLE credentials (
 
 -- =========================
 -- Mapping: Users ↔ Tenant Apps
+-- =========================
+CREATE TABLE user_tenant_map (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    tenant_id       INTEGER NOT NULL,
+    role_id         INTEGER, -- assigned role
+    status          VARCHAR(20) DEFAULT 'PENDING', -- PENDING, APPROVED, REVOKED
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, tenant_id),                   -- Prevent duplicate mappings
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE SET NULL
+);
+
+-- =========================
+-- Mapping: Users ↔ Client Apps
 -- =========================
 CREATE TABLE user_tenant_map (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

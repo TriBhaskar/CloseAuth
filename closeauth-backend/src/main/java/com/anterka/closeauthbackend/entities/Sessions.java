@@ -1,11 +1,13 @@
 package com.anterka.closeauthbackend.entities;
 
+import com.anterka.closeauthbackend.core.entities.Client;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -17,18 +19,20 @@ import java.time.LocalDateTime;
 @Table(name = "sessions")
 public class Sessions implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     @Id
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
 
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private Users user;
 
     @ManyToOne
-    @JoinColumn(name = "tenant_id")
-    private Tenants tenant;
+    @JoinColumn(name = "client_id")
+    private Client client;
 
     @Column(name = "ip_address")
     private String ipAddress;
@@ -36,6 +40,7 @@ public class Sessions implements Serializable {
     @Column(name = "user_agent")
     private String userAgent;
 
+    @Column(name = "data", columnDefinition = "TEXT")
     private String data;
 
     @Column(name = "expires_at", nullable = false)

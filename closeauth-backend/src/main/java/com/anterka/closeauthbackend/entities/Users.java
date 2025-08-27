@@ -23,6 +23,9 @@ public class Users implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Column(name = "username", nullable = false, unique = true)
+    private String username;
+
     @Column(nullable = false, unique = true)
     private String email;
 
@@ -41,7 +44,7 @@ public class Users implements Serializable {
     private String lastName;
 
     @Column(length = 20)
-    private String status = "ACTIVE";
+    private String status = "PENDING";
 
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;

@@ -1,11 +1,13 @@
 package com.anterka.closeauthbackend.entities;
 
+import com.anterka.closeauthbackend.core.entities.Client;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -14,37 +16,35 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "tenants")
-public class Tenants implements Serializable {
+@Table(name = "user_client_map",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "client_id"}))
+public class UserClientMap implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(nullable = false)
-    private String name;
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private Users user;
 
-    @Column(nullable = false, unique = true)
-    private String slug;
+    @ManyToOne
+    @JoinColumn(name = "client_id", nullable = false)
+    private Client client;
 
-    @Column(name = "client_id", nullable = false, unique = true)
-    private String clientId;
+    @ManyToOne
+    @JoinColumn(name = "global_role_id")
+    private GlobalRoles globalRoles;
 
-    @Column(name = "client_secret", nullable = false)
-    private String clientSecret;
-
-    @Column(name = "redirect_uris", nullable = false)
-    private String redirectUris;
-
-    private String scopes;
-
-    @Column(name = "theme_config")
-    private String themeConfig;
+    @ManyToOne
+    @JoinColumn(name = "client_role_id")
+    private ClientRoles clientRoles;
 
     @Column(length = 20)
-    private String status = "ACTIVE";
+    private String status = "PENDING";
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

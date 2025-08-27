@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 @Table(name = "verification_tokens")
 public class VerificationTokens implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     @Id

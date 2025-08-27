@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 @Table(name = "credentials")
 public class Credentials implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     @Id
@@ -30,6 +32,7 @@ public class Credentials implements Serializable {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Column(name = "algo", length = 50, nullable = false)
     private String algo = "argon2id";
 
     @Column(name = "mfa_enabled")

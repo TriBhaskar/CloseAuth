@@ -58,4 +58,12 @@ public class Client implements Serializable {
 
     @Column(name = "token_settings", length = 2000, nullable = false)
     private String tokenSettings;
+
+    @PrePersist
+    protected void onCreate() {
+        clientIdIssuedAt = Instant.now();
+        if (clientSecretExpiresAt == null) {
+            clientSecretExpiresAt = Instant.EPOCH;
+        }
+    }
 }

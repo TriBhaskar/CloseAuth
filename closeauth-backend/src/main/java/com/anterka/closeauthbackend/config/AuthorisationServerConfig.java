@@ -27,7 +27,7 @@ import static com.anterka.closeauthbackend.config.CustomClientMetadataConfig.con
 
 @Configuration
 @EnableWebSecurity
-public class SecurityConfig {
+public class AuthorisationServerConfig {
 
     @Bean
     public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {

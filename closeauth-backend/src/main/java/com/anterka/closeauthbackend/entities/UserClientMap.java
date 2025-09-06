@@ -35,14 +35,6 @@ public class UserClientMap implements Serializable {
     @JoinColumn(name = "client_id", nullable = false)
     private Client client;
 
-    @ManyToOne
-    @JoinColumn(name = "global_role_id")
-    private GlobalRoles globalRoles;
-
-    @ManyToOne
-    @JoinColumn(name = "client_role_id")
-    private ClientRoles clientRoles;
-
     @Column(length = 20)
     private String status = "PENDING";
 

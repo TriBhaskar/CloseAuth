@@ -96,6 +96,15 @@ CREATE TABLE theme_configurations (
 CREATE TABLE users (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     username        VARCHAR(100) UNIQUE NOT NULL,
+    password_hash   VARCHAR(255) NOT NULL,
+    algo            VARCHAR(50) DEFAULT 'bcrypt', -- e.g. bcrypt, argon2
+    failed_attempts INTEGER DEFAULT 0,            -- Track failed login attempts
+    locked_until    TIMESTAMP,                    -- Account lockout timestamp
+    password_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expired         BOOLEAN DEFAULT FALSE,
+    locked          BOOLEAN DEFAULT FALSE,
+    credentials_expired BOOLEAN DEFAULT FALSE,
+    disabled        BOOLEAN DEFAULT FALSE,
     email           VARCHAR(255) UNIQUE NOT NULL,
     email_verified  BOOLEAN DEFAULT FALSE,
     phone           VARCHAR(20),
@@ -103,9 +112,11 @@ CREATE TABLE users (
     first_name      VARCHAR(100),                 -- Added basic profile fields
     last_name       VARCHAR(100),
     status          VARCHAR(20) CHECK(status IN ('PENDING','ACTIVE','SUSPENDED','DELETED')) DEFAULT 'PENDING',
+    global_role_id  INTEGER, -- CLIENT_ADMIN or END_USER
     last_login_at   TIMESTAMP,                    -- Track last login
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(global_role_id) REFERENCES global_roles(id) ON DELETE SET NULL
 );
 
 -- Global roles that apply across the authorization server
@@ -114,23 +125,6 @@ CREATE TABLE global_roles (
     name            VARCHAR(50) UNIQUE NOT NULL, -- CLIENT_ADMIN, END_USER, SUPER_ADMIN
     description     TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- =========================
--- User Credentials (separate table for security)
--- =========================
-CREATE TABLE credentials (
-    user_id         INTEGER NOT NULL,
-    password_hash   VARCHAR(255) NOT NULL,
-    algo            VARCHAR(50) DEFAULT 'bcrypt', -- e.g. bcrypt, argon2
-    mfa_enabled     BOOLEAN DEFAULT FALSE,
-    failed_attempts INTEGER DEFAULT 0,            -- Track failed login attempts
-    locked_until    TIMESTAMP,                    -- Account lockout timestamp
-    password_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(user_id),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- =========================
@@ -163,17 +157,6 @@ CREATE TABLE verification_tokens (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Client-specific roles for end users within client applications
-CREATE TABLE client_roles (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id       VARCHAR(100) NOT NULL, -- References oauth2_registered_client
-    name            VARCHAR(50) NOT NULL,  -- USER, MODERATOR, ADMIN (within client app)
-    description     TEXT,
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(client_id, name),
-    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE
-);
-
 -- =========================
 -- Mapping: Users ↔ Client Apps
 -- =========================
@@ -181,16 +164,12 @@ CREATE TABLE user_client_map (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
     client_id       VARCHAR(100) NOT NULL,
-    global_role_id  INTEGER, -- CLIENT_ADMIN or END_USER
-    client_role_id  INTEGER, -- Role within the client app (null for CLIENT_ADMIN)
     status          VARCHAR(20) DEFAULT 'PENDING', -- PENDING, APPROVED, REVOKED
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, client_id),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE,
-    FOREIGN KEY(global_role_id) REFERENCES global_roles(id) ON DELETE SET NULL,
-    FOREIGN KEY(client_role_id) REFERENCES client_roles(id) ON DELETE SET NULL
 );
 
 -- Track who owns/registered each client

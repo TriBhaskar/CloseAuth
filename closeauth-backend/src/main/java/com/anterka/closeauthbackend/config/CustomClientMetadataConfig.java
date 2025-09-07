@@ -21,7 +21,7 @@ import org.springframework.util.CollectionUtils;
 public class CustomClientMetadataConfig {
 
     public static Consumer<List<AuthenticationProvider>> configureCustomClientMetadataConverters() {
-        List<String> customClientMetadata = List.of("logo_uri", "contacts");
+        List<String> customClientMetadata = List.of("logo_uri", "ui_config");
 
         return (authenticationProviders) -> {
             CustomRegisteredClientConverter registeredClientConverter =

@@ -7,20 +7,29 @@ import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.anterka.closeauthbackend.config.CustomClientMetadataConfig.configureCustomClientMetadataConverters;
@@ -30,6 +39,7 @@ import static com.anterka.closeauthbackend.config.CustomClientMetadataConfig.con
 public class AuthorisationServerConfig {
 
     @Bean
+    @Order(1)
     public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 OAuth2AuthorizationServerConfigurer.authorizationServer();
@@ -49,6 +59,19 @@ public class AuthorisationServerConfig {
                                 .anyRequest().authenticated()
                 );
 
+        http.exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+                        .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
+    public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(auth -> auth.requestMatchers("/auth/**", "/admin/**").permitAll().anyRequest().authenticated())
+                .formLogin(Customizer.withDefaults());
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
         return http.build();
     }
 
@@ -85,7 +108,7 @@ public class AuthorisationServerConfig {
 
     @Bean
     public AuthorizationServerSettings authorizationServerSettings() {
-        return AuthorizationServerSettings.builder().build();
+        return AuthorizationServerSettings.builder().issuer("http://localhost:9088").build();
     }
 
     @Bean

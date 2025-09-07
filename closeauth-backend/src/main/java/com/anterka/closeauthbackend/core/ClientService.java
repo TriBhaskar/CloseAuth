@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.anterka.closeauthbackend.core.entities.Client;
 import com.anterka.closeauthbackend.core.repository.ClientRepository;
+import com.anterka.closeauthbackend.dto.CreateClientDto;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,17 +27,17 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 @Component
-public class JpaRegisteredClientRepository implements RegisteredClientRepository {
+public class ClientService implements RegisteredClientRepository {
     private final ClientRepository clientRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final PasswordEncoder passwordEncoder;
 
-    public JpaRegisteredClientRepository(ClientRepository clientRepository, PasswordEncoder passwordEncoder) {
+    public ClientService(ClientRepository clientRepository, PasswordEncoder passwordEncoder) {
         Assert.notNull(clientRepository, "clientRepository cannot be null");
         this.clientRepository = clientRepository;
         this.passwordEncoder = passwordEncoder;
 
-        ClassLoader classLoader = JpaRegisteredClientRepository.class.getClassLoader();
+        ClassLoader classLoader = ClientService.class.getClassLoader();
         List<Module> securityModules = SecurityJackson2Modules.getModules(classLoader);
         this.objectMapper.registerModules(securityModules);
         this.objectMapper.registerModule(new OAuth2AuthorizationServerJackson2Module());
@@ -57,6 +59,40 @@ public class JpaRegisteredClientRepository implements RegisteredClientRepository
     public RegisteredClient findByClientId(String clientId) {
         Assert.hasText(clientId, "clientId cannot be empty");
         return this.clientRepository.findByClientId(clientId).map(this::toObject).orElse(null);
+    }
+
+    public String create(CreateClientDto createClientDto){
+
+        Assert.notNull(createClientDto, "createClientDto cannot be null");
+
+        Set<ClientAuthenticationMethod> authMethods = createClientDto.getAuthenticationMethods().stream()
+                .map(ClientAuthenticationMethod::new)
+                .collect(Collectors.toSet());
+
+        Set<AuthorizationGrantType> grantTypes = createClientDto.getAuthorizationGrantTypes().stream()
+                .map(AuthorizationGrantType::new)
+                .collect(Collectors.toSet());
+
+        RegisteredClient.Builder builder = RegisteredClient.withId(java.util.UUID.randomUUID().toString())
+                .clientId(createClientDto.getClientId())
+                .clientSecret(createClientDto.getClientSecret())
+                .clientAuthenticationMethods((methods) -> methods.addAll(authMethods))
+                .authorizationGrantTypes((types) -> types.addAll(grantTypes))
+                .redirectUris((uris) -> uris.addAll(createClientDto.getRedirectUris()))
+                .scopes((scopes) -> scopes.addAll(createClientDto.getScopes()));
+
+        ClientSettings.Builder clientSettingsBuilder = ClientSettings.builder();
+        if (createClientDto.isRequireProofKey()) {
+            clientSettingsBuilder.requireProofKey(true);
+        } else {
+            clientSettingsBuilder.requireProofKey(false);
+        }
+        builder.clientSettings(clientSettingsBuilder.build());
+
+        RegisteredClient registeredClient = builder.build();
+
+        save(registeredClient);
+        return "Client Registered "+registeredClient.getId()+ " successfully";
     }
 
     private RegisteredClient toObject(Client client) {

@@ -169,7 +169,7 @@ CREATE TABLE user_client_map (
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, client_id),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE,
+    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE
 );
 
 -- Track who owns/registered each client

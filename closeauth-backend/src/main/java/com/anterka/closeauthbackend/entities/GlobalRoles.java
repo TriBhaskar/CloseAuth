@@ -29,7 +29,7 @@ public class GlobalRoles implements Serializable, GrantedAuthority {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "name", nullable = false, unique = true)
-    private GlobalRoleEnum name;
+    private GlobalRoleEnum role;
 
     @Column(name = "description")
     private String description;
@@ -39,6 +39,6 @@ public class GlobalRoles implements Serializable, GrantedAuthority {
 
     @Override
     public String getAuthority() {
-        return name.name();
+        return role.name();
     }
 }

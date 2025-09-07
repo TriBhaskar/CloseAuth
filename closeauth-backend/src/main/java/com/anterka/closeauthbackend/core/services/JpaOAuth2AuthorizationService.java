@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.anterka.closeauthbackend.core.entities.Authorization;
 import com.anterka.closeauthbackend.core.repository.AuthorizationRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -36,6 +38,9 @@ import org.springframework.util.StringUtils;
 
 @Component
 public class JpaOAuth2AuthorizationService implements OAuth2AuthorizationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(JpaOAuth2AuthorizationService.class);
+
     private final AuthorizationRepository authorizationRepository;
     private final RegisteredClientRepository registeredClientRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -281,6 +286,7 @@ public class JpaOAuth2AuthorizationService implements OAuth2AuthorizationService
     }
 
     private static AuthorizationGrantType resolveAuthorizationGrantType(String authorizationGrantType) {
+        logger.debug("Resolving authorization grant type: {}", authorizationGrantType);
         if (AuthorizationGrantType.AUTHORIZATION_CODE.getValue().equals(authorizationGrantType)) {
             return AuthorizationGrantType.AUTHORIZATION_CODE;
         } else if (AuthorizationGrantType.CLIENT_CREDENTIALS.getValue().equals(authorizationGrantType)) {
@@ -290,6 +296,7 @@ public class JpaOAuth2AuthorizationService implements OAuth2AuthorizationService
         } else if (AuthorizationGrantType.DEVICE_CODE.getValue().equals(authorizationGrantType)) {
             return AuthorizationGrantType.DEVICE_CODE;
         }
+        logger.debug("Using custom authorization grant type: {}", authorizationGrantType);
         return new AuthorizationGrantType(authorizationGrantType);              // Custom authorization grant type
     }
 }

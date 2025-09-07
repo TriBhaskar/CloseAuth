@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.core;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.jackson2.SecurityJackson2Modules;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
@@ -27,6 +29,7 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 @Component
+@Slf4j
 public class ClientService implements RegisteredClientRepository {
     private final ClientRepository clientRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -46,6 +49,7 @@ public class ClientService implements RegisteredClientRepository {
     @Override
     public void save(RegisteredClient registeredClient) {
         Assert.notNull(registeredClient, "registeredClient cannot be null");
+        log.info("Saving registered client: {}", registeredClient.getClientId());
         this.clientRepository.save(toEntity(registeredClient));
     }
 
@@ -75,7 +79,8 @@ public class ClientService implements RegisteredClientRepository {
 
         RegisteredClient.Builder builder = RegisteredClient.withId(java.util.UUID.randomUUID().toString())
                 .clientId(createClientDto.getClientId())
-                .clientSecret(createClientDto.getClientSecret())
+                .clientSecret(passwordEncoder.encode(createClientDto.getClientSecret()))
+                .clientSecretExpiresAt(Instant.now().plusSeconds(31536000)) // 1 year
                 .clientAuthenticationMethods((methods) -> methods.addAll(authMethods))
                 .authorizationGrantTypes((types) -> types.addAll(grantTypes))
                 .redirectUris((uris) -> uris.addAll(createClientDto.getRedirectUris()))
@@ -145,8 +150,9 @@ public class ClientService implements RegisteredClientRepository {
         entity.setId(registeredClient.getId());
         entity.setClientId(registeredClient.getClientId());
         entity.setClientIdIssuedAt(registeredClient.getClientIdIssuedAt());
-        entity.setClientSecret(passwordEncoder.encode(registeredClient.getClientSecret()));
-        entity.setClientSecretExpiresAt(registeredClient.getClientSecretExpiresAt());
+//        entity.setClientSecret(passwordEncoder.encode(registeredClient.getClientSecret()));
+        entity.setClientSecret(registeredClient.getClientSecret());
+        entity.setClientSecretExpiresAt(registeredClient.getClientSecretExpiresAt() != null ? registeredClient.getClientSecretExpiresAt() : Instant.now().plusSeconds(31536000));
         entity.setClientName(registeredClient.getClientName());
         entity.setClientAuthenticationMethods(StringUtils.collectionToCommaDelimitedString(clientAuthenticationMethods));
         entity.setAuthorizationGrantTypes(StringUtils.collectionToCommaDelimitedString(authorizationGrantTypes));

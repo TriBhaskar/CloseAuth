@@ -55,6 +55,7 @@ public class CustomClientMetadataConfig {
         @Override
         public RegisteredClient convert(OidcClientRegistration clientRegistration) {
             RegisteredClient registeredClient = this.delegate.convert(clientRegistration);
+            assert registeredClient != null;
             ClientSettings.Builder clientSettingsBuilder = ClientSettings.withSettings(
                     registeredClient.getClientSettings().getSettings());
             if (!CollectionUtils.isEmpty(this.customClientMetadata)) {

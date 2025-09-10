@@ -1,11 +1,11 @@
 package com.anterka.closeauthbackend.core.services;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Consumer;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.anterka.closeauthbackend.core.entities.Authorization;
@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.dao.DataRetrievalFailureException;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.jackson2.SecurityJackson2Modules;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.OAuth2AccessToken;
@@ -55,6 +56,44 @@ public class JpaOAuth2AuthorizationService implements OAuth2AuthorizationService
         List<Module> securityModules = SecurityJackson2Modules.getModules(classLoader);
         this.objectMapper.registerModules(securityModules);
         this.objectMapper.registerModule(new OAuth2AuthorizationServerJackson2Module());
+        // Configure Jackson to safely handle Users serialization/deserialization
+        try {
+            Class<?> usersClass = Class.forName("com.anterka.closeauthbackend.entities.Users");
+            Class<?> globalRolesClass = Class.forName("com.anterka.closeauthbackend.entities.GlobalRoles");
+            this.objectMapper.addMixIn(usersClass, UsersMixin.class);
+            this.objectMapper.addMixIn(globalRolesClass, GlobalRolesMixin.class);
+        } catch (ClassNotFoundException e) {
+            logger.error("Failed to find Users class", e);
+        }
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
+    private abstract class UsersMixin {
+        // Empty mixin to handle Users class serialization/deserialization
+        @JsonIgnore
+        abstract Collection<? extends GrantedAuthority> getAuthorities();
+
+        @JsonIgnore
+        abstract String getPassword();
+
+        @JsonIgnore
+        abstract boolean isAccountNonExpired();
+
+        @JsonIgnore
+        abstract boolean isAccountNonLocked();
+
+        @JsonIgnore
+        abstract boolean isCredentialsNonExpired();
+
+        @JsonIgnore
+        abstract boolean isEnabled();
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
+    private abstract class GlobalRolesMixin {
+        // Empty mixin to handle Users class serialization/deserialization
+        @JsonIgnore
+         abstract String getAuthority();
     }
 
     @Override
@@ -269,6 +308,9 @@ public class JpaOAuth2AuthorizationService implements OAuth2AuthorizationService
     }
 
     private Map<String, Object> parseMap(String data) {
+        if (data == null) {
+            return new HashMap<>();
+        }
         try {
             return this.objectMapper.readValue(data, new TypeReference<Map<String, Object>>() {
             });

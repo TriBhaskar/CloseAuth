@@ -37,7 +37,7 @@ public class Users implements Serializable, UserDetails {
     private String passwordHash;
 
     @Column(name = "algo", length = 50, nullable = false)
-    private String algo = "argon2id";
+    private String algo = "bcrypt"; // Default to bcrypt
 
     @Column(name = "failed_attempts")
     private Integer failedAttempts = 0;

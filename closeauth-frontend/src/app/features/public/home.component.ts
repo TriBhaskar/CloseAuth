@@ -33,16 +33,18 @@ import { RouterModule } from '@angular/router';
 
           <!-- CTA Buttons -->
           <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <button
-              class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors"
+            <a
+              routerLink="/auth/register"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors text-center"
             >
               Start Free Trial →
-            </button>
-            <button
-              class="border border-gray-300 hover:border-gray-400 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold transition-colors"
+            </a>
+            <a
+              routerLink="/auth/login"
+              class="border border-gray-300 hover:border-gray-400 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold transition-colors text-center"
             >
               View Demo
-            </button>
+            </a>
           </div>
 
           <!-- Feature Pills -->
@@ -358,16 +360,18 @@ import { RouterModule } from '@angular/router';
             </p>
 
             <div class="space-y-4">
-              <button
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-semibold transition-colors"
+              <a
+                routerLink="/auth/register"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-semibold transition-colors block text-center"
               >
                 Create Free Account
-              </button>
-              <button
-                class="w-full border border-gray-300 hover:border-gray-400 text-gray-700 py-3 px-6 rounded-lg font-semibold transition-colors"
+              </a>
+              <a
+                routerLink="/auth/login"
+                class="w-full border border-gray-300 hover:border-gray-400 text-gray-700 py-3 px-6 rounded-lg font-semibold transition-colors block text-center"
               >
                 Sign In to Dashboard
-              </button>
+              </a>
             </div>
 
             <p class="text-sm text-gray-500 mt-4 text-center">

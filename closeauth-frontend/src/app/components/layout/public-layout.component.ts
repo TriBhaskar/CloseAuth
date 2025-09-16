@@ -32,9 +32,9 @@ import { FooterComponent } from '../shared/footer.component';
 })
 export class PublicLayoutComponent {
   publicNavItems = [
-    { label: 'Home', path: '/' },
-    { label: 'Documentation', path: '/docs' },
-    { label: 'API', path: '/api' },
-    { label: 'Pricing', path: '/pricing' },
+    { label: 'Home', path: '/public/home' },
+    { label: 'Documentation', path: '/public/docs' },
+    { label: 'API', path: '/public/docs' }, // Could point to API section in docs
+    { label: 'Pricing', path: '/public/home' }, // Could point to pricing section in home
   ];
 }

@@ -3,8 +3,8 @@ import { AuthGuard } from './guards/auth.guard';
 import { AdminGuard } from './guards/admin.guard';
 
 export const routes: Routes = [
-  // Default redirect
-  { path: '', redirectTo: '/auth/login', pathMatch: 'full' },
+  // Default redirect to home page
+  { path: '', redirectTo: '/public/home', pathMatch: 'full' },
 
   // Authentication routes
   {
@@ -115,9 +115,11 @@ export const routes: Routes = [
             (m) => m.DocumentationComponent
           ),
       },
+      // Redirect /public to /public/home
+      { path: '', redirectTo: 'home', pathMatch: 'full' },
     ],
   },
 
-  // Wildcard route
-  { path: '**', redirectTo: '/auth/login' },
+  // Wildcard route - redirect to home page
+  { path: '**', redirectTo: '/public/home' },
 ];

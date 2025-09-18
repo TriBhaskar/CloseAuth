@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { RouterModule, Router } from '@angular/router';
 
 @Component({
   selector: 'app-dashboard',
@@ -145,6 +145,7 @@ import { RouterModule } from '@angular/router';
                 </p>
               </div>
               <button
+                (click)="navigateToCreateClient()"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center"
               >
                 <svg
@@ -426,7 +427,13 @@ import { RouterModule } from '@angular/router';
   styles: [],
 })
 export class DashboardComponent implements OnInit {
+  constructor(private router: Router) {}
+
   ngOnInit(): void {
     // Initialize dashboard data
+  }
+
+  navigateToCreateClient(): void {
+    this.router.navigate(['/admin/create-client']);
   }
 }

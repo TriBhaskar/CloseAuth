@@ -62,6 +62,20 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'create-client',
+        loadComponent: () =>
+          import('./features/admin/create-client.component').then(
+            (m) => m.CreateClientComponent
+          ),
+      },
+      {
+        path: 'clients',
+        loadComponent: () =>
+          import('./features/admin/clients.component').then(
+            (m) => m.ClientsComponent
+          ),
+      },
+      {
         path: 'users',
         loadComponent: () =>
           import('./features/admin/users.component').then(

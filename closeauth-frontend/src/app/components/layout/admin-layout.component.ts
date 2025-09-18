@@ -1,7 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
-import { HeaderComponent } from '../shared/header.component';
 import {
   SidebarComponent,
   type SidebarItem,
@@ -11,35 +10,19 @@ import { AuthService } from '../../services/auth.service';
 @Component({
   selector: 'app-admin-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, HeaderComponent, SidebarComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent],
   template: `
-    <div class="flex h-screen bg-gray-100">
+    <div class="flex h-screen bg-gray-50">
       <!-- Sidebar -->
       <div class="hidden md:flex md:flex-shrink-0">
-        <app-sidebar title="Admin Panel" [menuItems]="sidebarItems">
-        </app-sidebar>
+        <app-sidebar [menuItems]="sidebarItems"> </app-sidebar>
       </div>
 
       <!-- Main content area -->
       <div class="flex flex-col flex-1 overflow-hidden">
-        <!-- Header -->
-        <app-header
-          [showNavigation]="false"
-          [showUserMenu]="true"
-          [showAuthButtons]="false"
-          [user]="currentUser"
-        >
-        </app-header>
-
         <!-- Main content -->
-        <main
-          class="flex-1 relative overflow-y-auto focus:outline-none bg-white"
-        >
-          <div class="py-6">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
-              <router-outlet></router-outlet>
-            </div>
-          </div>
+        <main class="flex-1 relative overflow-y-auto focus:outline-none">
+          <router-outlet></router-outlet>
         </main>
       </div>
     </div>
@@ -54,7 +37,7 @@ import { AuthService } from '../../services/auth.service';
       ></div>
 
       <!-- Sidebar -->
-      <div class="relative flex-1 flex flex-col max-w-xs w-full bg-gray-900">
+      <div class="relative flex-1 flex flex-col max-w-xs w-full bg-white">
         <div class="absolute top-0 right-0 -mr-12 pt-2">
           <button
             type="button"
@@ -78,8 +61,7 @@ import { AuthService } from '../../services/auth.service';
           </button>
         </div>
 
-        <app-sidebar title="Admin Panel" [menuItems]="sidebarItems">
-        </app-sidebar>
+        <app-sidebar [menuItems]="sidebarItems"> </app-sidebar>
       </div>
     </div>
     }
@@ -99,50 +81,24 @@ export class AdminLayoutComponent implements OnInit {
       icon: 'dashboard',
     },
     {
-      label: 'Client Management',
-      path: '/admin/clients',
-      icon: 'clients',
-      children: [
-        { label: 'All Clients', path: '/admin/clients', icon: 'clients' },
-        { label: 'Add Client', path: '/admin/clients/create', icon: 'clients' },
-      ],
-    },
-    {
-      label: 'User Management',
+      label: 'Users',
       path: '/admin/users',
       icon: 'users',
-      children: [
-        { label: 'All Users', path: '/admin/users', icon: 'users' },
-        { label: 'User Roles', path: '/admin/users/roles', icon: 'roles' },
-      ],
     },
     {
-      label: 'Roles & Permissions',
-      path: '/admin/roles',
-      icon: 'roles',
+      label: 'Client Apps',
+      path: '/admin/clients',
+      icon: 'clients',
     },
     {
-      label: 'Audit Logs',
+      label: 'Security',
       path: '/admin/audit',
-      icon: 'audit',
+      icon: 'security',
     },
     {
-      label: 'System Settings',
+      label: 'API Keys',
       path: '/admin/settings',
-      icon: 'settings',
-      children: [
-        { label: 'General', path: '/admin/settings/general', icon: 'settings' },
-        {
-          label: 'Email Templates',
-          path: '/admin/settings/email',
-          icon: 'settings',
-        },
-        {
-          label: 'Branding',
-          path: '/admin/settings/branding',
-          icon: 'settings',
-        },
-      ],
+      icon: 'api',
     },
   ];
 

@@ -2,6 +2,7 @@ package client
 
 import (
 	"closeauth-backend-for-frontend/internal/config"
+	"closeauth-backend-for-frontend/internal/model"
 	"os"
 	"testing"
 )
@@ -52,6 +53,62 @@ t.Logf("Config values: %+v", cfg)
         
         t.Logf("Successfully received token: %s (expires in %d seconds)", 
             token.AccessToken[:10]+"...", token.ExpiresIn)
+    })
+}
+
+func TestOAuth2Clietn_GetAccessToken_With_RegisterClietnt(t *testing.T) {
+    if testing.Short() {
+        t.Skip("Skipping integration test")
+    }
+
+	// Load configuration from environment or use test defaults
+    cfg := &config.OAuthClientConfig{
+        OAuth2BaseURL:        getTestEnv("OAUTH2_BASE_URL", "http://localhost:9088"),
+        DefaultClientID:      getTestEnv("TEST_CLIENT_ID", "test1"),
+        DefaultClientSecret:  getTestEnv("TEST_CLIENT_SECRET", "test1"),
+        DefaultRedirectURL:   getTestEnv("TEST_REDIRECT_URL", "http://127.0.0.1:8083/login/oauth2/code/public-client-react"),
+        DefaultScope:         getTestEnv("TEST_SCOPE", "client.create"),
+    }
+    
+t.Logf("Config values: %+v", cfg)
+
+    client := NewOAuth2Client(cfg)
+
+	    t.Run("Successful token request", func(t *testing.T) {
+        token, err := client.GetAccessToken()
+        
+        if err != nil {
+            t.Fatalf("Expected no error, got: %v", err)
+        }
+        
+        if token == nil {
+            t.Fatal("Expected token response, got nil")
+        }
+        
+        if token.AccessToken == "" {
+            t.Error("Expected access_token to be non-empty")
+        }
+        
+        if token.TokenType == "" {
+            t.Error("Expected token_type to be non-empty")
+        }
+        
+        if token.ExpiresIn <= 0 {
+            t.Error("Expected expires_in to be greater than 0")
+        }
+
+        t.Logf("Received token: %+v", token)
+
+        clientRsp, err := client.RegisterClient(token.AccessToken, &model.ClientFormRequest{
+            ClientName:                 "Test Client",
+            RedirectURIs:              []string{"http://localhost:8080/callback"},
+            GrantTypes:                []string{"authorization_code"},
+            TokenEndpointAuthMethod:   "client_secret_basic",
+            Description:                "A test client",
+            Scope:                      "openid",
+        })
+
+        t.Logf("Client Registration Response: %+v", clientRsp)
     })
 }
 

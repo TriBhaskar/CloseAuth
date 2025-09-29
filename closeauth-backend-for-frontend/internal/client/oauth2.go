@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"closeauth-backend-for-frontend/internal/config"
 	"closeauth-backend-for-frontend/internal/model"
 	"encoding/json"
@@ -66,5 +67,64 @@ func (c *OAuth2Client) GetAccessToken()(*model.AccessTokenResponse, error){
 	return &tokenResp, nil
 }
 
+// Client Management APIs
+
+func (c *OAuth2Client) RegisterClient(accessToken string, formReq *model.ClientFormRequest) (*model.ClientRegistrationResponse, error) {
+
+	regReq := &model.ClientRegistrationRequest{
+        ClientName:                 formReq.ClientName,
+        GrantTypes:                 formReq.GrantTypes,
+        TokenEndpointAuthMethod:    formReq.TokenEndpointAuthMethod,
+        Scope:                      formReq.Scope,
+        RedirectURIs:              formReq.RedirectURIs,
+    }
+
+	    // Override scope if provided in form
+    if formReq.Scope != "" {
+        regReq.Scope = formReq.Scope
+    }
+    
+    jsonData, err := json.Marshal(regReq)
+    if err != nil {
+        return nil, fmt.Errorf("failed to marshal registration request: %w", err)
+    }
+
+	req, err := http.NewRequest(
+		"POST",
+		c.config.OAuth2BaseURL+"/closeauth/connect/register",
+		bytes.NewBuffer(jsonData),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create registration request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := c.httpClient.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("registration request failed: %w", err)
+    }
+    defer resp.Body.Close()
+    
+	body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read registration response: %w", err)
+    }
+    
+    var regResp model.ClientRegistrationResponse
+    if err := json.Unmarshal(body, &regResp); err != nil {
+        return nil, fmt.Errorf("failed to decode registration response: %w", err)
+    }
+    
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        if regResp.Error != "" {
+            return nil, fmt.Errorf("client registration failed: %s - %s", regResp.Error, regResp.ErrorDescription)
+        }
+        return nil, fmt.Errorf("registration failed with status %d: %s", resp.StatusCode, string(body))
+    }
+    
+    return &regResp, nil
+}
 
 

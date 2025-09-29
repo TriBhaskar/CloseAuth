@@ -24,8 +24,6 @@ type ClientRegistrationRequest struct {
 	TokenEndpointAuthMethod    string   `json:"token_endpoint_auth_method"`
 	Scope                      string   `json:"scope"`
 	RedirectURIs              []string `json:"redirect_uris"`
-	ResponseTypes             []string `json:"response_types"`
-	IDTokenSignedResponseAlg   string   `json:"id_token_signed_response_alg"`
 }
 
 // ClientRegistrationResponse represents the client registration response
@@ -45,4 +43,13 @@ type ClientRegistrationResponse struct {
 	ClientSecretExpiresAt    int64    `json:"client_secret_expires_at"`
 	Error                     string   `json:"error,omitempty"`
 	ErrorDescription         string   `json:"error_description,omitempty"`
+}
+
+type ClientFormRequest struct {
+    ClientName     string   `json:"client_name" validate:"required"`
+    RedirectURIs []string `json:"redirect_uris" validate:"required,min=1"`
+	GrantTypes   []string `json:"grant_types"`
+	TokenEndpointAuthMethod    string   `json:"token_endpoint_auth_method"`
+    Description  string   `json:"description"`
+    Scope        string   `json:"scope"`
 }

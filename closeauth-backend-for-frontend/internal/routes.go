@@ -5,8 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"closeauth-backend-for-frontend/cmd/web"
-	"closeauth-backend-for-frontend/cmd/web/layout"
+	"closeauth-backend-for-frontend/internal/templates"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -26,9 +25,16 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
-	fileServer := http.FileServer(http.FS(web.Files))
+	// Serve static files
+	staticFS := http.Dir("./static")
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(staticFS)))
+	
+	// Serve template assets if they exist
+	fileServer := http.FileServer(http.FS(templates.Files))
 	r.Handle("/assets/*", fileServer)
-	r.Handle("/", templ.Handler(layout.Public()))
+	
+	// Main page
+	r.Handle("/", templ.Handler(templates.Public()))
 	// r.Post("/hello", web.HelloWebHandler)
 
 	return r

@@ -1,13 +1,10 @@
-package layout
-
-import "closeauth-backend-for-frontend/cmd/web"
+package templates
 
 templ Public() {
-    @web.Base() {
+    @Base() {
     <div class="min-h-screen bg-gray-100">
     @header()
     <main class="max-w-sm mx-auto p-4">
-        // { children... }
         <h2 class="text-lg font-semibold">Welcome to the Home Page</h2>
     </main>
     @footer()
@@ -144,7 +141,7 @@ templ header() {
             <div class="flex justify-between items-center h-16">
                 <!-- Left: Logo and brand -->
                 <div class="flex items-center space-x-3">
-                    <img class="h-2 w-4" src="/assets/images/testlogos.png" alt="CloseAuth Logo" />
+                    <img class="h-2 w-4" src="/static/images/testlogos.png" alt="CloseAuth Logo" />
                     <span class="text-xl font-bold text-gray-900">CloseAuth</span>
                 </div>
                 

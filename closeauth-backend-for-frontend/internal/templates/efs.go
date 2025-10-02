@@ -1,6 +1,5 @@
-package web
+package templates
 
 import "embed"
 
-//go:embed "assets"
 var Files embed.FS

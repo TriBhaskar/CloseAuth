@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"closeauth-backend-for-frontend/internal/server"
+	server "closeauth-backend-for-frontend/internal"
 )
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {

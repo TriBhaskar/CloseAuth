@@ -6,42 +6,52 @@ import (
 	"net/http"
 
 	"closeauth-backend-for-frontend/cmd/web"
+	"closeauth-backend-for-frontend/cmd/web/layout"
+
 	"github.com/a-h/templ"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
 
-	// Register routes
-	mux.HandleFunc("/", s.HelloWorldHandler)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
 	fileServer := http.FileServer(http.FS(web.Files))
-	mux.Handle("/assets/", fileServer)
-	mux.Handle("/web", templ.Handler(web.HelloForm()))
-	mux.HandleFunc("/hello", web.HelloWebHandler)
+	r.Handle("/assets/*", fileServer)
+	r.Handle("/", templ.Handler(layout.Public()))
+	// r.Post("/hello", web.HelloWebHandler)
 
-	// Wrap the mux with CORS middleware
-	return s.corsMiddleware(mux)
+	return r
 }
 
-func (s *Server) corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "*") // Replace "*" with specific origins if needed
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
-		w.Header().Set("Access-Control-Allow-Credentials", "false") // Set to "true" if credentials are required
+// func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		// Set CORS headers
+// 		w.Header().Set("Access-Control-Allow-Origin", "*") // Replace "*" with specific origins if needed
+// 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+// 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
+// 		w.Header().Set("Access-Control-Allow-Credentials", "false") // Set to "true" if credentials are required
 
-		// Handle preflight OPTIONS requests
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+// 		// Handle preflight OPTIONS requests
+// 		if r.Method == http.MethodOptions {
+// 			w.WriteHeader(http.StatusNoContent)
+// 			return
+// 		}
 
-		// Proceed with the next handler
-		next.ServeHTTP(w, r)
-	})
-}
+// 		// Proceed with the next handler
+// 		next.ServeHTTP(w, r)
+// 	})
+// }
 
 func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]string{"message": "Hello World"}

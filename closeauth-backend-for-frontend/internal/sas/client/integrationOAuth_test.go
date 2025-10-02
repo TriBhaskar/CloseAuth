@@ -1,8 +1,8 @@
 package client
 
 import (
-	"closeauth-backend-for-frontend/internal/config"
-	"closeauth-backend-for-frontend/internal/model"
+	"closeauth-backend-for-frontend/internal/sas/config"
+	"closeauth-backend-for-frontend/internal/sas/model"
 	"context"
 	"os"
 	"strings"

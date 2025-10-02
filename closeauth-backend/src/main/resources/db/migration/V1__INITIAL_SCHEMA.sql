@@ -1,4 +1,3 @@
-
 CREATE TABLE oauth2_registered_client (
     id VARCHAR(100) NOT NULL,
     client_id VARCHAR(100) NOT NULL,
@@ -62,10 +61,20 @@ CREATE TABLE oauth2_authorization (
 );
 
 -- =========================
+-- Global roles that apply across the authorization server
+-- =========================
+CREATE TABLE global_roles (
+    id              SERIAL PRIMARY KEY,
+    name            VARCHAR(50) UNIQUE NOT NULL, -- CLIENT_ADMIN, END_USER, SUPER_ADMIN
+    description     TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================
 -- Client Theme Configurations
 -- =========================
 CREATE TABLE client_themes (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     client_id       VARCHAR(100) NOT NULL,
     theme_name      VARCHAR(100) NOT NULL,        -- e.g. 'default', 'dark', 'corporate'
     is_active       BOOLEAN DEFAULT TRUE,
@@ -79,7 +88,7 @@ CREATE TABLE client_themes (
 -- Theme Configuration Details
 -- =========================
 CREATE TABLE theme_configurations (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     theme_id        INTEGER NOT NULL,
     config_key      VARCHAR(100) NOT NULL,        -- e.g. 'primary_color', 'logo_url', 'font_family'
     config_value    TEXT NOT NULL,                -- JSON value or simple text
@@ -94,7 +103,7 @@ CREATE TABLE theme_configurations (
 -- Global Users
 -- =========================
 CREATE TABLE users (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     username        VARCHAR(100) UNIQUE NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
     algo            VARCHAR(50) DEFAULT 'bcrypt', -- e.g. bcrypt, argon2
@@ -119,19 +128,11 @@ CREATE TABLE users (
     FOREIGN KEY(global_role_id) REFERENCES global_roles(id) ON DELETE SET NULL
 );
 
--- Global roles that apply across the authorization server
-CREATE TABLE global_roles (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            VARCHAR(50) UNIQUE NOT NULL, -- CLIENT_ADMIN, END_USER, SUPER_ADMIN
-    description     TEXT,
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- =========================
 -- Password Reset Tokens
 -- =========================
 CREATE TABLE reset_tokens (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     user_id         INTEGER NOT NULL,
     token_hash      VARCHAR(255) UNIQUE NOT NULL,
     expires_at      TIMESTAMP NOT NULL,
@@ -146,7 +147,7 @@ CREATE TABLE reset_tokens (
 -- Email Verification Tokens
 -- =========================
 CREATE TABLE verification_tokens (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     user_id         INTEGER NOT NULL,
     token_hash      VARCHAR(255) UNIQUE NOT NULL,
     email           VARCHAR(255) NOT NULL,        -- Email being verified
@@ -161,7 +162,7 @@ CREATE TABLE verification_tokens (
 -- Mapping: Users ↔ Client Apps
 -- =========================
 CREATE TABLE user_client_map (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     user_id         INTEGER NOT NULL,
     client_id       VARCHAR(100) NOT NULL,
     status          VARCHAR(20) DEFAULT 'PENDING', -- PENDING, APPROVED, REVOKED
@@ -174,7 +175,7 @@ CREATE TABLE user_client_map (
 
 -- Track who owns/registered each client
 CREATE TABLE client_ownership (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     client_id       VARCHAR(100) NOT NULL,
     user_id         INTEGER NOT NULL,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -182,11 +183,27 @@ CREATE TABLE client_ownership (
     FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- =========================
+-- Sessions tracking
+-- =========================
+CREATE TABLE sessions (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    session_token   VARCHAR(255) UNIQUE NOT NULL,
+    ip_address      VARCHAR(100),
+    user_agent      TEXT,
+    expires_at      TIMESTAMP NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_accessed   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- =========================
 -- Audit Logs
 -- =========================
 CREATE TABLE audit_logs (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              SERIAL PRIMARY KEY,
     client_id       VARCHAR(100),  -- Changed from INTEGER
     user_id         INTEGER,
     action          VARCHAR(100) NOT NULL,
@@ -199,26 +216,3 @@ CREATE TABLE audit_logs (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE SET NULL
 );
-
--- Fix sessions
-CREATE TABLE sessions (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         INTEGER NOT NULL,
-    client_id       VARCHAR(100),  -- Changed from INTEGER
-    ip_address      VARCHAR(100),
-    user_agent      TEXT,
-    data            TEXT,
-    expires_at      TIMESTAMP NOT NULL,
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE
-);
-
--- Add these indexes at the end
-CREATE INDEX idx_user_client_map_user_id ON user_client_map(user_id);
-CREATE INDEX idx_user_client_map_client_id ON user_client_map(client_id);
-CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
-CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);

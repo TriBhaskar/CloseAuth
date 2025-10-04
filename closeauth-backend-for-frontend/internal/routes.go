@@ -25,19 +25,30 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
-	// Serve static files
+	// Serve static files with proper cache headers
 	staticFS := http.Dir("./static")
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(staticFS)))
+	staticHandler := http.StripPrefix("/static/", http.FileServer(staticFS))
+	r.Handle("/static/*", s.noCacheMiddleware(staticHandler))
 	
 	// Serve template assets if they exist
 	fileServer := http.FileServer(http.FS(templates.Files))
 	r.Handle("/assets/*", fileServer)
 	
-	// Main page
-	r.Handle("/", templ.Handler(templates.Public()))
-	// r.Post("/hello", web.HelloWebHandler)
+	// Main page with no-cache headers
+	r.Handle("/", s.noCacheMiddleware(templ.Handler(templates.Public())))
 
 	return r
+}
+
+// noCacheMiddleware adds headers to prevent caching during development
+func (s *Server) noCacheMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Add no-cache headers for development
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // func (s *Server) corsMiddleware(next http.Handler) http.Handler {

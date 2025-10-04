@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"closeauth-backend-for-frontend/internal/templates"
+	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -29,10 +29,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	staticFS := http.Dir("./static")
 	staticHandler := http.StripPrefix("/static/", http.FileServer(staticFS))
 	r.Handle("/static/*", s.noCacheMiddleware(staticHandler))
-	
-	// Serve template assets if they exist
-	fileServer := http.FileServer(http.FS(templates.Files))
-	r.Handle("/assets/*", fileServer)
 	
 	// Main page with no-cache headers
 	r.Handle("/", s.noCacheMiddleware(templ.Handler(templates.Public())))

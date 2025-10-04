@@ -32,6 +32,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	
 	// Main page with no-cache headers
 	r.Handle("/", s.noCacheMiddleware(templ.Handler(templates.Public())))
+	r.Handle("/auth/login", s.noCacheMiddleware(templ.Handler(templates.Login())))
+	r.Handle("/auth/register", s.noCacheMiddleware(templ.Handler(templates.Register())))
 
 	return r
 }

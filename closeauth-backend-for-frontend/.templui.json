@@ -1,0 +1,7 @@
+{
+  "componentsDir": "internal/templates/components",
+  "utilsDir": "internal/templates/utils",
+  "moduleName": "closeauth-backend-for-frontend",
+  "jsDir": "static/script",
+  "jsPublicPath": "static/script"
+}

@@ -1,4 +1,6 @@
 @import "tailwindcss/preflight";
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
 
 /* Custom styles can be added here */
@@ -131,15 +133,8 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  ::selection {
-    @apply bg-selection text-selection-foreground;
-  }
-
   body {
-    @apply bg-background text-foreground;
+    font-family: system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }

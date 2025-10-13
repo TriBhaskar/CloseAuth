@@ -34,6 +34,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Handle("/", s.noCacheMiddleware(templ.Handler(templates.Public())))
 	r.Handle("/auth/login", s.noCacheMiddleware(templ.Handler(templates.Login())))
 	r.Handle("/auth/register", s.noCacheMiddleware(templ.Handler(templates.Register())))
+	r.Handle("/admin/dashboard", s.noCacheMiddleware(templ.Handler(templates.Dashboard())))
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {
         http.Redirect(w, r, "/", http.StatusTemporaryRedirect)

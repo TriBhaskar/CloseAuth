@@ -1,0 +1,26 @@
+package templates
+
+import "closeauth-backend-for-frontend/internal/templates/components/sidebar"
+import templates "closeauth-backend-for-frontend/internal/templates"
+
+templ AdminLayout() {
+	@templates.Base() {
+		<div class="flex h-screen bg-gray-50">
+			<!-- Sidebar -->
+			<div class="hidden md:flex md:flex-shrink-0">
+				@sidebar.Sidebar()
+			</div>
+
+			<!-- Main content area -->
+			<div class="flex flex-col flex-1 overflow-hidden">
+				<!-- Main content -->
+				<main class="flex-1 relative overflow-y-auto focus:outline-none">
+					{ children... }
+				</main>
+			</div>
+		</div>
+
+		<!-- Mobile sidebar overlay (for future implementation) -->
+		<!-- This would be controlled by JavaScript/HTMX in a real implementation -->
+	}
+}

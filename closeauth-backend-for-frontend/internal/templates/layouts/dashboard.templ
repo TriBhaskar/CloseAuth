@@ -1,9 +1,7 @@
 package templates
 
-import templates "closeauth-backend-for-frontend/internal/templates"
-
 templ Dashboard() {
-        @templates.Base() {
+        @AdminLayout() {
                 <div class="bg-gray-50 min-h-screen">
       <!-- Main content -->
       <div class="flex-1 p-6">
@@ -141,7 +139,6 @@ templ Dashboard() {
                 </p>
               </div>
               <button
-                onclick="navigateToCreateClient()"
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center"
               >
                 <svg
@@ -336,9 +333,9 @@ templ Dashboard() {
         <!-- Bottom Action Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <!-- User Management -->
-          <div
-            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer"
-            routerLink="/admin/users"
+          <a
+            href="/admin/users"
+            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
           >
             <div class="flex items-center mb-4">
               <div class="p-3 bg-blue-100 rounded-lg mr-4">
@@ -359,12 +356,12 @@ templ Dashboard() {
               <h3 class="font-semibold text-gray-900">User Management</h3>
             </div>
             <p class="text-gray-600 text-sm">View and manage user accounts</p>
-          </div>
+          </a>
 
           <!-- Security Settings -->
-          <div
-            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer"
-            routerLink="/admin/settings"
+          <a
+            href="/admin/settings"
+            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
           >
             <div class="flex items-center mb-4">
               <div class="p-3 bg-red-100 rounded-lg mr-4">
@@ -387,12 +384,12 @@ templ Dashboard() {
             <p class="text-gray-600 text-sm">
               Configure authentication policies
             </p>
-          </div>
+          </a>
 
           <!-- API Documentation -->
-          <div
-            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer"
-            routerLink="/public/docs"
+          <a
+            href="/public/docs"
+            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
           >
             <div class="flex items-center mb-4">
               <div class="p-3 bg-green-100 rounded-lg mr-4">
@@ -413,7 +410,7 @@ templ Dashboard() {
               <h3 class="font-semibold text-gray-900">API Documentation</h3>
             </div>
             <p class="text-gray-600 text-sm">Integration guides and examples</p>
-          </div>
+          </a>
         </div>
       </div>
     </div>

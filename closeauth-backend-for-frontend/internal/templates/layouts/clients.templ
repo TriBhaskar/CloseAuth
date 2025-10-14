@@ -36,8 +36,8 @@ templ Clients(stats ClientStats, clients []Client) {
               Manage OAuth2 client applications and integrations
             </p>
           </div>
-          <button
-            onclick="navigateToCreateClient()"
+          <a
+            href="/admin/clients/new"
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
           >
             <svg
@@ -54,7 +54,7 @@ templ Clients(stats ClientStats, clients []Client) {
               ></path>
             </svg>
             Add Client
-          </button>
+          </a>
         </div>
 
         <!-- Stats Cards -->

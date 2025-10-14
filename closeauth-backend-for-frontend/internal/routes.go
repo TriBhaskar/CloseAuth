@@ -37,6 +37,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Handle("/admin/dashboard", s.noCacheMiddleware(templ.Handler(templates.Dashboard())))
 	r.Handle("/admin/users", s.noCacheMiddleware(templ.Handler(templates.Users())))
 	r.Handle("/admin/clients", s.noCacheMiddleware(http.HandlerFunc(s.handleClients)))
+	r.Handle("/admin/clients/new", s.noCacheMiddleware(http.HandlerFunc(s.handleCreateClient)))
+	r.Post("/admin/clients", s.handleCreateClientPost)
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {
         http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -142,4 +144,58 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	// Render the template
 	component := templates.Clients(stats, clients)
 	s.noCacheMiddleware(templ.Handler(component)).ServeHTTP(w, r)
+}
+
+func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
+	// Create sample data for the create client form
+	data := templates.CreateClientData{
+		AvailableScopes: []templates.Scope{
+			{Value: "openid", Name: "OpenID Connect", Description: "Basic identity information"},
+			{Value: "profile", Name: "Profile", Description: "User profile information"},
+			{Value: "email", Name: "Email", Description: "User email address"},
+			{Value: "offline_access", Name: "Offline Access", Description: "Refresh tokens"},
+			{Value: "read:users", Name: "Read Users", Description: "Read user data"},
+			{Value: "write:users", Name: "Write Users", Description: "Modify user data"},
+		},
+		ApplicationTypes: []templates.ApplicationType{
+			{Value: "spa", Label: "Single Page Application (SPA)"},
+			{Value: "web", Label: "Web Application"},
+			{Value: "native", Label: "Native/Mobile Application"},
+			{Value: "m2m", Label: "Machine to Machine"},
+		},
+	}
+
+	// Render the template
+	component := templates.CreateClient(data)
+	s.noCacheMiddleware(templ.Handler(component)).ServeHTTP(w, r)
+}
+
+func (s *Server) handleCreateClientPost(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract form values
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	clientType := r.FormValue("type")
+	logoUrl := r.FormValue("logoUrl")
+	redirectUris := r.Form["redirectUris[]"]
+	scopes := r.Form["scopes[]"]
+
+	// Basic validation
+	if name == "" || clientType == "" {
+		http.Error(w, "Name and type are required", http.StatusBadRequest)
+		return
+	}
+
+	// In a real application, you would save this to a database
+	log.Printf("Creating new client: name=%s, type=%s, description=%s, logoUrl=%s, redirectUris=%v, scopes=%v", 
+		name, clientType, description, logoUrl, redirectUris, scopes)
+
+	// Redirect back to clients list
+	http.Redirect(w, r, "/admin/clients", http.StatusSeeOther)
 }

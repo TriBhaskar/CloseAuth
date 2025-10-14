@@ -3,12 +3,12 @@ package templates
 import "closeauth-backend-for-frontend/internal/templates/components/sidebar"
 import templates "closeauth-backend-for-frontend/internal/templates"
 
-templ AdminLayout() {
+templ AdminLayout(activePage string) {
 	@templates.Base() {
 		<div class="flex h-screen bg-gray-50">
 			<!-- Sidebar -->
 			<div class="hidden md:flex md:flex-shrink-0">
-				@sidebar.Sidebar()
+				@sidebar.Sidebar(activePage)
 			</div>
 
 			<!-- Main content area -->

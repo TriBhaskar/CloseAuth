@@ -1,6 +1,6 @@
 package sidebar
 
-templ Sidebar() {
+templ Sidebar(activePage string) {
 	<div class="flex flex-col h-full bg-white border-r border-gray-200 w-64">
 		<!-- Sidebar header with logo -->
 		<div class="flex items-center px-6 py-4 border-b border-gray-200">
@@ -21,7 +21,11 @@ templ Sidebar() {
 			<!-- Dashboard -->
 			<a
 				href="/admin/dashboard"
-				class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
+				if activePage == "dashboard" {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
+				} else {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+				}
 			>
 				<div class="mr-3 h-5 w-5 flex-shrink-0">
 					<svg fill="currentColor" viewBox="0 0 20 20">
@@ -34,7 +38,11 @@ templ Sidebar() {
 			<!-- Users -->
 			<a
 				href="/admin/users"
-				class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+				if activePage == "users" {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
+				} else {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+				}
 			>
 				<div class="mr-3 h-5 w-5 flex-shrink-0">
 					<svg fill="currentColor" viewBox="0 0 20 20">

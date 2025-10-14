@@ -36,6 +36,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Handle("/auth/register", s.noCacheMiddleware(templ.Handler(templates.Register())))
 	r.Handle("/admin/dashboard", s.noCacheMiddleware(templ.Handler(templates.Dashboard())))
 	r.Handle("/admin/users", s.noCacheMiddleware(templ.Handler(templates.Users())))
+	r.Handle("/admin/clients", s.noCacheMiddleware(http.HandlerFunc(s.handleClients)))
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {
         http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -84,4 +85,61 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(jsonResp); err != nil {
 		log.Printf("Failed to write response: %v", err)
 	}
+}
+
+func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
+	// Sample data - in a real application, this would come from a database
+	stats := templates.ClientStats{
+		TotalClients:  4,
+		ActiveClients: 3,
+		WebApps:       2,
+		MobileApps:    1,
+	}
+
+	clients := []templates.Client{
+		{
+			ID:        "web_dash_123",
+			Name:      "Web Dashboard",
+			Type:      "SPA",
+			Status:    "active",
+			CreatedAt: "Jan 15, 2024",
+			LastUsed:  "5 days ago",
+			Scopes:    3,
+			RedirectURIs: []string{"https://example.com/callback"},
+		},
+		{
+			ID:        "mobile_app_456",
+			Name:      "Mobile App",
+			Type:      "Native",
+			Status:    "active",
+			CreatedAt: "Jan 10, 2024",
+			LastUsed:  "6 days ago",
+			Scopes:    2,
+			RedirectURIs: []string{"com.example.app://callback"},
+		},
+		{
+			ID:        "api_service_789",
+			Name:      "API Service",
+			Type:      "M2M",
+			Status:    "inactive",
+			CreatedAt: "Jan 8, 2024",
+			LastUsed:  "17 days ago",
+			Scopes:    2,
+			RedirectURIs: []string{},
+		},
+		{
+			ID:        "analytics_abc",
+			Name:      "Analytics Dashboard",
+			Type:      "SPA",
+			Status:    "active",
+			CreatedAt: "Jan 20, 2024",
+			LastUsed:  "5 days ago",
+			Scopes:    3,
+			RedirectURIs: []string{"https://analytics.example.com/callback"},
+		},
+	}
+
+	// Render the template
+	component := templates.Clients(stats, clients)
+	s.noCacheMiddleware(templ.Handler(component)).ServeHTTP(w, r)
 }

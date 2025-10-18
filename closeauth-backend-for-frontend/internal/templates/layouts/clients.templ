@@ -1,6 +1,7 @@
 package templates
 
 import "fmt"
+import "closeauth-backend-for-frontend/internal/templates/components/icon"
 
 // Client represents a client application
 type Client struct {
@@ -269,7 +270,7 @@ templ Clients(stats ClientStats, clients []Client) {
                       <div class="flex items-center">
                         <div class="flex-shrink-0 h-10 w-10">
                           <div class="h-10 w-10 rounded-lg flex items-center justify-center { getClientIconClass(client.Type) }">
-                            @templ.Raw(getClientIcon(client.Type))
+                            @getClientIcon(client.Type)
                           </div>
                         </div>
                         <div class="ml-4">
@@ -339,16 +340,16 @@ func getClientIconClass(clientType string) string {
 	}
 }
 
-func getClientIcon(clientType string) string {
+templ getClientIcon(clientType string) {
 	switch clientType {
 	case "SPA":
-		return `<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>`
+		@icon.Globe(icon.Props{Size: 24, Class: "text-purple-600"})
 	case "Native":
-		return `<svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>`
+		@icon.Smartphone(icon.Props{Size: 24, Class: "text-yellow-600"})
 	case "M2M":
-		return `<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h6a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h6a2 2 0 002-2v-4a2 2 0 00-2-2m8-12V4a2 2 0 012-2h4a2 2 0 012 2v4a2 2 0 01-2 2h-4a2 2 0 01-2-2z"></path></svg>`
+		@icon.Server(icon.Props{Size: 24, Class: "text-green-600"})
 	default:
-		return `<svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`
+		@icon.FileText(icon.Props{Size: 24, Class: "text-blue-600"})
 	}
 }
 

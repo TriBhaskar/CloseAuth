@@ -5,11 +5,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"closeauth-backend-for-frontend/internal/handlers"
 )
 
 func TestHandler(t *testing.T) {
-	s := &Server{}
-	server := httptest.NewServer(http.HandlerFunc(s.HelloWorldHandler))
+	s := &Server{
+		authHandler:   handlers.NewAuthHandler(),
+		clientHandler: handlers.NewClientHandler(),
+		publicHandler: handlers.NewPublicHandler(),
+	}
+	server := httptest.NewServer(http.HandlerFunc(s.publicHandler.HelloWorldHandler))
 	defer server.Close()
 	resp, err := http.Get(server.URL)
 	if err != nil {

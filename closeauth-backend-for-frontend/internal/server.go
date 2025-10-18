@@ -8,17 +8,25 @@ import (
 	"strconv"
 	"time"
 
+	"closeauth-backend-for-frontend/internal/handlers"
+
 	_ "github.com/joho/godotenv/autoload"
 )
 
 type Server struct {
-	port int
+	port          int
+	authHandler   *handlers.AuthHandler
+	clientHandler *handlers.ClientHandler
+	publicHandler *handlers.PublicHandler
 }
 
 func NewServer() *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	NewServer := &Server{
-		port: port,
+		port:          port,
+		authHandler:   handlers.NewAuthHandler(),
+		clientHandler: handlers.NewClientHandler(),
+		publicHandler: handlers.NewPublicHandler(),
 	}
 	log.Printf("Starting server on port %d\n", NewServer.port)
 

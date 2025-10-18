@@ -19,7 +19,7 @@ type ApplicationType struct {
 	Label string
 }
 
-templ CreateClient(data CreateClientData) {
+templ CreateClient(data CreateClientData, csrfToken string) {
     @AdminLayout("clients") {
         <div class="bg-gray-50 min-h-screen">
             <div class="max-w-4xl mx-auto py-8 px-6">
@@ -60,6 +60,7 @@ templ CreateClient(data CreateClientData) {
                     class="space-y-8"
                     id="clientForm"
                 >
+                    <input type="hidden" name="csrf_token" value={ csrfToken }/>
                     <!-- Basic Information -->
                     <div class="bg-white rounded-xl border border-gray-200 p-6">
                         <h2 class="text-xl font-semibold text-gray-900 mb-6">

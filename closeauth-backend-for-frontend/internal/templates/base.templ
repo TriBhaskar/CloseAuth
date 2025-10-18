@@ -9,6 +9,25 @@ templ Base() {
 			<title>Close Auth</title>
 			<link href="/static/css/output.css" rel="stylesheet"/>
 			<script src="/static/script/htmx.min.js"></script>
+			<script src="/static/script/csrf.js"></script>
+		</head>
+		<body>
+				{ children... }
+		</body>
+	</html>
+}
+
+templ BaseWithCSRF(csrfToken string) {
+	<!DOCTYPE html>
+	<html lang="en" class="h-screen">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width,initial-scale=1"/>
+			<meta name="csrf-token" content={ csrfToken }/>
+			<title>Close Auth</title>
+			<link href="/static/css/output.css" rel="stylesheet"/>
+			<script src="/static/script/htmx.min.js"></script>
+			<script src="/static/script/csrf.js"></script>
 		</head>
 		<body>
 				{ children... }

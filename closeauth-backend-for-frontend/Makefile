@@ -16,17 +16,17 @@ templ-install:
 		} \
 	}"
 tailwind-install:
-	@if not exist tailwindcss.exe powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.10/tailwindcss-windows-x64.exe' -OutFile 'tailwindcss.exe'"
+	@if not exist node_modules powershell -ExecutionPolicy Bypass -Command "npm install"
 
 build: tailwind-install templ-install
 	@echo "Building..."
 	@templ generate
-	@.\tailwindcss.exe -i cmd/web/styles/input.css -o cmd/web/assets/css/output.css
-	@go build -o main.exe cmd/api/main.go
+	@npm run css:build
+	@go build -o main.exe cmd/main.go
 
 # Run the application
 run:
-	@go run cmd/api/main.go
+	@go run cmd/main.go
 
 # Test the application
 test:
@@ -38,7 +38,7 @@ clean:
 	@echo "Cleaning..."
 	@rm -f main
 
-# Live Reload
+# Live Reload with Air
 watch:
 	@powershell -ExecutionPolicy Bypass -Command "if (Get-Command air -ErrorAction SilentlyContinue) { \
 		air; \

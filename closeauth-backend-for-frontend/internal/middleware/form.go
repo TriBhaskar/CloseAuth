@@ -58,6 +58,14 @@ func (fv *FormValidator) IsValid() bool {
 	return len(fv.Errors) == 0
 }
 
+// AddError adds a custom validation error
+func (fv *FormValidator) AddError(field, message string) {
+	fv.Errors = append(fv.Errors, FormValidationError{
+		Field:   field,
+		Message: message,
+	})
+}
+
 // FormParsingMiddleware handles form parsing and basic error handling
 func FormParsingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

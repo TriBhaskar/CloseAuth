@@ -29,23 +29,26 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
-	// Serve static files with proper cache headers
+	// Serve static files - Go's FileServer handles MIME types automatically
 	staticFS := http.Dir("./static")
 	staticHandler := http.StripPrefix("/static/", http.FileServer(staticFS))
-	r.Handle("/static/*", s.publicHandler.NoCacheMiddleware(staticHandler))
+	r.Handle("/static/*", staticHandler)
 	
-	// Main page with no-cache headers
-	r.Handle("/", s.publicHandler.NoCacheMiddleware(templ.Handler(templates.Public())))
-	r.Handle("/auth/login", s.publicHandler.NoCacheMiddleware(http.HandlerFunc(s.authHandler.HandleLoginGet)))
-	r.Handle("/auth/register", s.publicHandler.NoCacheMiddleware(templ.Handler(templates.Register())))
-	r.Handle("/admin/dashboard", s.publicHandler.NoCacheMiddleware(templ.Handler(templates.Dashboard())))
-	r.Handle("/admin/users", s.publicHandler.NoCacheMiddleware(templ.Handler(templates.Users())))
-	r.Handle("/admin/clients", s.publicHandler.NoCacheMiddleware(http.HandlerFunc(s.clientHandler.HandleClients)))
-	r.Handle("/admin/clients/new", s.publicHandler.NoCacheMiddleware(http.HandlerFunc(s.clientHandler.HandleCreateClientGet)))
+	// Public routes - can be cached for better performance
+	r.Handle("/", templ.Handler(templates.Public()))
+	r.Get("/auth/login", s.authHandler.HandleLoginGet)
+	r.Get("/auth/register", s.authHandler.HandleRegisterGet)
+	
+	// Admin routes - you might want selective no-cache for sensitive pages
+	r.Handle("/admin/dashboard", templ.Handler(templates.Dashboard()))
+	r.Handle("/admin/users", templ.Handler(templates.Users()))
+	r.Get("/admin/clients", s.clientHandler.HandleClients)
+	r.Get("/admin/clients/new", s.clientHandler.HandleCreateClientGet)
 	r.Post("/admin/clients", s.clientHandler.HandleCreateClientPost)
 	
 	// Authentication routes
 	r.Post("/login", s.authHandler.HandleLoginPost)
+	r.Post("/register", s.authHandler.HandleRegisterPost)
 	
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {

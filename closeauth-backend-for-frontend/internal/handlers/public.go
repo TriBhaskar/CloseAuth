@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"path/filepath"
-	"strings"
 )
 
 // PublicHandler contains dependencies for public/general handlers
@@ -33,6 +31,9 @@ func (h *PublicHandler) HelloWorldHandler(w http.ResponseWriter, r *http.Request
 }
 
 // NoCacheMiddleware adds headers to prevent caching during development
+// NOTE: Currently unused - removed from routes for better performance
+// Uncomment and use selectively for sensitive pages if needed
+/*
 func (h *PublicHandler) NoCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Add no-cache headers for development
@@ -40,25 +41,7 @@ func (h *PublicHandler) NoCacheMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 		
-		// Set correct MIME types for static files
-		ext := filepath.Ext(r.URL.Path)
-		switch strings.ToLower(ext) {
-		case ".css":
-			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		case ".js":
-			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		case ".svg":
-			w.Header().Set("Content-Type", "image/svg+xml")
-		case ".png":
-			w.Header().Set("Content-Type", "image/png")
-		case ".jpg", ".jpeg":
-			w.Header().Set("Content-Type", "image/jpeg")
-		case ".gif":
-			w.Header().Set("Content-Type", "image/gif")
-		case ".ico":
-			w.Header().Set("Content-Type", "image/x-icon")
-		}
-		
 		next.ServeHTTP(w, r)
 	})
 }
+*/

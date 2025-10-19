@@ -30,6 +30,16 @@ func (h *AuthHandler) HandleLoginGet(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(component).ServeHTTP(w, r)
 }
 
+// HandleRegisterGet renders the register form
+func (h *AuthHandler) HandleRegisterGet(w http.ResponseWriter, r *http.Request) {
+	// Get CSRF token from context
+	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
+	
+	// Render register template with CSRF token
+	component := templates.Register(csrfToken)
+	templ.Handler(component).ServeHTTP(w, r)
+}
+
 // HandleLoginPost processes login form submission
 func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 	// Parse form data
@@ -87,9 +97,106 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandleRegisterPost processes register form submission
+func (h *AuthHandler) HandleRegisterPost(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleRegisterError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract form values
+	firstName := r.FormValue("firstName")
+	lastName := r.FormValue("lastName")
+	email := r.FormValue("email")
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirmPassword")
+	termsAccepted := r.FormValue("terms") == "on"
+
+	// Validate form data
+	validator := middleware.NewFormValidator()
+	validator.Required("firstName", firstName, "First name is required")
+	validator.Required("lastName", lastName, "Last name is required")
+	validator.Required("email", email, "Email is required")
+	validator.Email("email", email, "Please enter a valid email address")
+	validator.Required("password", password, "Password is required")
+	validator.MinLength("password", password, 8, "Password must be at least 8 characters")
+	validator.Required("confirmPassword", confirmPassword, "Password confirmation is required")
+	
+	if password != confirmPassword {
+		validator.AddError("confirmPassword", "Passwords do not match")
+	}
+	
+	if !termsAccepted {
+		validator.AddError("terms", "You must accept the terms of service")
+	}
+
+	if !validator.IsValid() {
+		h.handleRegisterError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// In a real application, you would:
+	// 1. Check if email/username already exists
+	// 2. Hash the password
+	// 3. Save user to database
+	// 4. Send verification email
+	// 5. Create a session or JWT token
+	
+	log.Printf("Registration attempt: firstName=%s, lastName=%s, email=%s, username=%s", firstName, lastName, email, username)
+	log.Printf("HTMX Request: %t", middleware.IsHTMXRequest(r))
+	
+	// TODO: Integrate with external auth service
+	// For now, simulate successful registration
+	// In real implementation:
+	// 1. Forward validated data to your auth service
+	// 2. Handle auth service response
+	// 3. Redirect based on success/failure
+	
+	// Success - handle based on request type
+	if middleware.IsHTMXRequest(r) {
+		// For HTMX requests, redirect using HX-Redirect header
+		// TODO: Change this to appropriate success page or email verification page
+		middleware.HTMXRedirect(w, "/auth/login")
+	} else {
+		// For regular requests, use standard redirect
+		// TODO: Change this to appropriate success page or email verification page
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+	}
+}
+
 // handleLoginError handles login errors for both HTMX and regular requests
 // This is a more efficient approach that only sends the error message
 func (h *AuthHandler) handleLoginError(w http.ResponseWriter, r *http.Request, message string, statusCode int) {
+	if middleware.IsHTMXRequest(r) {
+		// For HTMX requests, return only the error message HTML
+		// This should target an error container in the form
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		
+		errorHTML := `<div id="error-message" class="mb-4 p-3 rounded-md bg-red-50 border border-red-200">
+			<div class="flex">
+				<div class="flex-shrink-0">
+					<svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+					</svg>
+				</div>
+				<div class="ml-3">
+					<p class="text-sm text-red-800">` + message + `</p>
+				</div>
+			</div>
+		</div>`
+		w.Write([]byte(errorHTML))
+	} else {
+		// For regular requests, return standard error
+		http.Error(w, message, statusCode)
+	}
+}
+
+// handleRegisterError handles register errors for both HTMX and regular requests
+func (h *AuthHandler) handleRegisterError(w http.ResponseWriter, r *http.Request, message string, statusCode int) {
 	if middleware.IsHTMXRequest(r) {
 		// For HTMX requests, return only the error message HTML
 		// This should target an error container in the form

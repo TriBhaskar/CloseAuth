@@ -168,13 +168,10 @@ func (h *AuthHandler) HandleRegisterPost(w http.ResponseWriter, r *http.Request)
 }
 
 // handleLoginError handles login errors for both HTMX and regular requests
-// This is a more efficient approach that only sends the error message
 func (h *AuthHandler) handleLoginError(w http.ResponseWriter, r *http.Request, message string, statusCode int) {
 	if middleware.IsHTMXRequest(r) {
-		// For HTMX requests, return only the error message HTML
-		// This should target an error container in the form
 		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(statusCode)
 		
 		errorHTML := `<div id="error-message" class="mb-4 p-3 rounded-md bg-red-50 border border-red-200">
 			<div class="flex">
@@ -190,7 +187,6 @@ func (h *AuthHandler) handleLoginError(w http.ResponseWriter, r *http.Request, m
 		</div>`
 		w.Write([]byte(errorHTML))
 	} else {
-		// For regular requests, return standard error
 		http.Error(w, message, statusCode)
 	}
 }
@@ -198,10 +194,8 @@ func (h *AuthHandler) handleLoginError(w http.ResponseWriter, r *http.Request, m
 // handleRegisterError handles register errors for both HTMX and regular requests
 func (h *AuthHandler) handleRegisterError(w http.ResponseWriter, r *http.Request, message string, statusCode int) {
 	if middleware.IsHTMXRequest(r) {
-		// For HTMX requests, return only the error message HTML
-		// This should target an error container in the form
 		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(statusCode)
 		
 		errorHTML := `<div id="error-message" class="mb-4 p-3 rounded-md bg-red-50 border border-red-200">
 			<div class="flex">
@@ -217,7 +211,6 @@ func (h *AuthHandler) handleRegisterError(w http.ResponseWriter, r *http.Request
 		</div>`
 		w.Write([]byte(errorHTML))
 	} else {
-		// For regular requests, return standard error
 		http.Error(w, message, statusCode)
 	}
 }

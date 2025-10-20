@@ -30,6 +30,7 @@ templ Register(csrfToken string) {
                                   hx-indicator="#loading"
                                   hx-swap="innerHTML"
                                   hx-on::before-request="clearErrors()"
+                                  hx-on:htmx:responseError="handleErrorResponse(event)"
                                   hx-disabled-elt="button[type=submit]"
                                   id="register-form">
                                 <input type="hidden" name="csrf_token" value={ csrfToken }/>
@@ -171,8 +172,17 @@ templ Register(csrfToken string) {
                 }
             }
             
+            // Handle HTMX error responses (4xx, 5xx status codes)
+            function handleErrorResponse(event) {
+                const errorContainer = document.getElementById('error-container');
+                if (errorContainer && event.detail.xhr.responseText) {
+                    errorContainer.innerHTML = event.detail.xhr.responseText;
+                }
+            }
+            
             document.addEventListener('DOMContentLoaded', function() {
-                console.log('Register form ready');
+                // Global HTMX error event listener
+                document.body.addEventListener('htmx:responseError', handleErrorResponse);
                 
                 // Clear errors when user starts typing
                 const inputs = document.querySelectorAll('#register-form input[type="text"], #register-form input[type="email"], #register-form input[type="password"]');

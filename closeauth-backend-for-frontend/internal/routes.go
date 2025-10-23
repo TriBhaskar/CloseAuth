@@ -50,6 +50,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Authentication routes
 	r.Post("/login", s.authHandler.HandleLoginPost)
 	r.Post("/register", s.authHandler.HandleRegisterPost)
+	r.Post("/register/verify-otp", s.authHandler.HandleVerifyRegistrationOTP)
+	r.Post("/register/resend-otp", s.authHandler.HandleResendRegistrationOTP)
 	r.Post("/forgot-password/request", s.authHandler.HandleForgotPasswordRequest)
 	r.Post("/forgot-password/verify-otp", s.authHandler.HandleVerifyOTP)
 	r.Post("/forgot-password/resend-otp", s.authHandler.HandleResendOTP)

@@ -390,23 +390,148 @@ func (h *AuthHandler) HandleRegisterPost(w http.ResponseWriter, r *http.Request)
 	log.Printf("Registration attempt: firstName=%s, lastName=%s, email=%s, username=%s", firstName, lastName, email, username)
 	log.Printf("HTMX Request: %t", middleware.IsHTMXRequest(r))
 	
-	// TODO: Integrate with external auth service
-	// For now, simulate successful registration
+	// TODO: Integrate with external auth service to send OTP
+	// For now, simulate sending OTP
 	// In real implementation:
 	// 1. Forward validated data to your auth service
-	// 2. Handle auth service response
-	// 3. Redirect based on success/failure
+	// 2. Auth service creates user (pending verification)
+	// 3. Auth service sends OTP to email
+	// 4. Return success and trigger OTP dialog
 	
-	// Success - handle based on request type
+	// Get CSRF token for the OTP form
+	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
+	
+	// Return OTP form to be inserted into the dialog
 	if middleware.IsHTMXRequest(r) {
-		// For HTMX requests, redirect using HX-Redirect header
-		// TODO: Change this to appropriate success page or email verification page
-		middleware.HTMXRedirect(w, "/auth/login")
+		// Return the OTP form content
+		component := templates.RegisterOTPForm(csrfToken, email)
+		w.Header().Set("Content-Type", "text/html")
+		
+		// Add custom header to trigger dialog opening
+		w.Header().Set("HX-Trigger", "openOTPDialog")
+		
+		// Render the OTP form to be inserted into #otp-dialog-content
+		w.WriteHeader(http.StatusOK)
+		templ.Handler(component).ServeHTTP(w, r)
 	} else {
-		// For regular requests, use standard redirect
-		// TODO: Change this to appropriate success page or email verification page
-		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		// For regular requests, redirect to a verification page
+		http.Redirect(w, r, "/auth/verify?email="+email, http.StatusSeeOther)
 	}
+}
+
+// HandleVerifyRegistrationOTP processes OTP verification for registration
+func (h *AuthHandler) HandleVerifyRegistrationOTP(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleRegisterError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract values
+	email := r.FormValue("email")
+	otp := r.FormValue("otp")
+
+	// Validate inputs
+	validator := middleware.NewFormValidator()
+	validator.Required("email", email, "Email is required")
+	validator.Required("otp", otp, "Verification code is required")
+	validator.MinLength("otp", otp, 6, "Verification code must be 6 digits")
+	
+	if len(otp) != 6 {
+		validator.AddError("otp", "Verification code must be exactly 6 digits")
+	}
+
+	if !validator.IsValid() {
+		h.handleRegisterError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Call your external service to verify OTP and complete registration
+	// Example:
+	// err := h.authService.VerifyRegistrationOTP(email, otp)
+	// if err != nil {
+	//     h.handleRegisterError(w, r, "Invalid or expired verification code", http.StatusUnauthorized)
+	//     return
+	// }
+
+	log.Printf("Registration OTP verification for email: %s, OTP: %s", email, otp)
+
+	// Success - registration complete
+	if middleware.IsHTMXRequest(r) {
+		// Return success message and trigger redirect
+		successHTML := `<div class="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
+			<div class="flex">
+				<div class="flex-shrink-0">
+					<svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+					</svg>
+				</div>
+				<div class="ml-3">
+					<p class="text-sm text-green-800">Registration successful! Redirecting to login...</p>
+				</div>
+			</div>
+		</div>
+		<script>
+			setTimeout(function() {
+				window.location.href = '/auth/login';
+			}, 2000);
+		</script>`
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(successHTML))
+	} else {
+		http.Redirect(w, r, "/auth/login?registered=success", http.StatusSeeOther)
+	}
+}
+
+// HandleResendRegistrationOTP resends the OTP to the user's email during registration
+func (h *AuthHandler) HandleResendRegistrationOTP(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleRegisterError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract email
+	email := r.FormValue("email")
+
+	// Validate email
+	validator := middleware.NewFormValidator()
+	validator.Required("email", email, "Email is required")
+
+	if !validator.IsValid() {
+		h.handleRegisterError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Call your external service to resend registration OTP
+	// Example:
+	// err := h.authService.ResendRegistrationOTP(email)
+	// if err != nil {
+	//     h.handleRegisterError(w, r, "Failed to resend verification code", http.StatusInternalServerError)
+	//     return
+	// }
+
+	log.Printf("Resending registration OTP for email: %s", email)
+
+	// Return success message
+	successHTML := `<div class="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
+		<div class="flex">
+			<div class="flex-shrink-0">
+				<svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+				</svg>
+			</div>
+			<div class="ml-3">
+				<p class="text-sm text-green-800">Verification code resent successfully</p>
+			</div>
+		</div>
+	</div>`
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(successHTML))
 }
 
 // handleLoginError handles login errors for both HTMX and regular requests

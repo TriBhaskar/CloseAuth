@@ -38,6 +38,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Handle("/", templ.Handler(templates.Public()))
 	r.Get("/auth/login", s.authHandler.HandleLoginGet)
 	r.Get("/auth/register", s.authHandler.HandleRegisterGet)
+	r.Get("/auth/forgot-password", s.authHandler.HandleForgotPasswordGet)
 	
 	// Admin routes - you might want selective no-cache for sensitive pages
 	r.Handle("/admin/dashboard", templ.Handler(templates.Dashboard()))
@@ -49,6 +50,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Authentication routes
 	r.Post("/login", s.authHandler.HandleLoginPost)
 	r.Post("/register", s.authHandler.HandleRegisterPost)
+	r.Post("/forgot-password/request", s.authHandler.HandleForgotPasswordRequest)
+	r.Post("/forgot-password/verify-otp", s.authHandler.HandleVerifyOTP)
+	r.Post("/forgot-password/resend-otp", s.authHandler.HandleResendOTP)
+	r.Post("/forgot-password/reset", s.authHandler.HandleResetPassword)
 	
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {

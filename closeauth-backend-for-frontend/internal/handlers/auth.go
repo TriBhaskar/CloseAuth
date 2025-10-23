@@ -20,6 +20,248 @@ func NewAuthHandler() *AuthHandler {
 	return &AuthHandler{}
 }
 
+// HandleForgotPasswordGet renders the forgot password form
+func (h *AuthHandler) HandleForgotPasswordGet(w http.ResponseWriter, r *http.Request) {
+	// Get CSRF token from context
+	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
+	
+	// Render forgot password template with CSRF token
+	component := templates.ForgotPassword(csrfToken)
+	templ.Handler(component).ServeHTTP(w, r)
+}
+
+// HandleForgotPasswordRequest processes the initial email submission and sends OTP
+func (h *AuthHandler) HandleForgotPasswordRequest(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleForgotPasswordError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract email
+	email := r.FormValue("email")
+
+	// Validate email
+	validator := middleware.NewFormValidator()
+	validator.Required("email", email, "Email is required")
+	validator.Email("email", email, "Please enter a valid email address")
+
+	if !validator.IsValid() {
+		h.handleForgotPasswordError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Call your external service to send OTP
+	// Example:
+	// err := h.authService.SendPasswordResetOTP(email)
+	// if err != nil {
+	//     h.handleForgotPasswordError(w, r, "Failed to send verification code", http.StatusInternalServerError)
+	//     return
+	// }
+
+	log.Printf("Password reset requested for email: %s", email)
+
+	// Get CSRF token for the next form
+	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
+
+	// Return OTP verification form
+	component := templates.OTPVerificationForm(csrfToken, email)
+	templ.Handler(component).ServeHTTP(w, r)
+}
+
+// HandleVerifyOTP processes OTP verification
+func (h *AuthHandler) HandleVerifyOTP(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleForgotPasswordError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract values
+	email := r.FormValue("email")
+	otp := r.FormValue("otp")
+
+	// Validate inputs
+	validator := middleware.NewFormValidator()
+	validator.Required("email", email, "Email is required")
+	validator.Required("otp", otp, "Verification code is required")
+	validator.MinLength("otp", otp, 6, "Verification code must be 6 digits")
+	
+	if len(otp) != 6 {
+		validator.AddError("otp", "Verification code must be exactly 6 digits")
+	}
+
+	if !validator.IsValid() {
+		h.handleForgotPasswordError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Call your external service to verify OTP
+	// Example:
+	// token, err := h.authService.VerifyPasswordResetOTP(email, otp)
+	// if err != nil {
+	//     h.handleForgotPasswordError(w, r, "Invalid or expired verification code", http.StatusUnauthorized)
+	//     return
+	// }
+
+	log.Printf("OTP verification for email: %s, OTP: %s", email, otp)
+
+	// For now, generate a temporary token (replace with actual token from your service)
+	token := "temp-reset-token-" + email
+
+	// Get CSRF token for the next form
+	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
+
+	// Return password reset form
+	component := templates.ResetPasswordForm(csrfToken, email, token)
+	templ.Handler(component).ServeHTTP(w, r)
+}
+
+// HandleResendOTP resends the OTP to the user's email
+func (h *AuthHandler) HandleResendOTP(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleForgotPasswordError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract email
+	email := r.FormValue("email")
+
+	// Validate email
+	validator := middleware.NewFormValidator()
+	validator.Required("email", email, "Email is required")
+
+	if !validator.IsValid() {
+		h.handleForgotPasswordError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Call your external service to resend OTP
+	// Example:
+	// err := h.authService.ResendPasswordResetOTP(email)
+	// if err != nil {
+	//     h.handleForgotPasswordError(w, r, "Failed to resend verification code", http.StatusInternalServerError)
+	//     return
+	// }
+
+	log.Printf("Resending OTP for email: %s", email)
+
+	// Return success message
+	successHTML := `<div class="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
+		<div class="flex">
+			<div class="flex-shrink-0">
+				<svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+				</svg>
+			</div>
+			<div class="ml-3">
+				<p class="text-sm text-green-800">Verification code resent successfully</p>
+			</div>
+		</div>
+	</div>`
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(successHTML))
+}
+
+// HandleResetPassword processes the final password reset
+func (h *AuthHandler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		h.handleForgotPasswordError(w, r, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract values
+	email := r.FormValue("email")
+	token := r.FormValue("token")
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirmPassword")
+
+	// Validate inputs
+	validator := middleware.NewFormValidator()
+	validator.Required("email", email, "Email is required")
+	validator.Required("token", token, "Invalid reset token")
+	validator.Required("password", password, "Password is required")
+	validator.MinLength("password", password, 8, "Password must be at least 8 characters")
+	validator.Required("confirmPassword", confirmPassword, "Password confirmation is required")
+
+	if password != confirmPassword {
+		validator.AddError("confirmPassword", "Passwords do not match")
+	}
+
+	if !validator.IsValid() {
+		h.handleForgotPasswordError(w, r, validator.Errors[0].Message, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Call your external service to reset password
+	// Example:
+	// err := h.authService.ResetPassword(email, token, password)
+	// if err != nil {
+	//     h.handleForgotPasswordError(w, r, "Failed to reset password. Token may be expired.", http.StatusBadRequest)
+	//     return
+	// }
+
+	log.Printf("Password reset successful for email: %s", email)
+
+	// Return success message and redirect
+	if middleware.IsHTMXRequest(r) {
+		// Success message then redirect after a delay
+		successHTML := `<div class="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
+			<div class="flex">
+				<div class="flex-shrink-0">
+					<svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+					</svg>
+				</div>
+				<div class="ml-3">
+					<p class="text-sm text-green-800">Password reset successful! Redirecting to login...</p>
+				</div>
+			</div>
+		</div>
+		<script>
+			setTimeout(function() {
+				window.location.href = '/auth/login';
+			}, 2000);
+		</script>`
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(successHTML))
+	} else {
+		http.Redirect(w, r, "/auth/login?reset=success", http.StatusSeeOther)
+	}
+}
+
+// handleForgotPasswordError handles forgot password errors for both HTMX and regular requests
+func (h *AuthHandler) handleForgotPasswordError(w http.ResponseWriter, r *http.Request, message string, statusCode int) {
+	if middleware.IsHTMXRequest(r) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(statusCode)
+		
+		errorHTML := `<div id="error-message" class="mb-4 p-3 rounded-md bg-red-50 border border-red-200">
+			<div class="flex">
+				<div class="flex-shrink-0">
+					<svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+					</svg>
+				</div>
+				<div class="ml-3">
+					<p class="text-sm text-red-800">` + message + `</p>
+				</div>
+			</div>
+		</div>`
+		w.Write([]byte(errorHTML))
+	} else {
+		http.Error(w, message, statusCode)
+	}
+}
+
 // HandleLoginGet renders the login form
 func (h *AuthHandler) HandleLoginGet(w http.ResponseWriter, r *http.Request) {
 	// Get CSRF token from context

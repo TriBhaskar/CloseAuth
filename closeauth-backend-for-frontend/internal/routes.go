@@ -1,7 +1,9 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"closeauth-backend-for-frontend/internal/middleware"
 	templates "closeauth-backend-for-frontend/internal/templates/layouts"
@@ -29,6 +31,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
+			
+	// Health check endpoint (before CSRF to allow monitoring tools)
+    r.Get("/health", s.handleHealthCheck)
+	
 	// Serve static files - Go's FileServer handles MIME types automatically
 	staticFS := http.Dir("./static")
 	staticHandler := http.StripPrefix("/static/", http.FileServer(staticFS))
@@ -62,4 +68,30 @@ func (s *Server) RegisterRoutes() http.Handler {
         http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
     })
 	return r
+}
+
+// Health check handler
+func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+    health := map[string]interface{}{
+        "status": "ok",
+        "timestamp": time.Now().UTC().Format(time.RFC3339),
+    }
+
+    // Check database health
+    if err := s.HealthCheck(); err != nil {
+        health["status"] = "degraded"
+        health["database"] = map[string]string{
+            "status": "unhealthy",
+            "error":  err.Error(),
+        }
+        w.WriteHeader(http.StatusServiceUnavailable)
+    } else {
+        health["database"] = map[string]string{
+            "status": "healthy",
+        }
+        w.WriteHeader(http.StatusOK)
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(health)
 }

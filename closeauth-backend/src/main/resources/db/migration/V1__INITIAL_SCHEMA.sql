@@ -145,21 +145,6 @@ CREATE TABLE theme_configurations (
 CREATE INDEX idx_theme_config_theme ON theme_configurations(theme_id);
 
 -- =========================
--- Theme Configuration Details
--- =========================
-CREATE TABLE theme_configurations (
-    id              SERIAL PRIMARY KEY,
-    theme_id        INTEGER NOT NULL,
-    config_key      VARCHAR(100) NOT NULL,        -- e.g. 'primary_color', 'logo_url', 'font_family'
-    config_value    TEXT NOT NULL,                -- JSON value or simple text
-    config_type     VARCHAR(50) DEFAULT 'string', -- string, color, url, json, number
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(theme_id, config_key),
-    FOREIGN KEY(theme_id) REFERENCES client_themes(id) ON DELETE CASCADE
-);
-
--- =========================
 -- Global Users
 -- =========================
 CREATE TABLE users (

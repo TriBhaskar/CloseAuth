@@ -115,6 +115,41 @@ Content-Type: application/json
 }
 ```
 
+##### 📝 Optional: Client Settings & Custom Metadata
+
+You can also include **client settings** and **custom metadata** in your registration request:
+
+```http
+POST http://localhost:9088/closeauth/oauth2/register
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "client_name": "testnewww3",
+  "grant_types": ["authorization_code", "refresh_token", "client_credentials"],
+  "token_endpoint_auth_method": "client_secret_post",
+  "scope": "openid email",
+  "redirect_uris": ["https://oauthdebugger.com/debug"],
+  "require_proof_key": false,
+  "require_authorization_consent": false,
+  "logo_uri": "https://example.com/logo.png",
+  "ui_config": {
+    "theme": "dark",
+    "primary_color": "#0066cc"
+  }
+}
+```
+
+**Supported Client Settings:**
+- `require_proof_key` (boolean) - Requires PKCE for authorization code flow
+- `require_authorization_consent` (boolean) - Requires user consent screen
+
+**Supported Custom Metadata:**
+- `logo_uri` (string) - URL to client application's logo
+- `ui_config` (object) - Custom UI configuration for the client
+
+These fields will be stored in the `client_settings` column and can be retrieved later.
+
 **Response:**
 ```json
 {
@@ -136,9 +171,51 @@ Content-Type: application/json
   "response_types": ["code"],
   "id_token_signed_response_alg": "RS256",
   "registration_access_token": "eyJraWQiOiJjNzkwMTBlYS01OWM5LTQwYzctOTdjYi1iNDU0MDM0YWI3YTIiLCJhbGciOiJSUzI1NiJ9...",
-  "client_secret_expires_at": 0
+  "client_secret_expires_at": 0,
+  "require_proof_key": false,
+  "require_authorization_consent": false,
+  "logo_uri": "https://example.com/logo.png",
+  "ui_config": {
+    "theme": "dark",
+    "primary_color": "#0066cc"
+  }
 }
 ```
+
+> **Note:** If you include custom fields in your registration request, they will be echoed back in the response and stored in the database.
+
+---
+
+#### Step 3: Retrieve Client Configuration (Optional)
+
+You can retrieve the registered client's configuration using the `registration_client_uri` from the response or by constructing the URL with the `client_id`:
+
+**Request:**
+```http
+GET http://localhost:9088/connect/register?client_id=1PwNedXYr0QvdoVzSOdb-n_IA76aywD0uQ_XT7tU8rs
+Authorization: Bearer <registration_access_token>
+```
+
+**Response:**
+```json
+{
+  "client_id": "1PwNedXYr0QvdoVzSOdb-n_IA76aywD0uQ_XT7tU8rs",
+  "client_name": "testnewww3",
+  "grant_types": ["authorization_code", "refresh_token", "client_credentials"],
+  "redirect_uris": ["https://oauthdebugger.com/debug"],
+  "scope": "openid email",
+  "token_endpoint_auth_method": "client_secret_post",
+  "require_proof_key": false,
+  "require_authorization_consent": false,
+  "logo_uri": "https://example.com/logo.png",
+  "ui_config": {
+    "theme": "dark",
+    "primary_color": "#0066cc"
+  }
+}
+```
+
+> **Note:** All custom fields and client settings you provided during registration are persisted and returned in GET requests.
 
 ---
 

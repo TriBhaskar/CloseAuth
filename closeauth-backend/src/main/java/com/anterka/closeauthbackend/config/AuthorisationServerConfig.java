@@ -5,14 +5,20 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -23,6 +29,9 @@ import org.springframework.security.oauth2.server.authorization.token.JwtEncodin
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -37,6 +46,9 @@ import static com.anterka.closeauthbackend.config.CustomClientMetadataConfig.con
 @Configuration
 @EnableWebSecurity
 public class AuthorisationServerConfig {
+
+    @Value("${closeauth.bff.login-page}")
+    private String loginPageUrl;
 
     @Bean
     @Order(1)
@@ -60,7 +72,8 @@ public class AuthorisationServerConfig {
                 );
 
         http.exceptionHandling(exception -> exception
-                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
+//                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
                         .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 
         return http.build();
@@ -70,8 +83,15 @@ public class AuthorisationServerConfig {
     @Order(2)
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(auth -> auth.requestMatchers("/auth/**", "/admin/**").permitAll().anyRequest().authenticated())
-                .formLogin(Customizer.withDefaults());
+                        .formLogin(
+                                form -> form.loginPage(loginPageUrl)
+                                        .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
+                                        .permitAll()
+                        );
+//                .formLogin(Customizer.withDefaults());
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
+        http.csrf(csrf -> csrf.disable());
+
         return http.build();
     }
 

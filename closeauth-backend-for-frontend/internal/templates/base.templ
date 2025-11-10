@@ -10,6 +10,10 @@ templ Base() {
 			<link href="/static/css/output.css" rel="stylesheet"/>
 			<script src="/static/script/htmx.min.js"></script>
 			<script src="/static/script/csrf.js"></script>
+			<script defer src="/static/script/sidebar.min.js"></script>
+			<script defer src="/static/script/dialog.min.js"></script>
+			<script defer src="/static/script/popover.min.js"></script>
+			<script defer src="/static/script/dropdown.min.js"></script>
 		</head>
 		<body>
 				{ children... }
@@ -28,6 +32,10 @@ templ BaseWithCSRF(csrfToken string) {
 			<link href="/static/css/output.css" rel="stylesheet"/>
 			<script src="/static/script/htmx.min.js"></script>
 			<script src="/static/script/csrf.js"></script>
+			<script defer src="/static/script/sidebar.min.js"></script>
+			<script defer src="/static/script/dialog.min.js"></script>
+			<script defer src="/static/script/popover.min.js"></script>
+			<script defer src="/static/script/dropdown.min.js"></script>
 		</head>
 		<body>
 				{ children... }

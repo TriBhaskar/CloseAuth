@@ -1,0 +1,106 @@
+package sidebarcustom
+
+templ Sidebarcustom(activePage string) {
+	<div class="flex flex-col h-full bg-white border-r border-gray-200 w-64">
+		<!-- Sidebar header with logo -->
+		<div class="flex items-center px-6 py-4 border-b border-gray-200">
+			<div class="flex items-center">
+				<div class="flex-shrink-0">
+					<div class="h-8 w-8 bg-teal-600 rounded-lg flex items-center justify-center">
+						<span class="text-white font-bold text-sm">CA</span>
+					</div>
+				</div>
+				<div class="ml-3">
+					<span class="text-xl font-semibold text-gray-900">CloseAuth</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Navigation -->
+		<nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+			<!-- Dashboard -->
+			<a
+				href="/admin/dashboard"
+				if activePage == "dashboard" {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
+				} else {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+				}
+			>
+				<div class="mr-3 h-5 w-5 flex-shrink-0">
+					<svg fill="currentColor" viewBox="0 0 20 20">
+						<path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+					</svg>
+				</div>
+				<span class="flex-1">Dashboard</span>
+			</a>
+
+			<!-- Users -->
+			<a
+				href="/admin/users"
+				if activePage == "users" {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
+				} else {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+				}
+			>
+				<div class="mr-3 h-5 w-5 flex-shrink-0">
+					<svg fill="currentColor" viewBox="0 0 20 20">
+						<path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"></path>
+					</svg>
+				</div>
+				<span class="flex-1">Users</span>
+			</a>
+
+			<!-- Client Apps -->
+			<a
+				href="/admin/clients"
+				if activePage == "clients" {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
+				} else {
+					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+				}
+			>
+				<div class="mr-3 h-5 w-5 flex-shrink-0">
+					<svg fill="currentColor" viewBox="0 0 20 20">
+						<path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+					</svg>
+				</div>
+				<span class="flex-1">Client Apps</span>
+			</a>
+
+			<!-- Security -->
+			<a
+				href="/admin/audit"
+				class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+			>
+				<div class="mr-3 h-5 w-5 flex-shrink-0">
+					<svg fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
+					</svg>
+				</div>
+				<span class="flex-1">Security</span>
+			</a>
+
+			<!-- API Keys -->
+			<a
+				href="/admin/settings"
+				class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900"
+			>
+				<div class="mr-3 h-5 w-5 flex-shrink-0">
+					<svg fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd"></path>
+					</svg>
+				</div>
+				<span class="flex-1">API Keys</span>
+			</a>
+		</nav>
+
+		<!-- Sidebar footer -->
+		<div class="flex-shrink-0 px-4 py-4 border-t border-gray-200">
+			<div class="text-xs text-gray-500 text-center">
+				© 2025 CloseAuth
+			</div>
+		</div>
+	</div>
+}

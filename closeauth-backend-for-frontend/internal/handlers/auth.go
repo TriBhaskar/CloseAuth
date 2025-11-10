@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
 
 	"closeauth-backend-for-frontend/internal/middleware"
 	templates "closeauth-backend-for-frontend/internal/templates/layouts"
@@ -12,12 +16,33 @@ import (
 
 // AuthHandler contains dependencies for authentication handlers
 type AuthHandler struct {
-	// Add dependencies here if needed (e.g., database, auth service)
+	oauth2ServerURL string
 }
 
 // NewAuthHandler creates a new auth handler instance
 func NewAuthHandler() *AuthHandler {
-	return &AuthHandler{}
+	return &AuthHandler{
+		oauth2ServerURL: getEnvOrDefault("OAUTH2_SERVER_URL", "http://localhost:9088"),
+	}
+}
+
+// getEnvOrDefault retrieves environment variable or returns default
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// LoginRequest represents the login request payload
+// LoginResponse represents the response from auth server
+type LoginResponse struct {
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	TokenType    string `json:"token_type,omitempty"`
+	ExpiresIn    int    `json:"expires_in,omitempty"`
+	Message      string `json:"message,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // HandleForgotPasswordGet renders the forgot password form
@@ -292,14 +317,13 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract form values
-	email := r.FormValue("email")
+	username := r.FormValue("username")
 	password := r.FormValue("password")
 	rememberMe := r.FormValue("remember-me") == "on"
 
 	// Validate form data
 	validator := middleware.NewFormValidator()
-	validator.Required("email", email, "Email is required")
-	validator.Email("email", email, "Please enter a valid email address")
+	validator.Required("username", username, "Username is required")
 	validator.Required("password", password, "Password is required")
 	validator.MinLength("password", password, 6, "Password must be at least 6 characters")
 
@@ -308,34 +332,143 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// In a real application, you would:
-	// 1. Validate credentials against database
-	// 2. Create a session or JWT token
-	// 3. Set authentication cookies
-	
-	log.Printf("Login attempt: email=%s, password=%s, rememberMe=%t", email, password, rememberMe)
-	log.Printf("HTMX Request: %t", middleware.IsHTMXRequest(r))
-	
-	// Simulate authentication logic (accept multiple test credentials)
-	validCredentials := map[string]string{
-		"admin@example.com": "password123",
-		"test@test.com":     "password",
-		"user@demo.com":     "demo123",
+	// Prepare form data (x-www-form-urlencoded)
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
+
+	// Send POST form to external auth server
+	// Create HTTP client that doesn't follow redirects automatically
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Don't follow redirects, we'll handle them
+		},
 	}
 	
-	if validPassword, exists := validCredentials[email]; exists && password == validPassword {
+	authURL := h.oauth2ServerURL + "/closeauth/login"
+	log.Printf("Sending login request to: %s", authURL)
+
+	resp, err := client.PostForm(authURL, form)
+	if err != nil {
+		log.Printf("Error calling auth service: %v", err)
+		h.handleLoginError(w, r, "Authentication service unavailable. Please try again later.", http.StatusServiceUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	log.Printf("Reading Response body: %v", resp)
+	if err != nil {
+		log.Printf("Error reading auth response: %v", err)
+		h.handleLoginError(w, r, "Failed to process authentication response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Auth server response: Status=%d, Body=%s", resp.StatusCode, string(body))
+
+	// Check if authentication was successful (either 200 OK or redirect)
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusMovedPermanently {
+		// Success - authentication passed
+		log.Printf("Login successful for: %s (RememberMe: %t)", username, rememberMe)
+		
+		// Forward JSESSIONID cookie from Spring to browser
+		h.forwardSessionCookies(w, resp)
+		
+		// Check if there's a redirect location
+		redirectURL := resp.Header.Get("Location")
+		if redirectURL != "" {
+			log.Printf("Auth server redirected to: %s", redirectURL)
+		}
+		
+		// Try to parse JSON response if available
+		var loginResp LoginResponse
+		if len(body) > 0 && json.Unmarshal(body, &loginResp) == nil && loginResp.AccessToken != "" {
+			log.Printf("Access Token received: %s", loginResp.AccessToken)
+			// TODO: Store access token and refresh token in session/cookies
+		}
+		
+	// Check if there's an OAuth context (user came from OAuth flow)
+	// Debug: Print all cookies
+	log.Printf("All cookies in request:")
+	for _, cookie := range r.Cookies() {
+		log.Printf("  Cookie: %s=%s (Path=%s, Domain=%s)", cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
+	}
+	
+	oauthCtx, err := middleware.GetOAuthContext(r)
+	var finalRedirect string
+	
+	if err == nil && oauthCtx != nil {
+		// OAuth flow - redirect back to authorize endpoint
+		log.Printf("OAuth context found - redirecting to authorize endpoint")
+		log.Printf("OAuth context: client_id=%s, redirect_uri=%s, scope=%s", 
+			oauthCtx.ClientID, oauthCtx.RedirectURI, oauthCtx.Scope)			// Clear the OAuth context cookie
+			middleware.ClearOAuthContext(w)
+			
+			// Build the authorize URL to continue OAuth flow
+			finalRedirect = middleware.BuildAuthorizeURL(oauthCtx, "http://localhost:8088")
+			log.Printf("Redirecting to: %s", finalRedirect)
+		} else {
+			// Direct login - go to dashboard
+			if err != nil {
+				log.Printf("No OAuth context found (or expired): %v", err)
+			}
+			finalRedirect = "/admin/dashboard"
+		}
+		
 		// Success - handle based on request type
 		if middleware.IsHTMXRequest(r) {
 			// For HTMX requests, redirect using HX-Redirect header
-			middleware.HTMXRedirect(w, "/admin/dashboard")
+			middleware.HTMXRedirect(w, finalRedirect)
 		} else {
 			// For regular requests, use standard redirect
-			http.Redirect(w, r, "/admin/dashboard", http.StatusSeeOther)
+			http.Redirect(w, r, finalRedirect, http.StatusSeeOther)
 		}
+	} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		// Authentication failed
+		errorMsg := "Invalid username or password"
+		
+		// Try to parse error from response
+		var loginResp LoginResponse
+		if len(body) > 0 && json.Unmarshal(body, &loginResp) == nil {
+			if loginResp.Error != "" {
+				errorMsg = loginResp.Error
+			} else if loginResp.Message != "" {
+				errorMsg = loginResp.Message
+			}
+		}
+		
+		log.Printf("Login failed for %s: %s (Status: %d)", username, errorMsg, resp.StatusCode)
+		h.handleLoginError(w, r, errorMsg, http.StatusUnauthorized)
 	} else {
-		// Invalid credentials
-		log.Printf("Invalid credentials - Valid test accounts: admin@example.com/password123, test@test.com/password, user@demo.com/demo123")
-		h.handleLoginError(w, r, "Invalid email or password. Try: test@test.com / password", http.StatusUnauthorized)
+		// Unexpected response
+		log.Printf("Unexpected auth response for %s: Status=%d, Body=%s", username, resp.StatusCode, string(body))
+		h.handleLoginError(w, r, "Authentication failed. Please try again.", http.StatusInternalServerError)
+	}
+}
+
+// forwardSessionCookies forwards session cookies (JSESSIONID) from Spring to browser
+func (h *AuthHandler) forwardSessionCookies(w http.ResponseWriter, resp *http.Response) {
+	for _, cookie := range resp.Cookies() {
+		log.Printf("Forwarding cookie from Spring: %s=%s", cookie.Name, cookie.Value)
+		
+		// Create a new cookie with appropriate settings for BFF
+		newCookie := &http.Cookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Path:     cookie.Path,
+			MaxAge:   cookie.MaxAge,
+			Secure:   false, // Set to true in production with HTTPS
+			HttpOnly: true,  // Always use HttpOnly for security
+			SameSite: http.SameSiteLaxMode,
+		}
+		
+		// Ensure path is set
+		if newCookie.Path == "" {
+			newCookie.Path = "/"
+		}
+		
+		http.SetCookie(w, newCookie)
 	}
 }
 

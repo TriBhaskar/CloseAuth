@@ -17,11 +17,12 @@ import (
 )
 
 type Server struct {
-    port          int
-    authHandler   *handlers.AuthHandler
-    clientHandler *handlers.ClientHandler
-    publicHandler *handlers.PublicHandler
-    db            *database.Database
+    port             int
+    authHandler      *handlers.AuthHandler
+    clientHandler    *handlers.ClientHandler
+    publicHandler    *handlers.PublicHandler
+    oauthProxyHandler *handlers.OAuthProxyHandler
+    db               *database.Database
 }
 
 func NewServer() (*http.Server, *Server, error) {
@@ -41,11 +42,12 @@ func NewServer() (*http.Server, *Server, error) {
 
     // Create server instance
     newServer := &Server{
-        port:          port,
-        authHandler:   handlers.NewAuthHandler(),
-        clientHandler: handlers.NewClientHandler(),
-        publicHandler: handlers.NewPublicHandler(),
-        db:            db,
+        port:             port,
+        authHandler:      handlers.NewAuthHandler(),
+        clientHandler:    handlers.NewClientHandler(),
+        publicHandler:    handlers.NewPublicHandler(),
+        oauthProxyHandler: handlers.NewOAuthProxyHandler(),
+        db:               db,
     }
     
     log.Printf("Starting server on port %d\n", newServer.port)

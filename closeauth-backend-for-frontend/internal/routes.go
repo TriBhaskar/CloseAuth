@@ -35,6 +35,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Health check endpoint (before CSRF to allow monitoring tools)
     r.Get("/health", s.handleHealthCheck)
 	
+	// OAuth2 proxy endpoints - must be before static files to take precedence
+	// These endpoints proxy to Spring Authorization Server
+	r.Get("/closeauth/oauth2/authorize", s.oauthProxyHandler.HandleAuthorize)
+	r.Post("/closeauth/oauth2/token", s.oauthProxyHandler.HandleToken)
+	
 	// Serve static files - Go's FileServer handles MIME types automatically
 	staticFS := http.Dir("./static")
 	staticHandler := http.StripPrefix("/static/", http.FileServer(staticFS))
@@ -54,6 +59,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Post("/admin/clients", s.clientHandler.HandleCreateClientPost)
 	
 	// Authentication routes
+	r.Post("/auth/login", s.authHandler.HandleLoginPost)
 	r.Post("/login", s.authHandler.HandleLoginPost)
 	r.Post("/register", s.authHandler.HandleRegisterPost)
 	r.Post("/register/verify-otp", s.authHandler.HandleVerifyRegistrationOTP)

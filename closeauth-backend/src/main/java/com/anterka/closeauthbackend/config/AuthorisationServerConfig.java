@@ -9,16 +9,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -29,9 +25,6 @@ import org.springframework.security.oauth2.server.authorization.token.JwtEncodin
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
-import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextRepository;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -45,6 +38,7 @@ import static com.anterka.closeauthbackend.config.CustomClientMetadataConfig.con
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity  // Enable method-level security annotations
 public class AuthorisationServerConfig {
 
     @Value("${closeauth.bff.login-page}")
@@ -82,12 +76,17 @@ public class AuthorisationServerConfig {
     @Bean
     @Order(2)
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests(auth -> auth.requestMatchers("/auth/**", "/admin/**").permitAll().anyRequest().authenticated())
-                        .formLogin(
-                                form -> form.loginPage(loginPageUrl)
-                                        .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
-                                        .permitAll()
-                        );
+        http.authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/auth/register", "/admin/**").permitAll()  // Public endpoints
+                        .requestMatchers("/auth/create").hasAuthority("SCOPE_client.create")  // Requires client.create scope
+                        .requestMatchers("/auth/**").authenticated()  // Other protected endpoints
+                        .anyRequest().authenticated())
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))  // Enable JWT validation
+                .formLogin(
+                        form -> form.loginPage(loginPageUrl)
+                                .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
+                                .permitAll()
+                );
 //                .formLogin(Customizer.withDefaults());
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
         http.csrf(csrf -> csrf.disable());

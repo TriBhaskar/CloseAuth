@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.service;
 import com.anterka.closeauthbackend.dto.UserRegistrationDto;
 import com.anterka.closeauthbackend.entities.Users;
 import com.anterka.closeauthbackend.enums.GlobalRoleEnum;
+import com.anterka.closeauthbackend.exception.UserRegistrationException;
 import com.anterka.closeauthbackend.repository.GlobalRolesRepository;
 import com.anterka.closeauthbackend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,19 @@ public class AppUserService {
     private final PasswordEncoder passwordEncoder;
 
     public String createUser(UserRegistrationDto userRegistrationDto){
+
+        if(userRepository.existsByUsername(userRegistrationDto.username())) {
+            throw new UserRegistrationException("Username already exists: " + userRegistrationDto.username());
+        }
+
+        if (userRepository.existsByEmail(userRegistrationDto.email())) {
+            throw new UserRegistrationException("Email already exists: " + userRegistrationDto.email());
+        }
+
+        if (userRepository.existsByPhone(userRegistrationDto.phone())) {
+            throw new UserRegistrationException("Phone number already exists: " + userRegistrationDto.phone());
+        }
+
         Users user = Users.builder()
                 .username(userRegistrationDto.username())
                 .email(userRegistrationDto.email())
@@ -27,7 +41,7 @@ public class AppUserService {
                 .firstName(userRegistrationDto.firstName())
                 .lastName(userRegistrationDto.lastName())
                 .phone(userRegistrationDto.phone())
-                .globalRoles(globalRolesRepository.findByRole(GlobalRoleEnum.END_USER).orElseThrow(()-> new RuntimeException("Default role not found")))
+                .globalRoles(globalRolesRepository.findByRole(GlobalRoleEnum.END_USER).orElseThrow(()-> new UserRegistrationException("Default role not found")))
                 .build();
         userRepository.save(user);
         log.info("User created: {}", user.getUsername());

@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.config;
 
+import com.anterka.closeauthbackend.constants.ApiPaths;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -67,7 +68,6 @@ public class AuthorisationServerConfig {
 
         http.exceptionHandling(exception -> exception
                         .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
-//                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
                         .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 
         return http.build();
@@ -78,7 +78,7 @@ public class AuthorisationServerConfig {
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/register", "/admin/**").permitAll()  // Public endpoints
-                        .requestMatchers("/auth/create").hasAuthority("SCOPE_client.create")  // Requires client.create scope
+                        .requestMatchers(ApiPaths.REGISTER).hasAuthority("SCOPE_client.create")  // Requires client.create scope
                         .requestMatchers("/auth/**").authenticated()  // Other protected endpoints
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))  // Enable JWT validation
@@ -87,7 +87,6 @@ public class AuthorisationServerConfig {
                                 .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
                                 .permitAll()
                 );
-//                .formLogin(Customizer.withDefaults());
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
         http.csrf(csrf -> csrf.disable());
 

@@ -1,4 +1,4 @@
-package com.anterka.closeauthbackend.dto;
+package com.anterka.closeauthbackend.dto.request;
 
 public record UserRegistrationDto(
         String username,

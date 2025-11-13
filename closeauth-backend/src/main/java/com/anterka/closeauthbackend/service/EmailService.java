@@ -21,24 +21,24 @@ public class EmailService {
     private final JavaMailSender mailSender;
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
-    @Async
-    public CompletableFuture<Void> sendOTPMail(String to, String otp) throws MessagingException {
-        MimeMessage message = mailSender.createMimeMessage();
-        MimeMessageHelper messageHelper = new MimeMessageHelper(message, true);
-
-        messageHelper.setTo(to);
-        messageHelper.setSubject("OTP for Email Verification");
-        messageHelper.setText("Your OTP for email verification is: " + otp);
-
+    @Async("virtualThreadExecutor")
+    public CompletableFuture<Boolean> sendOTPMail(String to, String otp) {
         try {
-            mailSender.send(message);
-            log.info("Email sent successfully");
-        } catch (MailException e) {
-            log.error("Failed to send email: {}", e.getMessage());
-            throw new EmailSendingException("Failed to process email verification request");
-        }
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper messageHelper = new MimeMessageHelper(message, true);
 
-        return CompletableFuture.completedFuture(null);
+            messageHelper.setTo(to);
+            messageHelper.setSubject("OTP for Email Verification");
+            messageHelper.setText("Your OTP for email verification is: " + otp);
+
+            mailSender.send(message);
+            log.info("OTP email sent successfully to: {}", to);
+            return CompletableFuture.completedFuture(true);
+
+        } catch (MessagingException | MailException e) {
+            log.error("Failed to send OTP email to {}: {}", to, e.getMessage(), e);
+            return CompletableFuture.completedFuture(false);
+        }
     }
 
     public void sendForgotPasswordLinkMail(String to, String link, long expiresIn) throws MessagingException {

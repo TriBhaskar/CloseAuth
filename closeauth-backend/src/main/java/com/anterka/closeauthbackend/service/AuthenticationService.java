@@ -46,16 +46,22 @@ public class AuthenticationService {
         String otp = otpService.generateOtp();
         long otpValiditySeconds = otpService.saveOtp(request.email(), otp);
 
-        try {
-            // Async email sending
-            emailService.sendOTPMail(request.email(), otp)
-                    .exceptionally(throwable -> {
-                        log.error("Failed to send OTP email: {}", throwable.getMessage());
-                        return null;
-                    });
-        } catch (MessagingException e) {
-            throw new UserRegistrationException("Failed to send OTP email: " + e.getMessage());
-        }
+        // Send email asynchronously with proper error handling
+        emailService.sendOTPMail(request.email(), otp)
+                .whenComplete((success, throwable) -> {
+                    if (throwable != null) {
+                        log.error("Unexpected error sending OTP email to {}: {}",
+                                request.email(), throwable.getMessage(), throwable);
+                        // Optional: Save to dead letter queue for retry
+                        // Optional: Send alert to monitoring system
+                    } else if (!success) {
+                        log.warn("Failed to send OTP email to {}, may need retry", request.email());
+                        // Optional: Trigger retry mechanism
+                    } else {
+                        log.info("OTP email queued successfully for {}", request.email());
+                    }
+                });
+
 
         RegistrationData registrationData = new RegistrationData(
                 request,
@@ -135,16 +141,22 @@ public class AuthenticationService {
             String otp = otpService.generateOtp();
             otpService.saveOtp(request.email(), otp);
 
-            try {
-                // Async email sending
-                emailService.sendOTPMail(request.email(), otp)
-                        .exceptionally(throwable -> {
-                            log.error("Failed to send OTP email: {}", throwable.getMessage());
-                            return null;
-                        });
-            } catch (MessagingException e) {
-                throw new UserRegistrationException("Failed to send OTP email: " + e.getMessage());
-            }
+        // Send email asynchronously with proper error handling
+            emailService.sendOTPMail(request.email(), otp)
+                    .whenComplete((success, throwable) -> {
+                        if (throwable != null) {
+                            log.error("Unexpected error sending OTP email to {}: {}",
+                                    request.email(), throwable.getMessage(), throwable);
+                            // Optional: Save to dead letter queue for retry
+                            // Optional: Send alert to monitoring system
+                        } else if (!success) {
+                            log.warn("Failed to send OTP email to {}, may need retry", request.email());
+                            // Optional: Trigger retry mechanism
+                        } else {
+                            log.info("OTP email queued successfully for {}", request.email());
+                        }
+                    });
+
         } else {
             throw new UserRegistrationException("No registration found for email: " + request.email());
         }

@@ -17,7 +17,6 @@ import com.anterka.closeauthbackend.repository.UserRepository;
 import com.anterka.closeauthbackend.service.cache.RegistrationCacheService;
 import com.anterka.closeauthbackend.service.strategy.UserRegistrationStrategy;
 import com.anterka.closeauthbackend.service.strategy.UserRegistrationStrategyFactory;
-import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;

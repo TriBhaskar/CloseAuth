@@ -4,13 +4,17 @@ import com.anterka.closeauthbackend.dto.CustomApiResponse;
 import com.anterka.closeauthbackend.dto.RegistrationData;
 import com.anterka.closeauthbackend.dto.ResponseStatusEnum;
 import com.anterka.closeauthbackend.dto.request.UserEmailVerificationDto;
+import com.anterka.closeauthbackend.dto.request.UserLoginDto;
 import com.anterka.closeauthbackend.dto.request.UserRegistrationDto;
 import com.anterka.closeauthbackend.dto.request.UserResendOtpDto;
 import com.anterka.closeauthbackend.dto.response.ResendOtpResponse;
+import com.anterka.closeauthbackend.dto.response.UserLoginResponse;
 import com.anterka.closeauthbackend.dto.response.UserRegistrationResponse;
 import com.anterka.closeauthbackend.entities.Users;
 import com.anterka.closeauthbackend.enums.GlobalRoleEnum;
 import com.anterka.closeauthbackend.exception.DataAlreadyExistsException;
+import com.anterka.closeauthbackend.exception.UserAuthenticationException;
+import com.anterka.closeauthbackend.exception.UserNotFoundException;
 import com.anterka.closeauthbackend.exception.UserRegistrationException;
 import com.anterka.closeauthbackend.repository.GlobalRolesRepository;
 import com.anterka.closeauthbackend.repository.UserRepository;
@@ -24,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +41,7 @@ public class AuthenticationService {
     private final EmailService emailService;
     private final RegistrationCacheService registrationCacheService;
     private final UserRegistrationStrategyFactory registrationStrategyFactory;
+    private final JwtTokenService jwtTokenService;
 
     public UserRegistrationResponse registerUser(UserRegistrationDto request){
 
@@ -165,6 +171,56 @@ public class AuthenticationService {
                 OtpService.OTP_VALIDITY_SECONDS,
                 request.email(),
                 LocalDateTime.now()
+        );
+    }
+
+    @Transactional
+    public UserLoginResponse loginUser(UserLoginDto request, String clientId) {
+        log.info("Processing login request for email: {} with clientId: {}", request.email(), clientId);
+
+        // Find user by email
+        Users user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new UserNotFoundException("User not found with email: " + request.email()));
+
+        // Validate password
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            log.warn("Invalid password attempt for email: {}", request.email());
+            throw new UserAuthenticationException("Invalid email or password");
+        }
+
+        // Check if user is active and verified
+        if (!user.getEmailVerified()) {
+            throw new UserAuthenticationException("Email not verified. Please verify your email to login.");
+        }
+
+        if (user.isDisabled()) {
+            throw new UserAuthenticationException("Account is disabled. Please contact support.");
+        }
+
+        if (user.isLocked()) {
+            throw new UserAuthenticationException("Account is locked. Please contact support.");
+        }
+
+        // Update last login time
+        user.setLastLoginAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        // Generate JWT token using the client ID from the bearer token
+        String accessToken = jwtTokenService.generateToken(user, clientId);
+        LocalDateTime tokenExpiresAt = LocalDateTime.ofInstant(
+                jwtTokenService.getTokenExpiration(clientId),
+                ZoneId.systemDefault()
+        );
+
+        log.info("User logged in successfully: {}", request.email());
+
+        return UserLoginResponse.success(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                accessToken,
+                tokenExpiresAt
         );
     }
 }

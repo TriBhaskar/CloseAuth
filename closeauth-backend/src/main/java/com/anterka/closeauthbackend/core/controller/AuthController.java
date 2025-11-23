@@ -6,6 +6,7 @@ import com.anterka.closeauthbackend.dto.CustomApiResponse;
 import com.anterka.closeauthbackend.dto.ResponseStatusEnum;
 import com.anterka.closeauthbackend.dto.request.*;
 import com.anterka.closeauthbackend.dto.response.ResendOtpResponse;
+import com.anterka.closeauthbackend.dto.response.UserLoginResponse;
 import com.anterka.closeauthbackend.dto.response.UserRegistrationResponse;
 import com.anterka.closeauthbackend.exception.InvalidTokenException;
 import com.anterka.closeauthbackend.exception.PasswordMismatchedException;
@@ -21,12 +22,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
 @RestController
-@RequestMapping(ApiPaths.API_V1_BASE)
+@RequestMapping(ApiPaths.ADMIN_BASE)
 @RequiredArgsConstructor
 @Slf4j
 public class AuthController {
@@ -34,7 +37,42 @@ public class AuthController {
     private final AuthenticationService authenticationService;
     private final RateLimiterService rateLimiter;
     private final UserPasswordResetService passwordResetService;
-    // Protected endpoint for creating users (requires OAuth2 access token with 'client.create' scope)
+    // Protected endpoint for user login (requires OAuth2 access token with 'client.create' scope)
+
+    @PostMapping(ApiPaths.LOGIN)
+    @PreAuthorize("hasAuthority('SCOPE_client.create')")
+    public ResponseEntity<UserLoginResponse> loginUser(
+            @RequestBody UserLoginDto userLoginDto,
+            Authentication authentication) {
+        log.info("Received authenticated user login request for email: {}", userLoginDto.email());
+
+        // Extract client ID from the JWT token
+        String clientId = extractClientIdFromAuthentication(authentication);
+
+        if (clientId != null) {
+            log.debug("Client ID extracted from bearer token: {}", clientId);
+        }
+
+        return ResponseEntity.ok(authenticationService.loginUser(userLoginDto, clientId));
+    }
+
+    /**
+     * Extracts the client ID from the JWT token in the Authentication object.
+     * The client ID is in the 'sub' claim of the JWT.
+     *
+     * @param authentication The Spring Security Authentication object
+     * @return The client ID or null if not found
+     */
+    private String extractClientIdFromAuthentication(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            // The 'sub' claim contains the client ID
+            String subject = jwt.getSubject();
+            log.debug("Extracted subject (client ID) from JWT: {}", subject);
+            return subject;
+        }
+        log.warn("Could not extract client ID from authentication - not a JWT token");
+        return null;
+    }
     @PostMapping(ApiPaths.REGISTER)
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<UserRegistrationResponse> registerUser(@RequestBody UserRegistrationDto userRegistrationDto) {

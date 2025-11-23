@@ -8,6 +8,7 @@ public class ApiPaths {
     // Complete API base path
     public static final String API_V1_BASE = API_PREFIX + VERSION_V1;
 
+    public static final String ADMIN_BASE = API_V1_BASE + "/admin";
     // Auth API base path
     public static final String AUTH_BASE = "/auth";
     // Authentication (separate from users for clarity)
@@ -23,6 +24,15 @@ public class ApiPaths {
     // ========================================
     // UTILITY METHODS
     // ========================================
+
+    public static final String[] SKIP_AUTH_PATHS = {
+            ADMIN_BASE + REGISTER,
+            ADMIN_BASE + LOGIN,
+            ADMIN_BASE + VERIFY_EMAIL,
+            ADMIN_BASE + RESEND_OTP,
+            ADMIN_BASE + FORGOT_PASSWORD,
+            ADMIN_BASE + RESET_PASSWORD
+    };
 
     /**
      * Get full API path with context, prefix and version

@@ -1,6 +1,7 @@
 package com.anterka.closeauthbackend.config;
 
 import com.anterka.closeauthbackend.constants.ApiPaths;
+import com.anterka.closeauthbackend.filter.TwoLayerAuthenticationFilter;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -19,13 +20,22 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.core.OAuth2Token;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
+import org.springframework.security.oauth2.server.authorization.token.JwtGenerator;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2AccessTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
+import org.springframework.security.oauth2.server.authorization.token.DelegatingOAuth2TokenGenerator;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2RefreshTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -75,13 +85,16 @@ public class AuthorisationServerConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain webSecurityFilterChain(
+            HttpSecurity http,
+            TwoLayerAuthenticationFilter twoLayerAuthenticationFilter) throws Exception {
+
         http.authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/register", "/admin/**").permitAll()  // Public endpoints
+                        .requestMatchers("/admin/clients/**").authenticated()  // Protected - requires JWT (matches all /admin/clients/* endpoints)
                         .requestMatchers(ApiPaths.REGISTER).hasAuthority("SCOPE_client.create")  // Requires client.create scope
-                        .requestMatchers("/auth/**").authenticated()  // Other protected endpoints
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))  // Enable JWT validation
+                .addFilterBefore(twoLayerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)  // Add JWT filter
                 .formLogin(
                         form -> form.loginPage(loginPageUrl)
                                 .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
@@ -140,6 +153,11 @@ public class AuthorisationServerConfig {
     }
 
     @Bean
+    public JwtEncoder jwtEncoder(JWKSource<SecurityContext> jwkSource) {
+        return new NimbusJwtEncoder(jwkSource);
+    }
+
+    @Bean
     public AuthorizationServerSettings authorizationServerSettings() {
         return AuthorizationServerSettings.builder().issuer("http://localhost:9088").build();
     }
@@ -147,5 +165,24 @@ public class AuthorisationServerConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public OAuth2TokenGenerator<OAuth2Token> tokenGenerator(JWKSource<SecurityContext> jwkSource) {
+        JwtGenerator jwtGenerator = new JwtGenerator(new NimbusJwtEncoder(jwkSource));
+        jwtGenerator.setJwtCustomizer(tokenCustomizer());
+        OAuth2AccessTokenGenerator accessTokenGenerator = new OAuth2AccessTokenGenerator();
+        OAuth2RefreshTokenGenerator refreshTokenGenerator = new OAuth2RefreshTokenGenerator();
+        return new DelegatingOAuth2TokenGenerator(
+                jwtGenerator, accessTokenGenerator, refreshTokenGenerator);
+    }
+
+    /**
+     * Bean for the custom JWT authentication filter.
+     * This filter validates JWT tokens from cookies or headers and sets authentication.
+     */
+    @Bean
+    public TwoLayerAuthenticationFilter twoLayerAuthenticationFilter(JwtDecoder jwtDecoder) {
+        return new TwoLayerAuthenticationFilter(jwtDecoder);
     }
 }

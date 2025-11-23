@@ -19,9 +19,15 @@ public class ClientController {
 
     private final ClientService clientService;
 
-    @PostMapping("/create")
-    public ResponseEntity<String> createClient(@RequestBody CreateClientDto dto) {
-        log.info("Creating new client with ID: {}", dto.getClientId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(clientService.create(dto));
+//    @PostMapping("/create")
+//    public ResponseEntity<String> createClient(@RequestBody CreateClientDto dto) {
+//        log.info("Creating new client with ID: {}", dto.getClientId());
+//        return ResponseEntity.status(HttpStatus.CREATED).body(clientService.create(dto));
+//    }
+
+    @PostMapping("/test-create")
+    public ResponseEntity<String> testCreateClient(@RequestBody CreateClientDto dto) {
+        log.info("Test creating new client with ID: {}", dto.getClientId());
+        return ResponseEntity.status(HttpStatus.CREATED).body("Test client created: " + dto.getClientId());
     }
 }

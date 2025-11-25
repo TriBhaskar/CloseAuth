@@ -20,6 +20,16 @@ public class ApiPaths {
     public static final String FORGOT_PASSWORD = AUTH_BASE + "/forgot-password";
     public static final String RESET_PASSWORD = AUTH_BASE + "/reset-password";
 
+//  OAUTH2 PATHS
+    public static final String OAUTH2_BASE = "/oauth2";
+    public static final String CLIENT_REGISTER_URL = "/connect/register";
+    public static final String TOKEN_URL =  OAUTH2_BASE + "/token";
+    public static final String AUTHORIZE_URL =  OAUTH2_BASE + "/authorize";
+    public static final String LOGOUT_URL =  OAUTH2_BASE + "/logout";
+    public static final String JWKS_URL =  OAUTH2_BASE + "/jwks";
+    public static final String REVOCATION_URL =  OAUTH2_BASE + "/revoke";
+    public static final String INTROSPECTION_URL =  OAUTH2_BASE + "/introspect";
+
 
     // ========================================
     // UTILITY METHODS
@@ -32,6 +42,10 @@ public class ApiPaths {
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
             ADMIN_BASE + RESET_PASSWORD
+    };
+
+    public static final String[] USER_AUTH_PATHS = {
+            CLIENT_REGISTER_URL
     };
 
     /**

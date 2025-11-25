@@ -1,6 +1,5 @@
 package com.anterka.closeauthbackend.filter;
 
-import com.anterka.closeauthbackend.constants.ApiPaths;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,7 +16,6 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -35,37 +33,15 @@ import java.util.stream.Collectors;
 public class TwoLayerAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String USER_TOKEN_HEADER = "X-User-Token";
-    private static final String USER_SESSION_COOKIE = "user_session";
 
     private final JwtDecoder jwtDecoder;
 
 //    @Override
 //    protected boolean shouldNotFilter(HttpServletRequest request){
-//        String path = request.getRequestURI();
-//
-//        // Remove context path if present
-//        String contextPath = request.getContextPath();
-//        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
-//            path = path.substring(contextPath.length());
-//        }
-//
-//        // Skip filter for these public endpoints
-//        boolean skip = path.equals("/auth/register") ||
-//                path.startsWith("/api/v1/admin/auth/");
-//
-//        if (skip) {
-//            log.debug("Skipping TwoLayerAuthenticationFilter for public endpoint: {}", path);
-//        }
-//
-//        return skip;
+//        String path = request.getServletPath();
+//        log.info("Checking if path should skip auth filter: {}", path);
+//        return Arrays.asList(ApiPaths.SKIP_AUTH_PATHS).contains(path);
 //    }
-
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest request){
-        String path = request.getServletPath();
-        log.info("Checking if path should skip auth filter: {}", path);
-        return Arrays.asList(ApiPaths.SKIP_AUTH_PATHS).contains(path);
-    }
 
     @Override
     protected void doFilterInternal(

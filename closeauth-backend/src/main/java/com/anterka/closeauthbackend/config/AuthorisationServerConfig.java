@@ -7,7 +7,9 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -57,51 +59,66 @@ public class AuthorisationServerConfig {
 
     @Bean
     @Order(1)
-    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
-        OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-                OAuth2AuthorizationServerConfigurer.authorizationServer();
+    public SecurityFilterChain webSecurityFilterChain(
+            HttpSecurity http,
+            TwoLayerAuthenticationFilter twoLayerAuthenticationFilter) throws Exception {
 
-        http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
-                .with(authorizationServerConfigurer, (authorizationServer) ->
-                        authorizationServer
-                                .oidc((oidc) ->
-                                        oidc.clientRegistrationEndpoint((clientRegistrationEndpoint) ->
-                                                clientRegistrationEndpoint
-                                                        .authenticationProviders(configureCustomClientMetadataConverters())
-                                        )
-                                )
-                )
-                .authorizeHttpRequests((authorize) ->
-                        authorize
-                                .anyRequest().authenticated()
-                );
+        http.securityMatcher(
+                        ApiPaths.CLIENT_REGISTER_URL
+                        // Add all endpoints that need X-User-Token validation
+                ).authorizeHttpRequests(auth -> auth
+                .anyRequest().authenticated())
+                .addFilterBefore(twoLayerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, authEx) -> {
+                            res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            res.setContentType("application/json");
+                            res.getWriter().write(
+                                    "{\"error\":\"Unauthorized\"," +
+                                            "\"message\":\"X-User-Token required\"}"
+                            );
+                        }))
+                .formLogin(form -> form.loginPage(loginPageUrl)
+                    .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
+                    .permitAll());
 
-        http.exceptionHandling(exception -> exception
-                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
-                        .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
+        http.csrf(csrf -> csrf.disable());
 
         return http.build();
     }
 
     @Bean
     @Order(2)
-    public SecurityFilterChain webSecurityFilterChain(
-            HttpSecurity http,
-            TwoLayerAuthenticationFilter twoLayerAuthenticationFilter) throws Exception {
+    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+        OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
+                OAuth2AuthorizationServerConfigurer.authorizationServer();
 
-        http.authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/admin/clients/**").authenticated()  // Protected - requires JWT (matches all /admin/clients/* endpoints)
-                        .requestMatchers(ApiPaths.REGISTER).hasAuthority("SCOPE_client.create")  // Requires client.create scope
-                        .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))  // Enable JWT validation
-                .addFilterBefore(twoLayerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)  // Add JWT filter
-                .formLogin(
-                        form -> form.loginPage(loginPageUrl)
-                                .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
-                                .permitAll()
-                );
-        http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
-        http.csrf(csrf -> csrf.disable());
+        http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+                .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
+                .oidc(oidc -> oidc
+                .clientRegistrationEndpoint(clientRegistrationEndpoint -> clientRegistrationEndpoint
+                .authenticationProviders(configureCustomClientMetadataConverters()))))
+                .authorizeHttpRequests(authorize -> authorize
+                .anyRequest().authenticated());
+
+        http.exceptionHandling(exception -> exception
+            .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));  // Add JWT filter for /connect/register
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(3)
+    public SecurityFilterChain defaultSecurityChain(HttpSecurity http) throws Exception {
+        http
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(ApiPaths.SKIP_AUTH_PATHS).permitAll()
+                        .anyRequest().authenticated()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .formLogin(Customizer.withDefaults());
 
         return http.build();
     }
@@ -184,5 +201,13 @@ public class AuthorisationServerConfig {
     @Bean
     public TwoLayerAuthenticationFilter twoLayerAuthenticationFilter(JwtDecoder jwtDecoder) {
         return new TwoLayerAuthenticationFilter(jwtDecoder);
+    }
+
+    @Bean
+    public FilterRegistrationBean<TwoLayerAuthenticationFilter> twoLayerAuthenticationFilterRegistration(
+            TwoLayerAuthenticationFilter filter) {
+        FilterRegistrationBean<TwoLayerAuthenticationFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false); // prevent global servlet registration
+        return reg;
     }
 }

@@ -10,13 +10,12 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(chimiddleware.Logger)
+	// r.Use(chimiddleware.Logger) // Removed: using custom slog logger instead
 
 	// CSRF protection
 	csrfConfig := middleware.DefaultCSRFConfig()

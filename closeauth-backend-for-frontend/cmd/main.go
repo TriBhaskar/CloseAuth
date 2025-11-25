@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	server "closeauth-backend-for-frontend/internal"
+	"closeauth-backend-for-frontend/internal/logger"
 )
 
 func gracefulShutdown(apiServer *http.Server, appServer *server.Server, done chan bool) {
@@ -20,7 +21,7 @@ func gracefulShutdown(apiServer *http.Server, appServer *server.Server, done cha
     // Listen for the interrupt signal.
     <-ctx.Done()
 
-    log.Println("Shutting down gracefully, press Ctrl+C again to force")
+    slog.Info("Shutting down gracefully (Ctrl+C again to force)")
 
     // The context is used to inform the server it has 5 seconds to finish
     // the request it is currently handling
@@ -29,32 +30,50 @@ func gracefulShutdown(apiServer *http.Server, appServer *server.Server, done cha
 
     // Shutdown HTTP server
     if err := apiServer.Shutdown(shutdownCtx); err != nil {
-        log.Printf("HTTP server forced to shutdown with error: %v", err)
+        slog.Error("HTTP server shutdown error", "error", err)
     }
 
     // Shutdown application resources (database, etc.)
     if err := appServer.Shutdown(shutdownCtx); err != nil {
-        log.Printf("Application resources shutdown error: %v", err)
+        slog.Error("Application shutdown error", "error", err)
     }
 
-    log.Println("Server exiting")
+    slog.Info("Server stopped")
 
     // Notify the main goroutine that the shutdown is complete
     done <- true
 }
 
 func main() {
+    // Initialize logger with configuration from environment
+    logLevel := os.Getenv("LOG_LEVEL")
+    if logLevel == "" {
+        logLevel = "info" // Default to info level
+    }
+
+    logFormat := os.Getenv("LOG_FORMAT")
+    if logFormat == "" {
+        logFormat = "text" // Default to text format
+    }
+
+    logger.Init(logLevel, logFormat)
+
+    slog.Info("CloseAuth BFF starting...")
+    slog.Info("Log Level Info: " + logLevel)
+    slog.Debug("Log Level Debug: " + logLevel)
+    slog.Warn("Log Level Warn: " + logLevel)
     // Initialize server with error handling
     httpServer, appServer, err := server.NewServer()
     if err != nil {
-        log.Fatalf("Failed to initialize server: %v", err)
+        slog.Error("Failed to initialize server", "error", err)
+        os.Exit(1)
     }
 
     // Verify database health at startup
     if err := appServer.HealthCheck(); err != nil {
-        log.Printf("Warning: Database health check failed at startup: %v", err)
+        slog.Warn("Database health check failed", "error", err)
     } else {
-        log.Println("Database health check passed")
+        slog.Info("Database ready")
     }
 
     // Create a done channel to signal when the shutdown is complete
@@ -63,14 +82,15 @@ func main() {
     // Run graceful shutdown in a separate goroutine
     go gracefulShutdown(httpServer, appServer, done)
 
-    log.Println("Server is running and ready to accept requests")
+    slog.Info("Server listening", "port", httpServer.Addr)
 
     err = httpServer.ListenAndServe()
     if err != nil && err != http.ErrServerClosed {
-        panic(fmt.Sprintf("http server error: %s", err))
+        slog.Error("Server error", "error", err)
+        os.Exit(1)
     }
 
     // Wait for the graceful shutdown to complete
     <-done
-    log.Println("Graceful shutdown complete.")
+    slog.Info("Shutdown complete")
 }

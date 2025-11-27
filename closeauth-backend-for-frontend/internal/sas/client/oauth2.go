@@ -2,7 +2,8 @@ package client
 
 import (
 	"bytes"
-	"closeauth-backend-for-frontend/internal/sas/config"
+	"closeauth-backend-for-frontend/internal/config"
+	sasconfig "closeauth-backend-for-frontend/internal/sas/config"
 	"closeauth-backend-for-frontend/internal/sas/model"
 	"context"
 	"encoding/json"
@@ -16,14 +17,21 @@ import (
 )
 
 type OAuth2Client struct {
-	config     *config.OAuthClientConfig
+	config     *sasconfig.OAuthClientConfig
+	endpoints  *config.EndpointsConfig
 	httpClient *http.Client
 	logger     *slog.Logger
 }
 
-func NewOAuth2Client(cfg *config.OAuthClientConfig) *OAuth2Client {
+func NewOAuth2Client(cfg *sasconfig.OAuthClientConfig) *OAuth2Client {
+	endpoints, err := config.LoadEndpointsConfig()
+	if err != nil {
+		slog.Error("Failed to load endpoints config", "error", err)
+	}
+	
 	return &OAuth2Client{
-		config: cfg,
+		config:    cfg,
+		endpoints: endpoints,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
@@ -82,7 +90,7 @@ func (c *OAuth2Client) GetAccessTokenWithContext(ctx context.Context) (*model.Ac
 	data.Set("redirect_uri", c.config.DefaultRedirectURL) // Fixed: should be redirect_uri, not redirect_url
 	data.Set("scope", c.config.DefaultScope)
 
-	tokenURL := c.config.OAuth2BaseURL + "/closeauth/oauth2/token"
+	tokenURL := c.endpoints.GetTokenURL()
 	c.logger.Debug("Making token request", "url", tokenURL)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
@@ -190,7 +198,7 @@ func (c *OAuth2Client) RegisterClientWithContext(ctx context.Context, accessToke
 		return nil, fmt.Errorf("failed to marshal registration request: %w", err)
 	}
 
-	registrationURL := c.config.OAuth2BaseURL + "/closeauth/connect/register"
+	registrationURL := c.endpoints.GetRegisterClientURL()
 	c.logger.Debug("Making client registration request", "url", registrationURL)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", registrationURL, bytes.NewBuffer(jsonData))

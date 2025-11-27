@@ -6,8 +6,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 
+	"closeauth-backend-for-frontend/internal/config"
 	"closeauth-backend-for-frontend/internal/middleware"
 	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 
@@ -16,22 +16,20 @@ import (
 
 // AuthHandler contains dependencies for authentication handlers
 type AuthHandler struct {
-	oauth2ServerURL string
+	endpoints *config.EndpointsConfig
 }
 
 // NewAuthHandler creates a new auth handler instance
 func NewAuthHandler() *AuthHandler {
+	endpoints, err := config.LoadEndpointsConfig()
+	if err != nil {
+		log.Printf("Warning: Failed to load endpoints config: %v", err)
+		// Return handler with nil endpoints - will fail on first use
+		// This allows server to start but will error on actual endpoint calls
+	}
 	return &AuthHandler{
-		oauth2ServerURL: getEnvOrDefault("OAUTH2_SERVER_URL", "http://localhost:9088"),
+		endpoints: endpoints,
 	}
-}
-
-// getEnvOrDefault retrieves environment variable or returns default
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
 
 // LoginRequest represents the login request payload
@@ -345,7 +343,7 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	
-	authURL := h.oauth2ServerURL + "/closeauth/login"
+	authURL := h.endpoints.GetAdminLoginURL()
 	log.Printf("Sending login request to: %s", authURL)
 
 	resp, err := client.PostForm(authURL, form)

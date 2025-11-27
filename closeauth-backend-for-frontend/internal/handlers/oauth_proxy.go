@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"closeauth-backend-for-frontend/internal/config"
 	"closeauth-backend-for-frontend/internal/middleware"
 	"fmt"
 	"io"
@@ -17,16 +18,21 @@ import (
 // intercepting authorization requests to provide a custom login experience
 // while maintaining session security with the authorization server.
 type OAuthProxyHandler struct {
-	oauth2ServerURL string // Base URL of the Spring Authorization Server (e.g., http://localhost:9088)
-	bffBaseURL      string // Base URL of this BFF server (e.g., http://localhost:8088)
+	endpoints  *config.EndpointsConfig
+	bffBaseURL string // Base URL of this BFF server (e.g., http://localhost:8088)
 }
 
 // NewOAuthProxyHandler creates a new OAuth proxy handler instance.
 // Configuration is read from environment variables with sensible defaults.
 func NewOAuthProxyHandler() *OAuthProxyHandler {
+	endpoints, err := config.LoadEndpointsConfig()
+	if err != nil {
+		log.Printf("Warning: Failed to load endpoints config: %v", err)
+	}
+	
 	return &OAuthProxyHandler{
-		oauth2ServerURL: getEnvOrDefault("OAUTH2_SERVER_URL", "http://localhost:9088"),
-		bffBaseURL:      getEnvOrDefault("BFF_BASE_URL", "http://localhost:8088"),
+		endpoints:  endpoints,
+		bffBaseURL: config.GetEnvOrDefault("BFF_BASE_URL", "http://localhost:8088"),
 	}
 }
 
@@ -121,8 +127,9 @@ func (h *OAuthProxyHandler) validateOAuthParams(params map[string]string) error 
 
 // proxyToSpring creates and executes a proxy request to Spring Authorization Server
 func (h *OAuthProxyHandler) proxyToSpring(r *http.Request, endpoint string) (*http.Response, error) {
-	// Build target URL
-	targetURL := fmt.Sprintf("%s%s?%s", h.oauth2ServerURL, endpoint, r.URL.RawQuery)
+	// Build target URL using centralized configuration
+	baseURL := h.endpoints.OAuth2ServerURL
+	targetURL := fmt.Sprintf("%s%s?%s", baseURL, endpoint, r.URL.RawQuery)
 
 	// Create HTTP client that doesn't follow redirects (we handle them ourselves)
 	client := &http.Client{

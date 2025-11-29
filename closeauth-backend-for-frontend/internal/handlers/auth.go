@@ -1,14 +1,16 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 
 	"closeauth-backend-for-frontend/internal/config"
 	"closeauth-backend-for-frontend/internal/middleware"
+	sasconfig "closeauth-backend-for-frontend/internal/sas/config"
+	"closeauth-backend-for-frontend/internal/sas/service"
 	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 
 	"github.com/a-h/templ"
@@ -16,7 +18,8 @@ import (
 
 // AuthHandler contains dependencies for authentication handlers
 type AuthHandler struct {
-	endpoints *config.EndpointsConfig
+	endpoints        *config.EndpointsConfig
+	authenticatedClient *service.AuthenticatedClient
 }
 
 // NewAuthHandler creates a new auth handler instance
@@ -24,11 +27,16 @@ func NewAuthHandler() *AuthHandler {
 	endpoints, err := config.LoadEndpointsConfig()
 	if err != nil {
 		log.Printf("Warning: Failed to load endpoints config: %v", err)
-		// Return handler with nil endpoints - will fail on first use
-		// This allows server to start but will error on actual endpoint calls
 	}
+	
+	// Initialize OAuth client config and token manager
+	oauthConfig := sasconfig.LoadOAuthClientConfig()
+	tokenManager := service.NewTokenManager(oauthConfig)
+	authenticatedClient := service.NewAuthenticatedClient(tokenManager, endpoints)
+	
 	return &AuthHandler{
-		endpoints: endpoints,
+		endpoints:        endpoints,
+		authenticatedClient: authenticatedClient,
 	}
 }
 
@@ -315,13 +323,14 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract form values
-	username := r.FormValue("username")
+	email := r.FormValue("username") // Form field is "username" but API expects "email"
 	password := r.FormValue("password")
 	rememberMe := r.FormValue("remember-me") == "on"
 
 	// Validate form data
 	validator := middleware.NewFormValidator()
-	validator.Required("username", username, "Username is required")
+	validator.Required("email", email, "Email is required")
+	validator.Email("email", email, "Invalid email format")
 	validator.Required("password", password, "Password is required")
 	validator.MinLength("password", password, 6, "Password must be at least 6 characters")
 
@@ -330,23 +339,24 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepare form data (x-www-form-urlencoded)
-	form := url.Values{}
-	form.Set("username", username)
-	form.Set("password", password)
-
-	// Send POST form to external auth server
-	// Create HTTP client that doesn't follow redirects automatically
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects, we'll handle them
-		},
+	// Prepare JSON payload for CloseAuth admin API
+	loginRequest := map[string]interface{}{
+		"email":    email,
+		"password": password,
 	}
 	
-	authURL := h.endpoints.GetAdminLoginURL()
-	log.Printf("Sending login request to: %s", authURL)
+	jsonData, err := json.Marshal(loginRequest)
+	if err != nil {
+		log.Printf("Error marshaling login request: %v", err)
+		h.handleLoginError(w, r, "Failed to process login request", http.StatusInternalServerError)
+		return
+	}
 
-	resp, err := client.PostForm(authURL, form)
+	authURL := h.endpoints.GetAdminLoginURL()
+	log.Printf("Sending authenticated login request to: %s", authURL)
+
+	// Use authenticated client to make JSON POST request (automatically includes Bearer token)
+	resp, err := h.authenticatedClient.PostJSON(context.Background(), authURL, jsonData)
 	if err != nil {
 		log.Printf("Error calling auth service: %v", err)
 		h.handleLoginError(w, r, "Authentication service unavailable. Please try again later.", http.StatusServiceUnavailable)
@@ -368,7 +378,7 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 	// Check if authentication was successful (either 200 OK or redirect)
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusMovedPermanently {
 		// Success - authentication passed
-		log.Printf("Login successful for: %s (RememberMe: %t)", username, rememberMe)
+		log.Printf("Login successful for: %s (RememberMe: %t)", email, rememberMe)
 		
 		// Forward JSESSIONID cookie from Spring to browser
 		h.forwardSessionCookies(w, resp)
@@ -388,10 +398,6 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 		
 	// Check if there's an OAuth context (user came from OAuth flow)
 	// Debug: Print all cookies
-	log.Printf("All cookies in request:")
-	for _, cookie := range r.Cookies() {
-		log.Printf("  Cookie: %s=%s (Path=%s, Domain=%s)", cookie.Name, cookie.Value, cookie.Path, cookie.Domain)
-	}
 	
 	oauthCtx, err := middleware.GetOAuthContext(r)
 	var finalRedirect string
@@ -436,11 +442,11 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		
-		log.Printf("Login failed for %s: %s (Status: %d)", username, errorMsg, resp.StatusCode)
+		log.Printf("Login failed for %s: %s (Status: %d)", email, errorMsg, resp.StatusCode)
 		h.handleLoginError(w, r, errorMsg, http.StatusUnauthorized)
 	} else {
 		// Unexpected response
-		log.Printf("Unexpected auth response for %s: Status=%d, Body=%s", username, resp.StatusCode, string(body))
+		log.Printf("Unexpected auth response for %s: Status=%d, Body=%s", email, resp.StatusCode, string(body))
 		h.handleLoginError(w, r, "Authentication failed. Please try again.", http.StatusInternalServerError)
 	}
 }

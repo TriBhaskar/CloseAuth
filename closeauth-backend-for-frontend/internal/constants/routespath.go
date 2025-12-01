@@ -38,13 +38,12 @@ const (
 
 // Authentication action routes (POST)
 const (
-	RouteAuthLogin       = "/auth/login"
-	RouteLogin           = "/login"
-	RouteRegister        = "/register"
-	RouteRegisterVerify  = "/register/verify-otp"
-	RouteRegisterResend  = "/register/resend-otp"
-	RouteForgotPasswordRequest = "/forgot-password/request"
-	RouteForgotPasswordVerify  = "/forgot-password/verify-otp"
-	RouteForgotPasswordResend  = "/forgot-password/resend-otp"
-	RouteForgotPasswordReset   = "/forgot-password/reset"
+	RouteLogin       = "/admin/auth/login"
+	RouteRegister        = "/admin/auth/register"
+	RouteRegisterVerify  = "/admin/auth/register/verify-otp"
+	RouteRegisterResend  = "/admin/auth/register/resend-otp"
+	RouteForgotPasswordRequest = "/admin/auth/forgot-password/request"
+	RouteForgotPasswordVerify  = "/admin/auth/forgot-password/verify-otp"
+	RouteForgotPasswordResend  = "/admin/auth/forgot-password/resend-otp"
+	RouteForgotPasswordReset   = "/admin/auth/forgot-password/reset"
 )

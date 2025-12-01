@@ -58,7 +58,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Post(constants.RouteAdminClients, s.clientHandler.HandleCreateClientPost)
 	
 	// Authentication routes
-	r.Post(constants.RouteAuthLogin, s.authHandler.HandleLoginPost)
 	r.Post(constants.RouteLogin, s.authHandler.HandleLoginPost)
 	r.Post(constants.RouteRegister, s.authHandler.HandleRegisterPost)
 	r.Post(constants.RouteRegisterVerify, s.authHandler.HandleVerifyRegistrationOTP)

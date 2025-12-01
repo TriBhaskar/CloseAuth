@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -39,7 +40,7 @@ public class AuthController {
     private final UserPasswordResetService passwordResetService;
     // Protected endpoint for user login (requires OAuth2 access token with 'client.create' scope)
 
-    @PostMapping(ApiPaths.LOGIN)
+    @PostMapping(value = ApiPaths.LOGIN, consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<UserLoginResponse> loginUser(
             @RequestBody UserLoginDto userLoginDto,
@@ -73,25 +74,25 @@ public class AuthController {
         log.warn("Could not extract client ID from authentication - not a JWT token");
         return null;
     }
-    @PostMapping(ApiPaths.REGISTER)
+    @PostMapping(value = ApiPaths.REGISTER, consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<UserRegistrationResponse> registerUser(@RequestBody UserRegistrationDto userRegistrationDto) {
         log.info("Received authenticated user creation request for username: {}", userRegistrationDto.username());
         return ResponseEntity.status(HttpStatus.CREATED).body(authenticationService.registerUser(userRegistrationDto));
     }
 
-    @PostMapping(ApiPaths.VERIFY_EMAIL)
+    @PostMapping(value = ApiPaths.VERIFY_EMAIL, consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<CustomApiResponse> verifyEmail(@Valid @RequestBody UserEmailVerificationDto userEmailVerificationRequest) {
         log.info("Received OTP verification request for email: {}", userEmailVerificationRequest.email());
         return ResponseEntity.ok(authenticationService.verifyUserEmail(userEmailVerificationRequest));
     }
 
-    @PostMapping(ApiPaths.RESEND_OTP)
+    @PostMapping(value = ApiPaths.RESEND_OTP, consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<ResendOtpResponse> resendOTP(@Valid @RequestBody UserResendOtpDto userResendOtpRequest) {
         return ResponseEntity.ok(authenticationService.resendOtp(userResendOtpRequest));
     }
 
-    @PostMapping(ApiPaths.FORGOT_PASSWORD)
+    @PostMapping(value = ApiPaths.FORGOT_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<CustomApiResponse> forgotPassword(@Valid @RequestBody UserForgotPasswordDto userForgotPasswordRequest, HttpServletRequest servletRequest) {
         log.info("Received forgot password request for email: " + userForgotPasswordRequest.email());
 
@@ -107,7 +108,7 @@ public class AuthController {
         }
     }
 
-    @PostMapping(ApiPaths.RESET_PASSWORD)
+    @PostMapping(value = ApiPaths.RESET_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<CustomApiResponse> resetPassword(@RequestBody UserResetPasswordDto request,
                                                            HttpServletRequest servletRequest) {
         // Rate limiting for reset password attempts

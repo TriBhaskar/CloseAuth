@@ -2,6 +2,7 @@ package templates
 
 import "closeauth-backend-for-frontend/internal/templates/components/card"
 import "closeauth-backend-for-frontend/internal/templates/components/dialog"
+import "closeauth-backend-for-frontend/internal/constants"
 import templates "closeauth-backend-for-frontend/internal/templates"
 
 templ Register(csrfToken string) {
@@ -15,7 +16,7 @@ templ Register(csrfToken string) {
                         }
                         @card.Description() {
                             Already have an account? 
-                            <a href="/auth/login" class="font-medium text-indigo-600 hover:text-indigo-500">
+                            <a href={ templ.SafeURL(constants.RouteAdminLogin) } class="font-medium text-indigo-600 hover:text-indigo-500">
                                 Sign in here
                             </a>
                         }
@@ -25,8 +26,8 @@ templ Register(csrfToken string) {
                             <!-- Error message container -->
                             <div id="error-container"></div>
                             
-                            <form class="space-y-6" action="/register" method="POST" 
-                                  hx-post="/register"
+                            <form class="space-y-6" action={ templ.SafeURL(constants.RouteRegister) } method="POST" 
+                                  hx-post={ constants.RouteRegister }
                                   hx-target="#otp-dialog-content" 
                                   hx-indicator="#loading"
                                   hx-swap="innerHTML"
@@ -155,7 +156,7 @@ templ Register(csrfToken string) {
                     @card.Footer() {
                         <div class="text-center text-sm text-gray-600">
                             Already have an account?
-                            <a href="/auth/login" class="font-medium text-indigo-600 hover:text-indigo-500">
+                            <a href={ templ.SafeURL(constants.RouteAdminLogin) } class="font-medium text-indigo-600 hover:text-indigo-500">
                                 Sign in here
                             </a>
                         </div>
@@ -291,7 +292,7 @@ templ RegisterOTPForm(csrfToken string, email string) {
     <div id="otp-message-container"></div>
     
     <form id="verify-otp-form" class="space-y-4" method="POST"
-          hx-post="/register/verify-otp"
+          hx-post={ constants.RouteRegisterVerify }
           hx-target="#otp-message-container"
           hx-indicator="#otp-loading"
           hx-swap="innerHTML"
@@ -341,7 +342,7 @@ templ RegisterOTPForm(csrfToken string, email string) {
             <button
                 type="button"
                 class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                hx-post="/register/resend-otp"
+                hx-post={ constants.RouteRegisterResend }
                 hx-vals='{"email": "{ email }", "csrf_token": "{ csrfToken }"}'
                 hx-target="#otp-message-container"
                 hx-swap="innerHTML"

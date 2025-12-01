@@ -3,6 +3,7 @@ package templates
 import button "closeauth-backend-for-frontend/internal/templates/components/button"
 import card "closeauth-backend-for-frontend/internal/templates/components/card"
 import icon "closeauth-backend-for-frontend/internal/templates/components/icon"
+import "closeauth-backend-for-frontend/internal/constants"
 
 templ Home() {
         <!-- Hero Section -->
@@ -32,7 +33,7 @@ templ Home() {
           <!-- CTA Buttons -->
           <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             @button.Button(button.Props{
-              Href: "/auth/register",
+              Href: constants.RouteAdminRegister,
               Variant: button.VariantDefault,
               Size: button.SizeLg,
               Class: "bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 rounded-lg text-lg font-semibold transition-colors text-center",
@@ -40,7 +41,7 @@ templ Home() {
               Start Free Trial →
             }
             @button.Button(button.Props{
-              Href: "/auth/login",
+              Href:  constants.RouteAdminLogin,
               Variant: button.VariantOutline,
               Size: button.SizeLg,
               Class: "border border-gray-300 hover:border-gray-400 text-gray-700 px-8 py-6 rounded-lg text-lg font-semibold transition-colors text-center",
@@ -356,7 +357,7 @@ templ Home() {
                   Create Free Account
                 }
                 @button.Button(button.Props{
-                  Href: "/auth/login",
+                  Href: constants.RouteAdminLogin,
                   Variant: button.VariantOutline,
                   Size: button.SizeLg,
                   FullWidth: true,

@@ -1,6 +1,7 @@
 package closeauth_sidebar
 
 import "closeauth-backend-for-frontend/internal/templates/components/sidebar"
+import "closeauth-backend-for-frontend/internal/constants"
 import "closeauth-backend-for-frontend/internal/templates/components/icon"
 import "closeauth-backend-for-frontend/internal/templates/components/avatar"
 import "closeauth-backend-for-frontend/internal/templates/components/dropdown"
@@ -15,7 +16,7 @@ templ CloseAuthSidebar(activePage string) {
 				@sidebar.Menu() {
 					@sidebar.MenuItem() {
 						@sidebar.MenuButton(sidebar.MenuButtonProps{
-							Href: "/admin/dashboard",
+							Href: constants.RouteAdminDashboard,
 						}) {
 							<div class="h-8 w-8 bg-teal-600 rounded-lg flex items-center justify-center">
 								<span class="text-white font-bold text-sm">CA</span>
@@ -31,10 +32,10 @@ templ CloseAuthSidebar(activePage string) {
 						Platform
 					}
 					@sidebar.Menu() {
-						@sidebar.MenuItem() {
-							@sidebar.MenuButton(sidebar.MenuButtonProps{
-								Href:     "/admin/dashboard",
-								Tooltip:  "Dashboard",
+					@sidebar.MenuItem() {
+						@sidebar.MenuButton(sidebar.MenuButtonProps{
+							Href:     constants.RouteAdminDashboard,
+							Tooltip:  "Dashboard",
 								IsActive: activePage == "dashboard",
 								Class:    "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
 							}) {
@@ -42,10 +43,10 @@ templ CloseAuthSidebar(activePage string) {
 								<span>Dashboard</span>
 							}
 						}
-						@sidebar.MenuItem() {
-							@sidebar.MenuButton(sidebar.MenuButtonProps{
-								Href:     "/admin/users",
-								Tooltip:  "Users",
+					@sidebar.MenuItem() {
+						@sidebar.MenuButton(sidebar.MenuButtonProps{
+							Href:     constants.RouteAdminUsers,
+							Tooltip:  "Users",
 								IsActive: activePage == "users",
 								Class:    "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
 							}) {
@@ -53,10 +54,10 @@ templ CloseAuthSidebar(activePage string) {
 								<span>Users</span>
 							}
 						}
-						@sidebar.MenuItem() {
-							@sidebar.MenuButton(sidebar.MenuButtonProps{
-								Href:     "/admin/clients",
-								Tooltip:  "Client Apps",
+					@sidebar.MenuItem() {
+						@sidebar.MenuButton(sidebar.MenuButtonProps{
+							Href:     constants.RouteAdminClients,
+							Tooltip:  "Client Apps",
 								IsActive: activePage == "clients",
 								Class:    "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
 							}) {

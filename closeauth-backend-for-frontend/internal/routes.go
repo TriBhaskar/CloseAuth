@@ -1,12 +1,12 @@
 package server
 
 import (
+	"closeauth-backend-for-frontend/internal/constants"
+	"closeauth-backend-for-frontend/internal/middleware"
+	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"closeauth-backend-for-frontend/internal/middleware"
-	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -32,45 +32,45 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 			
 	// Health check endpoint (before CSRF to allow monitoring tools)
-    r.Get("/health", s.handleHealthCheck)
+    r.Get(constants.RouteHealth, s.handleHealthCheck)
 	
 	// OAuth2 proxy endpoints - must be before static files to take precedence
 	// These endpoints proxy to Spring Authorization Server
-	r.Get("/closeauth/oauth2/authorize", s.oauthProxyHandler.HandleAuthorize)
-	r.Post("/closeauth/oauth2/token", s.oauthProxyHandler.HandleToken)
+	r.Get(constants.RouteOAuthAuthorize, s.oauthProxyHandler.HandleAuthorize)
+	r.Post(constants.RouteOAuthToken, s.oauthProxyHandler.HandleToken)
 	
 	// Serve static files - Go's FileServer handles MIME types automatically
 	staticFS := http.Dir("./static")
-	staticHandler := http.StripPrefix("/static/", http.FileServer(staticFS))
+	staticHandler := http.StripPrefix(constants.RouteStatic, http.FileServer(staticFS))
 	r.Handle("/static/*", staticHandler)
 	
 	// Public routes - can be cached for better performance
-	r.Handle("/", templ.Handler(templates.Public()))
-	r.Get("/auth/login", s.authHandler.HandleLoginGet)
-	r.Get("/auth/register", s.authHandler.HandleRegisterGet)
-	r.Get("/auth/forgot-password", s.authHandler.HandleForgotPasswordGet)
+	r.Handle(constants.RouteHome, templ.Handler(templates.Public()))
+	r.Get(constants.RouteAdminLogin, s.authHandler.HandleLoginGet)
+	r.Get(constants.RouteAdminRegister, s.authHandler.HandleRegisterGet)
+	r.Get(constants.RouteAdminForgotPassword, s.authHandler.HandleForgotPasswordGet)
 	
 	// Admin routes - you might want selective no-cache for sensitive pages
-	r.Handle("/admin/dashboard", templ.Handler(templates.Dashboard()))
-	r.Handle("/admin/users", templ.Handler(templates.Users()))
-	r.Get("/admin/clients", s.clientHandler.HandleClients)
-	r.Get("/admin/clients/new", s.clientHandler.HandleCreateClientGet)
-	r.Post("/admin/clients", s.clientHandler.HandleCreateClientPost)
+	r.Handle(constants.RouteAdminDashboard, templ.Handler(templates.Dashboard()))
+	r.Handle(constants.RouteAdminUsers, templ.Handler(templates.Users()))
+	r.Get(constants.RouteAdminClients, s.clientHandler.HandleClients)
+	r.Get(constants.RouteAdminClientNew, s.clientHandler.HandleCreateClientGet)
+	r.Post(constants.RouteAdminClients, s.clientHandler.HandleCreateClientPost)
 	
 	// Authentication routes
-	r.Post("/auth/login", s.authHandler.HandleLoginPost)
-	r.Post("/login", s.authHandler.HandleLoginPost)
-	r.Post("/register", s.authHandler.HandleRegisterPost)
-	r.Post("/register/verify-otp", s.authHandler.HandleVerifyRegistrationOTP)
-	r.Post("/register/resend-otp", s.authHandler.HandleResendRegistrationOTP)
-	r.Post("/forgot-password/request", s.authHandler.HandleForgotPasswordRequest)
-	r.Post("/forgot-password/verify-otp", s.authHandler.HandleVerifyOTP)
-	r.Post("/forgot-password/resend-otp", s.authHandler.HandleResendOTP)
-	r.Post("/forgot-password/reset", s.authHandler.HandleResetPassword)
+	r.Post(constants.RouteAuthLogin, s.authHandler.HandleLoginPost)
+	r.Post(constants.RouteLogin, s.authHandler.HandleLoginPost)
+	r.Post(constants.RouteRegister, s.authHandler.HandleRegisterPost)
+	r.Post(constants.RouteRegisterVerify, s.authHandler.HandleVerifyRegistrationOTP)
+	r.Post(constants.RouteRegisterResend, s.authHandler.HandleResendRegistrationOTP)
+	r.Post(constants.RouteForgotPasswordRequest, s.authHandler.HandleForgotPasswordRequest)
+	r.Post(constants.RouteForgotPasswordVerify, s.authHandler.HandleVerifyOTP)
+	r.Post(constants.RouteForgotPasswordResend, s.authHandler.HandleResendOTP)
+	r.Post(constants.RouteForgotPasswordReset, s.authHandler.HandleResetPassword)
 	
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-        http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+        http.Redirect(w, r, constants.RouteHome, http.StatusTemporaryRedirect)
     })
 	return r
 }

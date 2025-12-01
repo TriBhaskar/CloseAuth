@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"closeauth-backend-for-frontend/internal/constants"
 	"closeauth-backend-for-frontend/internal/middleware"
 	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 
@@ -134,5 +135,5 @@ func (h *ClientHandler) HandleCreateClientPost(w http.ResponseWriter, r *http.Re
 		name, clientType, description, logoUrl, redirectUris, scopes)
 
 	// Redirect back to clients list
-	http.Redirect(w, r, "/admin/clients", http.StatusSeeOther)
+	http.Redirect(w, r, constants.RouteAdminClients, http.StatusSeeOther)
 }

@@ -1,5 +1,7 @@
 package sidebarcustom
 
+import "closeauth-backend-for-frontend/internal/constants"
+
 templ Sidebarcustom(activePage string) {
 	<div class="flex flex-col h-full bg-white border-r border-gray-200 w-64">
 		<!-- Sidebar header with logo -->
@@ -20,7 +22,7 @@ templ Sidebarcustom(activePage string) {
 		<nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
 			<!-- Dashboard -->
 			<a
-				href="/admin/dashboard"
+				href={ templ.SafeURL(constants.RouteAdminDashboard) }
 				if activePage == "dashboard" {
 					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
 				} else {
@@ -37,7 +39,7 @@ templ Sidebarcustom(activePage string) {
 
 			<!-- Users -->
 			<a
-				href="/admin/users"
+				href={ templ.SafeURL(constants.RouteAdminUsers) }
 				if activePage == "users" {
 					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
 				} else {
@@ -54,7 +56,7 @@ templ Sidebarcustom(activePage string) {
 
 			<!-- Client Apps -->
 			<a
-				href="/admin/clients"
+				href={ templ.SafeURL(constants.RouteAdminClients) }
 				if activePage == "clients" {
 					class="group flex items-center px-3 py-2 text-sm font-medium rounded-l-md bg-teal-50 text-teal-700 border-r-2 border-teal-500"
 				} else {

@@ -1,6 +1,7 @@
 package templates
 
 import "closeauth-backend-for-frontend/internal/templates/components/card"
+import "closeauth-backend-for-frontend/internal/constants"
 import templates "closeauth-backend-for-frontend/internal/templates"
 
 templ Login(csrfToken string) {
@@ -24,8 +25,8 @@ templ Login(csrfToken string) {
                         <!-- Error message container -->
                         <div id="error-container"></div>
                         
-                        <form class="space-y-6" action="/login" method="POST" 
-                              hx-post="/login"
+                        <form class="space-y-6" action={ templ.SafeURL(constants.RouteLogin) } method="POST" 
+                              hx-post={ constants.RouteLogin }
                               hx-target="#error-container" 
                               hx-indicator="#loading"
                               hx-swap="innerHTML"
@@ -75,7 +76,7 @@ templ Login(csrfToken string) {
                                 </label>
                             </div>
                             <div class="text-sm">
-                                <a href="/auth/forgot-password" class="font-medium text-indigo-600 hover:text-indigo-500">
+                                <a href={ templ.SafeURL(constants.RouteAdminForgotPassword) } class="font-medium text-indigo-600 hover:text-indigo-500">
                                     Forgot your password?
                                 </a>
                             </div>
@@ -100,7 +101,7 @@ templ Login(csrfToken string) {
                 @card.Footer() {
                     <div class="text-center text-sm text-gray-600">
                         Don't have an account?
-                        <a href="/auth/register" class="font-medium text-indigo-600 hover:text-indigo-500">
+                        <a href={ templ.SafeURL(constants.RouteAdminRegister) } class="font-medium text-indigo-600 hover:text-indigo-500">
                             Sign up
                         </a>
                     </div>

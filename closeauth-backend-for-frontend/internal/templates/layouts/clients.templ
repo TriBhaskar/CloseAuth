@@ -2,6 +2,7 @@ package templates
 
 import "fmt"
 import "closeauth-backend-for-frontend/internal/templates/components/icon"
+import "closeauth-backend-for-frontend/internal/constants"
 
 // Client represents a client application
 type Client struct {
@@ -38,7 +39,7 @@ templ Clients(stats ClientStats, clients []Client) {
             </p>
           </div>
           <a
-            href="/admin/clients/new"
+            href={ templ.SafeURL(constants.RouteAdminClientNew) }
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
           >
             <svg

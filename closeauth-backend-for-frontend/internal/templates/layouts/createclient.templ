@@ -1,5 +1,7 @@
 package templates
 
+import "closeauth-backend-for-frontend/internal/constants"
+
 // Scope represents an OAuth2 scope
 type Scope struct {
 	Value       string
@@ -27,7 +29,7 @@ templ CreateClient(data CreateClientData, csrfToken string) {
                 <div class="mb-8">
                     <div class="flex items-center mb-4">
                         <a
-                            href="/admin/clients"
+                            href={ templ.SafeURL(constants.RouteAdminClients) }
                             class="mr-4 p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-200 transition-colors"
                         >
                             <svg
@@ -55,7 +57,7 @@ templ CreateClient(data CreateClientData, csrfToken string) {
 
                 <!-- Form -->
                 <form
-                    action="/admin/clients"
+                    action={ templ.SafeURL(constants.RouteAdminClients) }
                     method="POST"
                     class="space-y-8"
                     id="clientForm"

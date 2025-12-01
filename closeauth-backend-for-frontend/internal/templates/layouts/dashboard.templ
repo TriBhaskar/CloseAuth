@@ -5,6 +5,7 @@ import (
 	"closeauth-backend-for-frontend/internal/templates/components/button"
 	"closeauth-backend-for-frontend/internal/templates/components/icon"
   "closeauth-backend-for-frontend/internal/templates/components/badge"
+	"closeauth-backend-for-frontend/internal/constants"
 )
 
 templ Dashboard() {
@@ -252,7 +253,7 @@ templ Dashboard() {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <!-- User Management -->
           <a
-            href="/admin/users"
+            href={ templ.SafeURL(constants.RouteAdminUsers) }
             class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
           >
             <div class="flex items-center mb-4">

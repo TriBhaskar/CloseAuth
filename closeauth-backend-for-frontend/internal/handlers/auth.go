@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"closeauth-backend-for-frontend/internal/config"
+	"closeauth-backend-for-frontend/internal/constants"
 	"closeauth-backend-for-frontend/internal/middleware"
 	sasconfig "closeauth-backend-for-frontend/internal/sas/config"
 	"closeauth-backend-for-frontend/internal/sas/service"
@@ -376,7 +377,8 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Auth server response: Status=%d, Body=%s", resp.StatusCode, string(body))
 
 	// Check if authentication was successful (either 200 OK or redirect)
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusMovedPermanently {
+	switch resp.StatusCode {
+		case http.StatusOK, http.StatusFound, http.StatusSeeOther, http.StatusMovedPermanently:
 		// Success - authentication passed
 		log.Printf("Login successful for: %s (RememberMe: %t)", email, rememberMe)
 		
@@ -417,7 +419,7 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Printf("No OAuth context found (or expired): %v", err)
 			}
-			finalRedirect = "/admin/dashboard"
+			finalRedirect = constants.RouteAdminDashboard
 		}
 		
 		// Success - handle based on request type
@@ -428,7 +430,7 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 			// For regular requests, use standard redirect
 			http.Redirect(w, r, finalRedirect, http.StatusSeeOther)
 		}
-	} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+	case http.StatusUnauthorized, http.StatusForbidden:
 		// Authentication failed
 		errorMsg := "Invalid username or password"
 		
@@ -444,7 +446,7 @@ func (h *AuthHandler) HandleLoginPost(w http.ResponseWriter, r *http.Request) {
 		
 		log.Printf("Login failed for %s: %s (Status: %d)", email, errorMsg, resp.StatusCode)
 		h.handleLoginError(w, r, errorMsg, http.StatusUnauthorized)
-	} else {
+	default:
 		// Unexpected response
 		log.Printf("Unexpected auth response for %s: Status=%d, Body=%s", email, resp.StatusCode, string(body))
 		h.handleLoginError(w, r, "Authentication failed. Please try again.", http.StatusInternalServerError)

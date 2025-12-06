@@ -59,7 +59,7 @@ func (h *OAuthProxyHandler) HandleAuthorize(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Proxy request to Spring Authorization Server
-	resp, err := h.proxyToSpring(r, "/closeauth/oauth2/authorize")
+	resp, err := h.proxyToSpring(r, h.endpoints.OAuth2.Authorize)
 	if err != nil {
 		log.Printf("ERROR: Failed to proxy authorize request: %v", err)
 		http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)
@@ -87,7 +87,7 @@ func (h *OAuthProxyHandler) HandleToken(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Proxy request to Spring Authorization Server
-	resp, err := h.proxyToSpring(r, "/closeauth/oauth2/token")
+	resp, err := h.proxyToSpring(r, h.endpoints.OAuth2.Token)
 	if err != nil {
 		log.Printf("ERROR: Failed to proxy token request: %v", err)
 		http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)
@@ -128,8 +128,7 @@ func (h *OAuthProxyHandler) validateOAuthParams(params map[string]string) error 
 // proxyToSpring creates and executes a proxy request to Spring Authorization Server
 func (h *OAuthProxyHandler) proxyToSpring(r *http.Request, endpoint string) (*http.Response, error) {
 	// Build target URL using centralized configuration
-	baseURL := h.endpoints.OAuth2ServerURL
-	targetURL := fmt.Sprintf("%s%s?%s", baseURL, endpoint, r.URL.RawQuery)
+	targetURL := fmt.Sprintf("%s%s?%s", h.endpoints.OAuth2.BaseURL, endpoint, r.URL.RawQuery)
 
 	// Create HTTP client that doesn't follow redirects (we handle them ourselves)
 	client := &http.Client{

@@ -41,7 +41,8 @@ public class ApiPaths {
             ADMIN_BASE + VERIFY_EMAIL,
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
-            ADMIN_BASE + RESET_PASSWORD
+            ADMIN_BASE + RESET_PASSWORD,
+            "/login"
     };
 
     public static final String[] USER_AUTH_PATHS = {

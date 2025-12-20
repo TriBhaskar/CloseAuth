@@ -59,15 +59,34 @@ public class AuthorisationServerConfig {
 
     @Bean
     @Order(1)
+    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+        OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
+                OAuth2AuthorizationServerConfigurer.authorizationServer();
+
+        http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+                .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
+                        .oidc(oidc -> oidc
+                                .clientRegistrationEndpoint(clientRegistrationEndpoint -> clientRegistrationEndpoint
+                                        .authenticationProviders(configureCustomClientMetadataConverters()))))
+                .authorizeHttpRequests(authorize -> authorize
+                        .anyRequest().authenticated())
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
+//                .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain webSecurityFilterChain(
             HttpSecurity http,
             TwoLayerAuthenticationFilter twoLayerAuthenticationFilter) throws Exception {
 
-        http.securityMatcher(
-                        ApiPaths.CLIENT_REGISTER_URL
-                        // Add all endpoints that need X-User-Token validation
-                ).authorizeHttpRequests(auth -> auth
-                .anyRequest().authenticated())
+        http.securityMatcher(ApiPaths.CLIENT_REGISTER_URL)
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().authenticated())
                 .addFilterBefore(twoLayerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, authEx) -> {
@@ -78,33 +97,7 @@ public class AuthorisationServerConfig {
                                             "\"message\":\"X-User-Token required\"}"
                             );
                         }))
-                .formLogin(form -> form.loginPage(loginPageUrl)
-                    .loginProcessingUrl("/login")  // This is where form submits (backend processes here)
-                    .permitAll());
-
-        http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/admin/**"));
-        http.csrf(csrf -> csrf.disable());
-
-        return http.build();
-    }
-
-    @Bean
-    @Order(2)
-    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
-        OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-                OAuth2AuthorizationServerConfigurer.authorizationServer();
-
-        http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
-                .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
-                .oidc(oidc -> oidc
-                .clientRegistrationEndpoint(clientRegistrationEndpoint -> clientRegistrationEndpoint
-                .authenticationProviders(configureCustomClientMetadataConverters()))))
-                .authorizeHttpRequests(authorize -> authorize
-                .anyRequest().authenticated());
-
-        http.exceptionHandling(exception -> exception
-            .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));  // Add JWT filter for /connect/register
+                .csrf(csrf -> csrf.disable());
 
         return http.build();
     }
@@ -117,8 +110,12 @@ public class AuthorisationServerConfig {
                         .requestMatchers(ApiPaths.SKIP_AUTH_PATHS).permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
-                .formLogin(Customizer.withDefaults());
+                .formLogin(form -> form
+                        .loginPage(loginPageUrl)
+                        .loginProcessingUrl("/login")
+                        .permitAll()
+                )
+                .csrf(csrf -> csrf.disable());  // Simplified for now
 
         return http.build();
     }

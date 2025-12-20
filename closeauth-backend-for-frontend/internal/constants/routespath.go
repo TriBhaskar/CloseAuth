@@ -47,3 +47,16 @@ const (
 	RouteForgotPasswordResend  = "/admin/auth/forgot-password/resend-otp"
 	RouteForgotPasswordReset   = "/admin/auth/forgot-password/reset"
 )
+
+// OAuth2 client authentication routes (client-specific themed pages)
+const (
+	// GET routes - display themed pages
+	RouteOAuthClientLogin    = "/oauth/login"
+	RouteOAuthClientRegister = "/oauth/register"
+	
+	// POST routes - handle form submissions
+	RouteOAuthClientLoginPost          = "/closeauth/login"
+	RouteOAuthClientRegisterPost       = "/oauth/register"
+	RouteOAuthClientRegisterVerifyOTP  = "/oauth/register/verify-otp"
+	RouteOAuthClientRegisterResendOTP  = "/oauth/register/resend-otp"
+)

@@ -11,18 +11,20 @@ import (
 
 	"closeauth-backend-for-frontend/internal/config"
 	"closeauth-backend-for-frontend/internal/database"
+	"closeauth-backend-for-frontend/internal/database/repository"
 	"closeauth-backend-for-frontend/internal/handlers"
 
 	_ "github.com/joho/godotenv/autoload"
 )
 
 type Server struct {
-    port             int
-    authHandler      *handlers.AuthHandler
-    clientHandler    *handlers.ClientHandler
-    publicHandler    *handlers.PublicHandler
-    oauthProxyHandler *handlers.OAuthProxyHandler
-    db               *database.Database
+    port                   int
+    authHandler            *handlers.AuthHandler
+    clientHandler          *handlers.ClientHandler
+    publicHandler          *handlers.PublicHandler
+    oauthProxyHandler      *handlers.OAuthProxyHandler
+    oauthClientAuthHandler *handlers.OAuthClientAuthHandler
+    db                     *database.Database
 }
 
 func NewServer() (*http.Server, *Server, error) {
@@ -40,14 +42,18 @@ func NewServer() (*http.Server, *Server, error) {
         return nil, nil, fmt.Errorf("failed to initialize database: %w", err)
     }
 
+    // Initialize theme repository for client-specific themes
+    themeRepo := repository.NewThemeRepository(db)
+
     // Create server instance
     newServer := &Server{
-        port:             port,
-        authHandler:      handlers.NewAuthHandler(),
-        clientHandler:    handlers.NewClientHandler(),
-        publicHandler:    handlers.NewPublicHandler(),
-        oauthProxyHandler: handlers.NewOAuthProxyHandler(),
-        db:               db,
+        port:                   port,
+        authHandler:            handlers.NewAuthHandler(),
+        clientHandler:          handlers.NewClientHandler(),
+        publicHandler:          handlers.NewPublicHandler(),
+        oauthProxyHandler:      handlers.NewOAuthProxyHandler(),
+        oauthClientAuthHandler: handlers.NewOAuthClientAuthHandler(themeRepo),
+        db:                     db,
     }
     
     log.Printf("Starting server on port %d\n", newServer.port)

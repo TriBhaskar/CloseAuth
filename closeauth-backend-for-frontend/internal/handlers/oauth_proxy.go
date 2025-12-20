@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 )
 
 // OAuthProxyHandler handles transparent proxying of OAuth2 endpoints
@@ -51,6 +52,7 @@ func NewOAuthProxyHandler() *OAuthProxyHandler {
 //     c. Spring generates authorization code
 //     d. Spring redirects to client's redirect_uri with code
 func (h *OAuthProxyHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
+	log.Printf("INFO: Handling OAuth2 authorize request: %s %s", r.Method, r.URL.String())
 	// Extract and validate OAuth parameters
 	params := h.extractOAuthParams(r)
 	if err := h.validateOAuthParams(params); err != nil {
@@ -170,10 +172,12 @@ func (h *OAuthProxyHandler) handleAuthorizeRedirect(w http.ResponseWriter, r *ht
 		return
 	}
 
+	log.Printf("DEBUG: Redirect location=%s, parsed path=%s", location, parsedLocation.Path)
+
 	// Check if Spring is redirecting to login (user not authenticated)
 	if h.isLoginRedirect(parsedLocation.Path) {
 		log.Printf("INFO: User not authenticated, initiating BFF login flow")
-		h.handleUnauthenticatedUser(w, r, params)
+		h.handleUnauthenticatedUser(w, r, params, resp)
 		return
 	}
 
@@ -185,9 +189,10 @@ func (h *OAuthProxyHandler) handleAuthorizeRedirect(w http.ResponseWriter, r *ht
 
 // isLoginRedirect checks if a path indicates a login redirect
 func (h *OAuthProxyHandler) isLoginRedirect(path string) bool {
-	loginPaths := []string{"/login", "/closeauth/login", "/auth/login"}
+	// Check for various login path patterns (with or without leading slash)
+	loginPaths := []string{"/oauth/login", "oauth/login", "/login", "/auth/login"}
 	for _, loginPath := range loginPaths {
-		if path == loginPath {
+		if path == loginPath || strings.HasSuffix(path, loginPath) {
 			return true
 		}
 	}
@@ -195,14 +200,32 @@ func (h *OAuthProxyHandler) isLoginRedirect(path string) bool {
 }
 
 // handleUnauthenticatedUser saves OAuth context and redirects to BFF login page
-func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *http.Request, params map[string]string) {
+func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *http.Request, params map[string]string, resp *http.Response) {
+	// Extract JSESSIONID from Spring's response cookies to preserve session continuity
+	var springSessionID string
+	
+	// Debug: Log all cookies from Spring response
+	log.Printf("INFO: Checking Spring response for cookies...")
+	for _, cookie := range resp.Cookies() {
+		log.Printf("INFO: Found cookie from Spring: %s=%s", cookie.Name, cookie.Value)
+		if cookie.Name == "JSESSIONID" {
+			springSessionID = cookie.Value
+			log.Printf("INFO: Captured Spring JSESSIONID for session continuity: %s", springSessionID)
+		}
+	}
+	
+	if springSessionID == "" {
+		log.Printf("WARNING: No JSESSIONID found in Spring's redirect response")
+	}
+
 	// Create OAuth context to preserve authorization request parameters
 	oauthCtx := &middleware.OAuthContext{
-		ResponseType: params["response_type"],
-		ClientID:     params["client_id"],
-		RedirectURI:  params["redirect_uri"],
-		Scope:        params["scope"],
-		State:        params["state"],
+		ResponseType:    params["response_type"],
+		ClientID:        params["client_id"],
+		RedirectURI:     params["redirect_uri"],
+		Scope:           params["scope"],
+		State:           params["state"],
+		SpringSessionID: springSessionID,
 	}
 
 	// Save context in encrypted cookie
@@ -212,10 +235,10 @@ func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *
 		return
 	}
 
-	log.Printf("INFO: OAuth context saved for client_id=%s, redirecting to login", params["client_id"])
+	log.Printf("INFO: OAuth context saved for client_id=%s, springSessionID=%s, redirecting to login", params["client_id"], springSessionID)
 
-	// Redirect to BFF's custom login page
-	http.Redirect(w, r, "/auth/login?continue=true", http.StatusFound)
+	// Redirect to BFF's OAuth client login page (themed based on client_id)
+	http.Redirect(w, r, "/oauth/login?continue=true", http.StatusFound)
 }
 
 // forwardResponse forwards the complete HTTP response to the client

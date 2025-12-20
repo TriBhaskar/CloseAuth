@@ -21,12 +21,13 @@ const (
 
 // OAuthContext stores OAuth authorization request parameters
 type OAuthContext struct {
-	ResponseType string `json:"response_type"`
-	ClientID     string `json:"client_id"`
-	RedirectURI  string `json:"redirect_uri"`
-	Scope        string `json:"scope"`
-	State        string `json:"state"`
-	Timestamp    int64  `json:"timestamp"`
+	ResponseType    string `json:"response_type"`
+	ClientID        string `json:"client_id"`
+	RedirectURI     string `json:"redirect_uri"`
+	Scope           string `json:"scope"`
+	State           string `json:"state"`
+	Timestamp       int64  `json:"timestamp"`
+	SpringSessionID string `json:"spring_session_id,omitempty"` // JSESSIONID from Spring for session continuity
 }
 
 // GetEncryptionKey retrieves or generates encryption key for OAuth context cookies
@@ -73,7 +74,7 @@ func SaveOAuthContext(w http.ResponseWriter, ctx *OAuthContext) error {
 		Path:     "/",
 		MaxAge:   CookieMaxAge,
 		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
+		Secure:   isProductionEnv(), // Enable HTTPS-only in production
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
@@ -122,10 +123,16 @@ func ClearOAuthContext(w http.ResponseWriter) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   false, // Set to true in production
+		Secure:   isProductionEnv(), // Enable HTTPS-only in production
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
+}
+
+// isProductionEnv checks if the application is running in production mode
+func isProductionEnv() bool {
+	env := os.Getenv("ENVIRONMENT")
+	return env == "production" || env == "prod"
 }
 
 // BuildAuthorizeURL reconstructs the OAuth authorize URL from context

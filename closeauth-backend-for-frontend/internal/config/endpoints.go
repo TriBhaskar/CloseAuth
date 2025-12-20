@@ -19,6 +19,7 @@ type OAuth2Endpoints struct {
 	BaseURL      string // Full base URL with context path
 	Token        string // /oauth2/token
 	Authorize    string // /oauth2/authorize
+	Login        string // /login
 	Introspect   string // /oauth2/introspect
 	Revocation   string // /oauth2/revoke
 	JWKS         string // /oauth2/jwks
@@ -54,6 +55,7 @@ func LoadEndpointsConfig() (*EndpointsConfig, error) {
 			BaseURL:        oauth2ContextPath,
 			Token:          getEnvOrDefault("OAUTH2_TOKEN_URL", "/oauth2/token"),
 			Authorize:      getEnvOrDefault("OAUTH2_AUTHORIZE_URL", "/oauth2/authorize"),
+			Login:          getEnvOrDefault("OAUTH2_LOGIN_URL", "/login"),
 			Introspect:     getEnvOrDefault("OAUTH2_INTROSPECT_URL", "/oauth2/introspect"),
 			Revocation:     getEnvOrDefault("OAUTH2_REVOCATION_URL", "/oauth2/revoke"),
 			JWKS:           getEnvOrDefault("OAUTH2_JWKS_URL", "/oauth2/jwks"),
@@ -91,6 +93,11 @@ func (e *EndpointsConfig) GetTokenURL() string {
 // GetAuthorizeURL returns the full authorize endpoint URL
 func (e *EndpointsConfig) GetAuthorizeURL() string {
 	return e.GetOAuth2URL(e.OAuth2.Authorize)
+}
+
+// GetLoginURL returns the full login endpoint URL
+func (e *EndpointsConfig) GetLoginURL() string {
+	return e.GetOAuth2URL(e.OAuth2.Login)
 }
 
 // GetIntrospectURL returns the full introspect endpoint URL

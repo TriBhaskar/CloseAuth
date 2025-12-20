@@ -1,0 +1,242 @@
+package templates
+
+import "closeauth-backend-for-frontend/internal/templates/components/card"
+import "closeauth-backend-for-frontend/internal/constants"
+
+// OAuthLoginData contains all data needed for the OAuth login page
+type OAuthLoginData struct {
+    CSRFToken   string
+    Theme       ThemeData
+    ClientName  string
+    ErrorMsg    string
+    ContinueURL string // URL to redirect after successful login
+}
+
+// OAuthLogin renders a client-themed login page for OAuth2 flows
+templ OAuthLogin(data OAuthLoginData) {
+    @OAuthBaseWithTheme(data.CSRFToken, data.Theme) {
+        <div class="flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+            <div class="w-full max-w-md space-y-8">
+                @card.Card() {
+                    @card.Header() {
+                        <!-- Client Logo -->
+                        <div class="flex justify-center mb-6">
+                            if data.Theme.LogoURL != "" {
+                                <img 
+                                    src={ data.Theme.LogoURL } 
+                                    alt={ data.ClientName + " Logo" }
+                                    class="h-16 w-auto object-contain"
+                                />
+                            } else {
+                                <div class="h-16 w-16 rounded-full bg-theme-primary flex items-center justify-center">
+                                    <span class="text-white text-2xl font-bold">
+                                        { string([]rune(data.ClientName)[0:1]) }
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                        
+                        @card.Title() {
+                            <span class="text-theme">Sign in to continue</span>
+                        }
+                        @card.Description() {
+                            <span class="text-theme opacity-70">
+                                Sign in to access { data.ClientName }
+                            </span>
+                        }
+                        
+                        <!-- Theme Toggle Button -->
+                        if data.Theme.AllowModeToggle {
+                            <div class="absolute top-4 right-4">
+                                <button 
+                                    type="button" 
+                                    onclick="toggleTheme()"
+                                    class="p-2 rounded-md text-theme opacity-60 hover:opacity-100 transition-opacity"
+                                    aria-label="Toggle theme"
+                                >
+                                    <svg class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <svg class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        }
+                    }
+                    
+                    @card.Content() {
+                        <div id="form-container">
+                            <!-- OAuth continuation notice -->
+                            <div id="oauth-notice" class="mb-4 p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                                <div class="flex">
+                                    <div class="ml-3">
+                                        <span class="text-sm text-theme dark:text-blue-300">
+                                            Please sign in to continue with your authorization request.
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Error message container -->
+                            <div id="error-container">
+                                if data.ErrorMsg != "" {
+                                    @OAuthErrorMessage(data.ErrorMsg)
+                                }
+                            </div>
+                            
+                            <form 
+                                class="space-y-6" 
+                                action={ templ.SafeURL(constants.RouteOAuthClientLoginPost) }
+                                method="POST"
+                                hx-post={ constants.RouteOAuthClientLoginPost }
+                                hx-target="#error-container"
+                                hx-indicator="#loading"
+                                hx-swap="innerHTML"
+                                hx-on::before-request="clearErrors()"
+                                hx-on:htmx:responseError="handleErrorResponse(event)"
+                                hx-disabled-elt="button[type=submit]"
+                                id="oauth-login-form"
+                            >
+                                <input type="hidden" name="csrf_token" value={ data.CSRFToken }/>
+                                <input type="hidden" name="client_id" value={ data.Theme.ClientID }/>
+                                if data.ContinueURL != "" {
+                                    <input type="hidden" name="continue" value={ data.ContinueURL }/>
+                                }
+                                
+                                <div>
+                                    <label for="username" class="block text-sm font-medium text-theme">
+                                        Username or Email
+                                    </label>
+                                    <input
+                                        id="username"
+                                        name="username"
+                                        type="text"
+                                        autocomplete="username"
+                                        required
+                                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 shadow-sm bg-white dark:bg-gray-800 text-theme focus:border-theme-primary focus:outline-none focus:ring-theme-primary sm:text-sm"
+                                        placeholder="Enter your username or email"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label for="password" class="block text-sm font-medium text-theme">
+                                        Password
+                                    </label>
+                                    <input
+                                        id="password"
+                                        name="password"
+                                        type="password"
+                                        autocomplete="current-password"
+                                        required
+                                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 shadow-sm bg-white dark:bg-gray-800 text-theme focus:border-theme-primary focus:outline-none focus:ring-theme-primary sm:text-sm"
+                                        placeholder="Enter your password"
+                                    />
+                                </div>
+                                
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <input
+                                            id="remember-me"
+                                            name="remember-me"
+                                            type="checkbox"
+                                            class="h-4 w-4 rounded border-gray-300 text-theme-primary focus:ring-theme-primary"
+                                        />
+                                        <label for="remember-me" class="ml-2 block text-sm text-theme">
+                                            Remember me
+                                        </label>
+                                    </div>
+                                    <div class="text-sm">
+                                        <a href="/oauth/forgot-password" class="font-medium text-indigo-600 text-theme-primary hover:text-indigo-500 hover:opacity-80">
+                                            Forgot password?
+                                        </a>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <button
+                                        type="submit"
+                                        class="group relative flex w-full justify-center rounded-md border border-transparent bg-indigo-600 bg-theme-button px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 hover:bg-theme-button-hover focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-theme-primary focus:ring-offset-2 disabled:opacity-50 transition-colors"
+                                    >
+                                        <span class="htmx-indicator" id="loading">
+                                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        </span>
+                                        Sign in
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    }
+                    
+                    @card.Footer() {
+                        <div class="text-center text-sm text-theme opacity-70">
+                            Don't have an account?
+                            <a 
+                                href={ templ.SafeURL(constants.RouteOAuthClientRegister + "?client_id=" + data.Theme.ClientID) }
+                                class="font-medium text-indigo-600 text-theme-primary hover:text-indigo-500 hover:opacity-80"
+                            >
+                                Sign up
+                            </a>
+                        </div>
+                    }
+                }
+                
+                <!-- Client branding footer -->
+                <div class="text-center text-xs text-theme opacity-50 mt-4">
+                    Powered by <span class="font-medium">CloseAuth</span>
+                </div>
+            </div>
+        </div>
+        
+        @oauthLoginScript()
+    }
+}
+
+// OAuthErrorMessage renders a themed error message
+templ OAuthErrorMessage(message string) {
+    <div class="p-3 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 mb-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-red-700 dark:text-red-300">{ message }</p>
+            </div>
+        </div>
+    </div>
+}
+
+// oauthLoginScript contains JavaScript for the OAuth login form
+templ oauthLoginScript() {
+    <script>
+        // Form enhancement functions
+        function clearErrors() {
+            const errorContainer = document.getElementById('error-container');
+            if (errorContainer) {
+                errorContainer.innerHTML = '';
+            }
+        }
+        
+        // Handle HTMX error responses (4xx, 5xx status codes)
+        function handleErrorResponse(event) {
+            const errorContainer = document.getElementById('error-container');
+            if (errorContainer && event.detail.xhr.responseText) {
+                errorContainer.innerHTML = event.detail.xhr.responseText;
+            }
+        }
+        
+        // Configure HTMX to swap content on 4xx error responses
+        document.addEventListener('htmx:beforeSwap', function(event) {
+            // Allow swapping for 400-level errors so we can show validation/auth errors
+            if (event.detail.xhr.status >= 400 && event.detail.xhr.status < 500) {
+                event.detail.shouldSwap = true;
+                event.detail.isError = false;
+            }
+        });
+    </script>
+}

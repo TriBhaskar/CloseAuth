@@ -1,0 +1,157 @@
+package templates
+
+import "closeauth-backend-for-frontend/internal/database/models"
+
+// ThemeData contains all theme information needed for rendering OAuth client pages
+type ThemeData struct {
+    ClientID          string
+    ThemeName         string
+    LogoURL           string
+    DefaultMode       string
+    AllowModeToggle   bool
+    LightColors       models.ThemeColors
+    DarkColors        models.ThemeColors
+}
+
+// DefaultThemeData returns a default theme when no client theme is found
+func DefaultThemeData() ThemeData {
+    return ThemeData{
+        ClientID:        "",
+        ThemeName:       "default",
+        LogoURL:         "/static/images/closeauth-logo.svg",
+        DefaultMode:     "light",
+        AllowModeToggle: true,
+        LightColors: models.ThemeColors{
+            Primary:    "#4f46e5", // indigo-600
+            Background: "#f9fafb", // gray-50
+            Button:     "#4f46e5", // indigo-600
+            Text:       "#111827", // gray-900
+        },
+        DarkColors: models.ThemeColors{
+            Primary:    "#818cf8", // indigo-400
+            Background: "#111827", // gray-900
+            Button:     "#6366f1", // indigo-500
+            Text:       "#f9fafb", // gray-50
+        },
+    }
+}
+
+// OAuthBaseWithTheme renders base HTML with dynamic theme CSS variables
+templ OAuthBaseWithTheme(csrfToken string, theme ThemeData) {
+    <!DOCTYPE html>
+    <html lang="en" class="h-screen" data-theme={ theme.DefaultMode }>
+        <head>
+            <meta charset="utf-8"/>
+            <meta name="viewport" content="width=device-width,initial-scale=1"/>
+            <meta name="csrf-token" content={ csrfToken }/>
+            <meta name="client-id" content={ theme.ClientID }/>
+            <title>Sign In - { theme.ThemeName }</title>
+            <link href="/static/css/output.css" rel="stylesheet"/>
+            <script src="/static/script/htmx.min.js"></script>
+            <script src="/static/script/csrf.js"></script>
+            
+            <!-- Static theme utility classes -->
+            <style>
+                /* Theme-aware utility classes using CSS variables */
+                .bg-theme { background-color: var(--theme-background); }
+                .text-theme { color: var(--theme-text); }
+                .text-theme-primary { color: var(--theme-primary); }
+                .bg-theme-primary { background-color: var(--theme-primary); }
+                .bg-theme-button { background-color: var(--theme-button); }
+                .hover\:bg-theme-button-hover:hover { background-color: var(--theme-button-hover); }
+                .border-theme-primary { border-color: var(--theme-primary); }
+                .ring-theme-primary { --tw-ring-color: var(--theme-primary); }
+                .focus\:border-theme-primary:focus { border-color: var(--theme-primary); }
+                .focus\:ring-theme-primary:focus { --tw-ring-color: var(--theme-primary); }
+            </style>
+        </head>
+        <body 
+            class="bg-theme text-theme"
+            style={ templ.SafeCSS("--theme-primary:" + theme.LightColors.Primary + ";--theme-background:" + theme.LightColors.Background + ";--theme-button:" + theme.LightColors.Button + ";--theme-text:" + theme.LightColors.Text + ";--theme-button-hover:" + theme.LightColors.Button + ";--theme-primary-light:" + theme.LightColors.Primary) }
+            data-light-primary={ theme.LightColors.Primary }
+            data-light-background={ theme.LightColors.Background }
+            data-light-button={ theme.LightColors.Button }
+            data-light-text={ theme.LightColors.Text }
+            data-dark-primary={ theme.DarkColors.Primary }
+            data-dark-background={ theme.DarkColors.Background }
+            data-dark-button={ theme.DarkColors.Button }
+            data-dark-text={ theme.DarkColors.Text }
+        >
+            { children... }
+            
+            @themeInitScript()
+            if theme.AllowModeToggle {
+                @themeToggleScript()
+            }
+        </body>
+    </html>
+}
+
+// themeInitScript initializes the CSS variables based on current theme
+templ themeInitScript() {
+    <script>
+        // Apply theme CSS variables based on data-theme attribute
+        function applyThemeVariables() {
+            const html = document.documentElement;
+            const body = document.body;
+            const currentTheme = html.getAttribute('data-theme') || 'light';
+            
+            let primary, background, button, text;
+            
+            if (currentTheme === 'dark') {
+                primary = body.dataset.darkPrimary || '#818cf8';
+                background = body.dataset.darkBackground || '#111827';
+                button = body.dataset.darkButton || '#6366f1';
+                text = body.dataset.darkText || '#f9fafb';
+            } else {
+                primary = body.dataset.lightPrimary || '#4f46e5';
+                background = body.dataset.lightBackground || '#f9fafb';
+                button = body.dataset.lightButton || '#4f46e5';
+                text = body.dataset.lightText || '#111827';
+            }
+            
+            body.style.setProperty('--theme-primary', primary);
+            body.style.setProperty('--theme-background', background);
+            body.style.setProperty('--theme-button', button);
+            body.style.setProperty('--theme-text', text);
+            body.style.setProperty('--theme-button-hover', button);
+            body.style.setProperty('--theme-primary-light', primary);
+        }
+        
+        // Apply on load
+        applyThemeVariables();
+    </script>
+}
+
+// themeToggleScript provides JavaScript for theme mode switching
+templ themeToggleScript() {
+    <script>
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            // Re-apply theme variables after toggle
+            applyThemeVariables();
+        }
+        
+        // Initialize theme from localStorage or system preference
+        (function() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                const defaultMode = document.documentElement.getAttribute('data-theme');
+                if (defaultMode === 'system') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                }
+            }
+            // Apply theme variables after initialization
+            if (typeof applyThemeVariables === 'function') {
+                applyThemeVariables();
+            }
+        })();
+    </script>
+}

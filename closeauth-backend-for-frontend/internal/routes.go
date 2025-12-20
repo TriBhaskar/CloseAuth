@@ -67,6 +67,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Post(constants.RouteForgotPasswordResend, s.authHandler.HandleResendOTP)
 	r.Post(constants.RouteForgotPasswordReset, s.authHandler.HandleResetPassword)
 	
+	// OAuth2 client-specific themed authentication routes
+	// These pages display client-branded login/register based on client_id parameter
+	r.Get(constants.RouteOAuthClientLogin, s.oauthClientAuthHandler.HandleOAuthLoginGet)
+	r.Post(constants.RouteOAuthClientLoginPost, s.oauthClientAuthHandler.HandleOAuthLoginPost)
+	r.Get(constants.RouteOAuthClientRegister, s.oauthClientAuthHandler.HandleOAuthRegisterGet)
+	r.Post(constants.RouteOAuthClientRegisterPost, s.oauthClientAuthHandler.HandleOAuthRegisterPost)
+	r.Post(constants.RouteOAuthClientRegisterVerifyOTP, s.oauthClientAuthHandler.HandleOAuthVerifyRegistrationOTP)
+	r.Post(constants.RouteOAuthClientRegisterResendOTP, s.oauthClientAuthHandler.HandleOAuthResendRegistrationOTP)
+	
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {
         http.Redirect(w, r, constants.RouteHome, http.StatusTemporaryRedirect)

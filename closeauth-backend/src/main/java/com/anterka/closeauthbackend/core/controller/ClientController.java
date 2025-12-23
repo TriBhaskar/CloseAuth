@@ -1,6 +1,6 @@
 package com.anterka.closeauthbackend.core.controller;
 
-import com.anterka.closeauthbackend.core.ClientService;
+import com.anterka.closeauthbackend.core.services.ClientService;
 import com.anterka.closeauthbackend.dto.CreateClientDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

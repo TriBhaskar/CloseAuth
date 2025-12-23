@@ -57,6 +57,12 @@ public class AuthorisationServerConfig {
     @Value("${closeauth.bff.login-page}")
     private String loginPageUrl;
 
+    /**
+     * Filter Chain 1: OAuth2 Authorization Server endpoints
+     * Handles: /oauth2/**, /connect/register (OIDC dynamic client registration), /.well-known/**
+     * These are the core OAuth2 Authorization Server endpoints that need the full
+     * OAuth2AuthorizationServerConfigurer to function properly.
+     */
     @Bean
     @Order(1)
     public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
@@ -72,29 +78,31 @@ public class AuthorisationServerConfig {
                         .anyRequest().authenticated())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(loginPageUrl)))
-//                .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 
         return http.build();
     }
 
+    /**
+     * Filter Chain 2: Admin authentication endpoints
+     * Handles: /api/v1/admin/auth/** (register, login, verify-email, etc.)
+     * These endpoints require OAuth2 Bearer token with SCOPE_client.create
+     * but do NOT require X-User-Token (these endpoints establish user identity).
+     */
     @Bean
     @Order(2)
-    public SecurityFilterChain webSecurityFilterChain(
-            HttpSecurity http,
-            TwoLayerAuthenticationFilter twoLayerAuthenticationFilter) throws Exception {
-
-        http.securityMatcher(ApiPaths.CLIENT_REGISTER_URL)
-                .authorizeHttpRequests(auth -> auth
-                        .anyRequest().authenticated())
-                .addFilterBefore(twoLayerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .exceptionHandling(ex -> ex
+    public SecurityFilterChain adminAuthEndpointsSecurityFilterChain(HttpSecurity http) throws Exception {
+        http.securityMatcher(ApiPaths.ADMIN_AUTH_ENDPOINTS)
+                .authorizeHttpRequests(authorize -> authorize
+                        .anyRequest().permitAll())
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((req, res, authEx) -> {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                             res.setContentType("application/json");
                             res.getWriter().write(
                                     "{\"error\":\"Unauthorized\"," +
-                                            "\"message\":\"X-User-Token required\"}"
+                                            "\"message\":\"Valid OAuth2 Bearer token with SCOPE_client.create required\"}"
                             );
                         }))
                 .csrf(csrf -> csrf.disable());
@@ -102,20 +110,52 @@ public class AuthorisationServerConfig {
         return http.build();
     }
 
+    /**
+     * Filter Chain 3: Dual authentication endpoints
+     * Handles: /api/v1/clients/** (client configuration management)
+     * These endpoints require BOTH:
+     * - OAuth2 Bearer token with SCOPE_client.create (BFF client identity)
+     * - X-User-Token header (Admin user identity)
+     */
     @Bean
     @Order(3)
-    public SecurityFilterChain defaultSecurityChain(HttpSecurity http) throws Exception {
-        http
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(ApiPaths.SKIP_AUTH_PATHS).permitAll()
-                        .anyRequest().authenticated()
-                )
+    public SecurityFilterChain dualAuthEndpointsSecurityFilterChain(
+            HttpSecurity http,
+            TwoLayerAuthenticationFilter twoLayerAuthenticationFilter) throws Exception {
+
+        http.securityMatcher(ApiPaths.CLIENT_CONFIG_BASE + "/**")
+                .authorizeHttpRequests(authorize -> authorize
+                        .anyRequest().authenticated())
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .addFilterBefore(twoLayerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((req, res, authEx) -> {
+                            res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            res.setContentType("application/json");
+                            res.getWriter().write(
+                                    "{\"error\":\"Unauthorized\"," +
+                                            "\"message\":\"Dual authentication required: OAuth2 Bearer token with SCOPE_client.create AND X-User-Token header\"}"
+                            );
+                        }))
+                .csrf(csrf -> csrf.disable());
+
+        return http.build();
+    }
+
+    /**
+     * Filter Chain 4: Default security chain for any remaining endpoints
+     * This is a fallback for endpoints not matched by the above chains.
+     */
+    @Bean
+    @Order(4)
+    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(authorize -> authorize
+                        .anyRequest().authenticated())
                 .formLogin(form -> form
                         .loginPage(loginPageUrl)
                         .loginProcessingUrl("/login")
-                        .permitAll()
-                )
-                .csrf(csrf -> csrf.disable());  // Simplified for now
+                        .permitAll())
+                .csrf(csrf -> csrf.disable());
 
         return http.build();
     }

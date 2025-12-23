@@ -20,58 +20,42 @@ public class ApiPaths {
     public static final String FORGOT_PASSWORD = AUTH_BASE + "/forgot-password";
     public static final String RESET_PASSWORD = AUTH_BASE + "/reset-password";
 
-//  OAUTH2 PATHS
+    // OAUTH2 PATHS
     public static final String OAUTH2_BASE = "/oauth2";
     public static final String CLIENT_REGISTER_URL = "/connect/register";
-    public static final String TOKEN_URL =  OAUTH2_BASE + "/token";
-    public static final String AUTHORIZE_URL =  OAUTH2_BASE + "/authorize";
-    public static final String LOGOUT_URL =  OAUTH2_BASE + "/logout";
-    public static final String JWKS_URL =  OAUTH2_BASE + "/jwks";
-    public static final String REVOCATION_URL =  OAUTH2_BASE + "/revoke";
-    public static final String INTROSPECTION_URL =  OAUTH2_BASE + "/introspect";
+    public static final String TOKEN_URL = OAUTH2_BASE + "/token";
+    public static final String AUTHORIZE_URL = OAUTH2_BASE + "/authorize";
+    public static final String LOGOUT_URL = OAUTH2_BASE + "/logout";
+    public static final String JWKS_URL = OAUTH2_BASE + "/jwks";
+    public static final String REVOCATION_URL = OAUTH2_BASE + "/revoke";
+    public static final String INTROSPECTION_URL = OAUTH2_BASE + "/introspect";
 
+    // Client Configuration Management
+    public static final String CLIENT_CONFIG_BASE = API_V1_BASE + "/clients";
 
     // ========================================
-    // UTILITY METHODS
+    // SECURITY CONFIGURATION ARRAYS
     // ========================================
 
-    public static final String[] SKIP_AUTH_PATHS = {
+    /**
+     * Admin authentication endpoints - require OAuth2 Bearer token with SCOPE_client.create.
+     * These endpoints do NOT require X-User-Token as they establish user identity.
+     */
+    public static final String[] ADMIN_AUTH_ENDPOINTS = {
             ADMIN_BASE + REGISTER,
             ADMIN_BASE + LOGIN,
             ADMIN_BASE + VERIFY_EMAIL,
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
-            ADMIN_BASE + RESET_PASSWORD,
-            "/login"
+            ADMIN_BASE + RESET_PASSWORD
     };
 
-    public static final String[] USER_AUTH_PATHS = {
-            CLIENT_REGISTER_URL
-    };
 
-    /**
-     * Get full API path with context, prefix and version
-     * Example: /bjyotish/api/v1/users/profile
-     */
-    public static String getFullPath(String apiPath) {
-        return API_CONTEXT_PATH + API_V1_BASE + apiPath;
+    // Legacy compatibility - deprecated, use ADMIN_AUTH_ENDPOINTS instead
+    @Deprecated
+    public static final String[] SKIP_AUTH_PATHS = ADMIN_AUTH_ENDPOINTS;
+
+    private ApiPaths() {
+        // Utility class - prevent instantiation
     }
-
-    /**
-     * Get API path with version for use in @RequestMapping
-     * Example: /api/v1/users/profile
-     */
-    public static String getVersionedPath(String path) {
-        return API_V1_BASE + path;
-    }
-
-    /**
-     * Get API path without version (for future v2, v3 etc.)
-     * Example: /api/users/profile
-     */
-    public static String getApiPath(String path) {
-        return API_PREFIX + path;
-    }
-
-    private ApiPaths() {}
 }

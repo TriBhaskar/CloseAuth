@@ -1,4 +1,4 @@
-package com.anterka.closeauthbackend.core;
+package com.anterka.closeauthbackend.core.services;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -10,11 +10,14 @@ import java.util.stream.Collectors;
 import com.anterka.closeauthbackend.core.entities.Client;
 import com.anterka.closeauthbackend.core.repository.ClientRepository;
 import com.anterka.closeauthbackend.dto.CreateClientDto;
+import com.anterka.closeauthbackend.security.UserJwtAuthenticationToken;
+import com.anterka.closeauthbackend.service.ClientInitializationService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.jackson2.SecurityJackson2Modules;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
@@ -34,11 +37,16 @@ public class ClientService implements RegisteredClientRepository {
     private final ClientRepository clientRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final PasswordEncoder passwordEncoder;
+    private final ClientInitializationService clientInitializationService;
 
-    public ClientService(ClientRepository clientRepository, PasswordEncoder passwordEncoder) {
+    public ClientService(
+            ClientRepository clientRepository,
+            PasswordEncoder passwordEncoder,
+            ClientInitializationService clientInitializationService) {
         Assert.notNull(clientRepository, "clientRepository cannot be null");
         this.clientRepository = clientRepository;
         this.passwordEncoder = passwordEncoder;
+        this.clientInitializationService = clientInitializationService;
 
         ClassLoader classLoader = ClientService.class.getClassLoader();
         List<Module> securityModules = SecurityJackson2Modules.getModules(classLoader);
@@ -69,6 +77,9 @@ public class ClientService implements RegisteredClientRepository {
 
         Assert.notNull(createClientDto, "createClientDto cannot be null");
 
+        // Extract user ID from security context
+        Integer userId = getCurrentUserId();
+
         Set<ClientAuthenticationMethod> authMethods = createClientDto.getAuthenticationMethods().stream()
                 .map(ClientAuthenticationMethod::new)
                 .collect(Collectors.toSet());
@@ -87,17 +98,34 @@ public class ClientService implements RegisteredClientRepository {
                 .scopes((scopes) -> scopes.addAll(createClientDto.getScopes()));
 
         ClientSettings.Builder clientSettingsBuilder = ClientSettings.builder();
-        if (createClientDto.isRequireProofKey()) {
-            clientSettingsBuilder.requireProofKey(true);
-        } else {
-            clientSettingsBuilder.requireProofKey(false);
-        }
+        clientSettingsBuilder.requireProofKey(createClientDto.isRequireProofKey());
         builder.clientSettings(clientSettingsBuilder.build());
 
         RegisteredClient registeredClient = builder.build();
 
         save(registeredClient);
-        return "Client Registered "+registeredClient.getId()+ " successfully";
+
+        // Initialize client with ownership and default configurations
+        clientInitializationService.initializeClient(
+                registeredClient.getClientId(),
+                userId,
+                null,  // IP address - could be passed from controller
+                null   // User agent - could be passed from controller
+        );
+
+        log.info("Client registered successfully with ID: {} by user: {}", registeredClient.getId(), userId);
+        return "Client Registered " + registeredClient.getId() + " successfully";
+    }
+
+    /**
+     * Extract user ID from security context
+     */
+    private Integer getCurrentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof UserJwtAuthenticationToken userAuth) {
+            return userAuth.getUserId();
+        }
+        throw new IllegalStateException("User not authenticated with UserJwtAuthenticationToken");
     }
 
     private RegisteredClient toObject(Client client) {

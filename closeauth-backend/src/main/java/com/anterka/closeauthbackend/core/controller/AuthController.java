@@ -82,7 +82,7 @@ public class AuthController {
     }
 
     @PostMapping(value = ApiPaths.VERIFY_EMAIL, consumes = {MediaType.APPLICATION_JSON_VALUE})
-    public ResponseEntity<CustomApiResponse> verifyEmail(@Valid @RequestBody UserEmailVerificationDto userEmailVerificationRequest) {
+    public ResponseEntity<CustomApiResponse<Void>> verifyEmail(@Valid @RequestBody UserEmailVerificationDto userEmailVerificationRequest) {
         log.info("Received OTP verification request for email: {}", userEmailVerificationRequest.email());
         return ResponseEntity.ok(authenticationService.verifyUserEmail(userEmailVerificationRequest));
     }
@@ -93,39 +93,72 @@ public class AuthController {
     }
 
     @PostMapping(value = ApiPaths.FORGOT_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
-    public ResponseEntity<CustomApiResponse> forgotPassword(@Valid @RequestBody UserForgotPasswordDto userForgotPasswordRequest, HttpServletRequest servletRequest) {
+    public ResponseEntity<CustomApiResponse<Void>> forgotPassword(@Valid @RequestBody UserForgotPasswordDto userForgotPasswordRequest, HttpServletRequest servletRequest) {
         log.info("Received forgot password request for email: " + userForgotPasswordRequest.email());
 
         String clientIp = getClientIp(servletRequest);
         if (rateLimiter.isLimited("forgot_password", clientIp)) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new CustomApiResponse("Too many requests. Please try again later.", ResponseStatusEnum.FAILED, LocalDateTime.now()));
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("Too many requests. Please try again later.")
+                            .status(ResponseStatusEnum.FAILED)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         }
         try {
             passwordResetService.processForgotPassword(userForgotPasswordRequest);
-            return ResponseEntity.ok().body(new CustomApiResponse("If your email is registered, you will receive a password reset link shortly", ResponseStatusEnum.SUCCESS, LocalDateTime.now()));
+            return ResponseEntity.ok()
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("If your email is registered, you will receive a password reset link shortly")
+                            .status(ResponseStatusEnum.SUCCESS)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new CustomApiResponse("If your email is registered, you will receive a password reset link shortly",ResponseStatusEnum.FAILED,LocalDateTime.now()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("If your email is registered, you will receive a password reset link shortly")
+                            .status(ResponseStatusEnum.FAILED)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         }
     }
 
     @PostMapping(value = ApiPaths.RESET_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
-    public ResponseEntity<CustomApiResponse> resetPassword(@RequestBody UserResetPasswordDto request,
+    public ResponseEntity<CustomApiResponse<Void>> resetPassword(@RequestBody UserResetPasswordDto request,
                                                            HttpServletRequest servletRequest) {
         // Rate limiting for reset password attempts
         String clientIp = getClientIp(servletRequest);
         if (rateLimiter.isLimited("reset_password", clientIp)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(new CustomApiResponse( "Too many attempts. Please try again later.",ResponseStatusEnum.FAILED,LocalDateTime.now()));
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("Too many attempts. Please try again later.")
+                            .status(ResponseStatusEnum.FAILED)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         }
         try {
             passwordResetService.resetPassword(request);
-            return ResponseEntity.ok().body(new CustomApiResponse("Password reset successful",ResponseStatusEnum.SUCCESS,LocalDateTime.now()));
+            return ResponseEntity.ok()
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("Password reset successful")
+                            .status(ResponseStatusEnum.SUCCESS)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         } catch (InvalidTokenException | PasswordMismatchedException |
                  WeakPasswordException | PasswordReusedException e) {
-            return ResponseEntity.badRequest().body(new CustomApiResponse( "Exception occurred while resetting password : "+ e.getMessage(),ResponseStatusEnum.FAILED,LocalDateTime.now()));
+            return ResponseEntity.badRequest()
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("Exception occurred while resetting password : " + e.getMessage())
+                            .status(ResponseStatusEnum.FAILED)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new CustomApiResponse("An unexpected error occurred. Please try again.",ResponseStatusEnum.FAILED,LocalDateTime.now()));
+                    .body(CustomApiResponse.<Void>builder()
+                            .message("An unexpected error occurred. Please try again.")
+                            .status(ResponseStatusEnum.FAILED)
+                            .timestamp(LocalDateTime.now())
+                            .build());
         }
     }
 

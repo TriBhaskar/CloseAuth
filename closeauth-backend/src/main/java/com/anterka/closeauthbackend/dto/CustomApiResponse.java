@@ -11,8 +11,9 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class CustomApiResponse {
+public class CustomApiResponse<T> {
     private String message;
     private ResponseStatusEnum status;
     private LocalDateTime timestamp;
+    private T data;
 }

@@ -71,4 +71,29 @@ public class GlobalAdviceController extends RuntimeException {
     public ResponseEntity<ErrorResponse> handlePasswordReusedException(PasswordReusedException ex){
         return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
     }
+
+    @ExceptionHandler(ClientOwnershipException.class)
+    public ResponseEntity<ErrorResponse> handleClientOwnershipException(ClientOwnershipException ex){
+        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.FORBIDDEN), HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(RoleAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponse> handleRoleAlreadyExistsException(RoleAlreadyExistsException ex){
+        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(ThemeNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleThemeNotFoundException(ThemeNotFoundException ex){
+        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.NOT_FOUND), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(InvalidThemeConfigurationException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidThemeConfigurationException(InvalidThemeConfigurationException ex){
+        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ThemeActivationException.class)
+    public ResponseEntity<ErrorResponse> handleThemeActivationException(ThemeActivationException ex){
+        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+    }
 }

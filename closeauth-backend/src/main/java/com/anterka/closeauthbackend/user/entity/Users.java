@@ -36,9 +36,11 @@ public class Users implements Serializable, UserDetails {
     private String passwordHash;
 
     @Column(name = "algo", length = 50, nullable = false)
+    @Builder.Default
     private String algo = "bcrypt"; // Default to bcrypt
 
     @Column(name = "failed_attempts")
+    @Builder.Default
     private Integer failedAttempts = 0;
 
     @Column(name = "locked_until")
@@ -48,26 +50,32 @@ public class Users implements Serializable, UserDetails {
     private LocalDateTime passwordChangedAt;
 
     @Column(name = "expired")
+    @Builder.Default
     private boolean expired = false;
 
     @Column(name = "locked")
+    @Builder.Default
     private boolean locked = false;
 
     @Column(name = "credentials_expired")
+    @Builder.Default
     private boolean credentialsExpired = false;
 
     @Column(name = "disabled")
+    @Builder.Default
     private boolean disabled = false;
 
     @Column(nullable = false, unique = true)
     private String email;
 
     @Column(name = "email_verified")
+    @Builder.Default
     private Boolean emailVerified = false;
 
     private String phone;
 
     @Column(name = "phone_verified")
+    @Builder.Default
     private Boolean phoneVerified = false;
 
     @Column(name = "first_name")
@@ -77,6 +85,7 @@ public class Users implements Serializable, UserDetails {
     private String lastName;
 
     @Column(length = 20)
+    @Builder.Default
     private String status = "PENDING";
 
     @ManyToOne(fetch = FetchType.EAGER)

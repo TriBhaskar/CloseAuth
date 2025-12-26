@@ -40,6 +40,7 @@ public class ApplicationRole implements Serializable {
     private String permissions; // JSON array of permissions
 
     @Column(name = "is_default")
+    @Builder.Default
     private Boolean isDefault = false;
 
     @Column(name = "created_at")

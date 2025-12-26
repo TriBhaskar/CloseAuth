@@ -48,10 +48,13 @@ public class CreateClientThemeDto {
     private String darkTextColor;
 
     @Pattern(regexp = "light|dark|system", message = "Default mode must be 'light', 'dark', or 'system'")
+    @Builder.Default
     private String defaultMode = "light";
 
+    @Builder.Default
     private Boolean allowModeToggle = true;
 
+    @Builder.Default
     private Boolean isDefault = false;
 }
 

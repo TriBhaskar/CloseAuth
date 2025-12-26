@@ -1,39 +1,56 @@
 package com.anterka.closeauthbackend.cache.service;
 
-import com.anterka.closeauthbackend.common.config.RedisConfig;
-import lombok.AllArgsConstructor;
+import com.anterka.closeauthbackend.cache.repository.RateLimitRepository;
+import com.anterka.closeauthbackend.cache.strategy.RateLimitStrategy;
+import com.anterka.closeauthbackend.cache.strategy.RateLimitStrategyFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import redis.clients.jedis.JedisPooled;
 
+/**
+ * Service for rate limiting various actions using the Strategy pattern.
+ */
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
+@Slf4j
 public class RateLimiterService {
-    private final JedisPooled jedisPooled;
-    private final RedisConfig redisConfig;
 
+    private final RateLimitRepository rateLimitRepository;
+    private final RateLimitStrategyFactory strategyFactory;
+
+    /**
+     * Checks if the action is rate limited for the given identifier.
+     * @param action The action type (e.g., "forgot_password", "reset_password")
+     * @param identifier The unique identifier (e.g., IP address, user ID)
+     * @return true if rate limited, false otherwise
+     */
     public boolean isLimited(String action, String identifier) {
-        String key = "rate_limit:" + action + ":" + identifier;
+        RateLimitStrategy strategy = strategyFactory.getStrategy(action);
 
-        String countStr = jedisPooled.get(key);
-        int count = (countStr != null) ? Integer.parseInt(countStr) : 0;
+        int currentCount = rateLimitRepository.getCount(action, identifier);
+        int limit = strategy.getMaxAttempts();
 
-        int limit = switch (action) {
-            case "forgot_password" -> Integer.parseInt(redisConfig.getForgotPasswordRateLimit());
-            case "validate_token" ->  Integer.parseInt(redisConfig.getValidateTokenRateLimit());
-            case "reset_password" ->  Integer.parseInt(redisConfig.getResetPasswordRateLimit());
-            default -> 5;
-        };
-
-        if (count >= limit) {
+        if (currentCount >= limit) {
+            log.debug("Rate limit exceeded for action '{}', identifier '{}': {} >= {}",
+                    action, identifier, currentCount, limit);
             return true;
         }
 
-        if (count == 0) {
-            jedisPooled.setex(key, Integer.parseInt(redisConfig.getWindowMinutesRateLimit()) * 60L, "1");
+        if (currentCount == 0) {
+            rateLimitRepository.initializeCounter(action, identifier, strategy.getWindowSeconds());
         } else {
-            jedisPooled.incr(key);
+            rateLimitRepository.incrementCounter(action, identifier);
         }
 
         return false;
+    }
+
+    /**
+     * Gets remaining attempts for an action/identifier combination.
+     */
+    public int getRemainingAttempts(String action, String identifier) {
+        RateLimitStrategy strategy = strategyFactory.getStrategy(action);
+        int currentCount = rateLimitRepository.getCount(action, identifier);
+        return Math.max(0, strategy.getMaxAttempts() - currentCount);
     }
 }

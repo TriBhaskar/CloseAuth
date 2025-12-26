@@ -22,6 +22,7 @@ public class CreateApplicationRoleDto {
 
     private String permissions; // JSON string of permissions
 
+    @Builder.Default
     private Boolean isDefault = false;
 }
 

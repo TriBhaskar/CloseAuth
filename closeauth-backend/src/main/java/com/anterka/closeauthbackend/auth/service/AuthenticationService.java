@@ -2,7 +2,6 @@ package com.anterka.closeauthbackend.auth.service;
 
 import com.anterka.closeauthbackend.common.dto.CustomApiResponse;
 import com.anterka.closeauthbackend.auth.dto.RegistrationData;
-import com.anterka.closeauthbackend.common.dto.ResponseStatusEnum;
 import com.anterka.closeauthbackend.auth.dto.request.UserEmailVerificationDto;
 import com.anterka.closeauthbackend.auth.dto.request.UserLoginDto;
 import com.anterka.closeauthbackend.auth.dto.request.UserRegistrationDto;
@@ -101,44 +100,40 @@ public class AuthenticationService {
     }
 
     @Transactional
-    public CustomApiResponse verifyUserEmail(UserEmailVerificationDto request) {
+    public CustomApiResponse<Void> verifyUserEmail(UserEmailVerificationDto request) {
         log.info("Verifying user email: {}", request.email());
 
         registrationCacheService.getRegistration(request.email())
                 .ifPresentOrElse(registrationData -> {
-                    String cachedOtp = otpService.getOtp(request.email());
-                    if (cachedOtp == null || !cachedOtp.equals(request.verificationCode())) {
+                    // Validate OTP using the new validateOtp method
+                    if (!otpService.validateOtp(request.email(), request.verificationCode())) {
                         throw new UserRegistrationException("Invalid OTP for email: " + request.email());
-                    } else {
-                        // Get the appropriate strategy
-                        UserRegistrationStrategy strategy = registrationStrategyFactory
-                                .getStrategy(registrationData.globalRoleEnum());
-
-                        // Create user using strategy
-                        Users user = strategy.createUser(registrationData.registrationDto());
-                        user.setEmailVerified(true);
-
-                        // Save user to database
-                        user = userRepository.save(user);
-
-                        // Perform post-registration setup (create profiles, etc.)
-                        strategy.performPostRegistrationSetup(user, registrationData.registrationDto());
-
-                        // Clean up cache
-                        registrationCacheService.deleteRegistration(request.email());
-                        otpService.deleteOtp(request.email());
-
-                        log.info("User email verified successfully: {}", request.email());
                     }
+
+                    // Get the appropriate strategy
+                    UserRegistrationStrategy strategy = registrationStrategyFactory
+                            .getStrategy(registrationData.globalRoleEnum());
+
+                    // Create user using strategy
+                    Users user = strategy.createUser(registrationData.registrationDto());
+                    user.setEmailVerified(true);
+
+                    // Save user to database
+                    user = userRepository.save(user);
+
+                    // Perform post-registration setup (create profiles, etc.)
+                    strategy.performPostRegistrationSetup(user, registrationData.registrationDto());
+
+                    // Clean up cache
+                    registrationCacheService.deleteRegistration(request.email());
+                    otpService.deleteOtp(request.email());
+
+                    log.info("User email verified successfully: {}", request.email());
                 }, () -> {
                     throw new UserRegistrationException("No registration found for email: " + request.email());
                 });
 
-        return CustomApiResponse.builder()
-                .status(ResponseStatusEnum.SUCCESS)
-                .message("User registered successfully")
-                .timestamp(LocalDateTime.now())
-                .build();
+        return CustomApiResponse.success("User registered successfully");
     }
 
     @Transactional

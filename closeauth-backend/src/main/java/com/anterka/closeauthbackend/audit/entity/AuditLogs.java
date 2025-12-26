@@ -44,6 +44,7 @@ public class AuditLogs implements Serializable {
 
     private String metadata;
 
+    @Builder.Default
     private Boolean success = true;
 
     @Column(name = "error_message")

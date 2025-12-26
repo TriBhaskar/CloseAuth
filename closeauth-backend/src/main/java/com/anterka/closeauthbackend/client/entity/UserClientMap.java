@@ -36,6 +36,7 @@ public class UserClientMap implements Serializable {
     private Client client;
 
     @Column(length = 20)
+    @Builder.Default
     private String status = "PENDING";
 
     @Column(name = "created_at")

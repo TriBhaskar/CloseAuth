@@ -1,49 +1,49 @@
 package com.anterka.closeauthbackend.cache.service;
 
 import com.anterka.closeauthbackend.auth.dto.RegistrationData;
-import com.google.gson.Gson;
-import lombok.AllArgsConstructor;
+import com.anterka.closeauthbackend.cache.repository.RegistrationCacheRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import redis.clients.jedis.JedisPooled;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Service for managing registration data in cache.
+ */
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class RegistrationCacheService {
 
-    private final JedisPooled client;
-    private final Gson gson;
+    private final RegistrationCacheRepository registrationRepository;
 
-    private static final String REGISTRATION_PREFIX = "registration_";
     private static final long REGISTRATION_VALIDITY_SECONDS = TimeUnit.HOURS.toSeconds(2);
 
+    /**
+     * Saves registration data for email verification flow.
+     */
     public void saveRegistration(String email, RegistrationData registrationRequest) {
-        String key = REGISTRATION_PREFIX + email;
-        client.jsonSet(key, gson.toJson(registrationRequest));
-        client.expire(key, REGISTRATION_VALIDITY_SECONDS);
+        registrationRepository.saveRegistrationData(email, registrationRequest, REGISTRATION_VALIDITY_SECONDS);
     }
 
+    /**
+     * Retrieves registration data for the given email.
+     */
     public Optional<RegistrationData> getRegistration(String email) {
-        String key = REGISTRATION_PREFIX + email;
-        Object jsonResult = client.jsonGet(key);
-        if (jsonResult == null) {
-            return Optional.empty();
-        }
-        // Convert the JSON object to string first
-        String jsonStr = gson.toJson(jsonResult);
-        RegistrationData request = gson.fromJson(jsonStr, RegistrationData.class);
-        return Optional.ofNullable(request);
+        return registrationRepository.getRegistrationData(email, RegistrationData.class);
     }
 
+    /**
+     * Checks if a pending registration exists for the given email.
+     */
     public boolean registrationExists(String email) {
-        String key = REGISTRATION_PREFIX + email;
-        return client.exists(key);
+        return registrationRepository.registrationExists(email);
     }
 
+    /**
+     * Deletes registration data after successful verification.
+     */
     public void deleteRegistration(String email) {
-        String key = REGISTRATION_PREFIX + email;
-        client.del(key);
+        registrationRepository.deleteRegistration(email);
     }
 }

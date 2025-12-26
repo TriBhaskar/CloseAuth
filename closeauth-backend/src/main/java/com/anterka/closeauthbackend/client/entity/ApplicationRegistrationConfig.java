@@ -33,30 +33,38 @@ public class ApplicationRegistrationConfig implements Serializable {
     private String verificationMethod; // EMAIL, PHONE, ADMIN_APPROVAL, EMAIL_AND_PHONE, AUTO_APPROVE
 
     @Column(name = "require_email_verification")
+    @Builder.Default
     private Boolean requireEmailVerification = true;
 
     @Column(name = "require_phone_verification")
+    @Builder.Default
     private Boolean requirePhoneVerification = false;
 
     @Column(name = "require_admin_approval")
+    @Builder.Default
     private Boolean requireAdminApproval = false;
 
     @Column(name = "auto_approve_domains", columnDefinition = "TEXT")
     private String autoApproveDomains; // JSON array of whitelisted email domains
 
     @Column(name = "allow_self_registration")
+    @Builder.Default
     private Boolean allowSelfRegistration = true;
 
     @Column(name = "registration_enabled")
+    @Builder.Default
     private Boolean registrationEnabled = true;
 
     @Column(name = "require_phone")
+    @Builder.Default
     private Boolean requirePhone = false;
 
     @Column(name = "require_first_name")
+    @Builder.Default
     private Boolean requireFirstName = true;
 
     @Column(name = "require_last_name")
+    @Builder.Default
     private Boolean requireLastName = true;
 
     @Column(name = "custom_fields", columnDefinition = "TEXT")
@@ -66,12 +74,15 @@ public class ApplicationRegistrationConfig implements Serializable {
     private String verificationEmailTemplate;
 
     @Column(name = "verification_token_expiry")
+    @Builder.Default
     private Integer verificationTokenExpiry = 24; // Hours
 
     @Column(name = "phone_verification_method", length = 20)
+    @Builder.Default
     private String phoneVerificationMethod = "SMS"; // SMS, CALL, WHATSAPP
 
     @Column(name = "phone_verification_token_expiry")
+    @Builder.Default
     private Integer phoneVerificationTokenExpiry = 10; // Minutes
 
     @Column(name = "approval_notification_email")
@@ -81,6 +92,7 @@ public class ApplicationRegistrationConfig implements Serializable {
     private String approvalRequiredMessage;
 
     @Column(name = "welcome_email_enabled")
+    @Builder.Default
     private Boolean welcomeEmailEnabled = true;
 
     @Column(name = "redirect_after_registration", length = 500)

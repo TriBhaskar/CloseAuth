@@ -22,6 +22,7 @@ public class CreateThemeConfigurationDto {
     private String configValue;
 
     @Pattern(regexp = "string|number|boolean|json|color", message = "Config type must be one of: string, number, boolean, json, color")
+    @Builder.Default
     private String configType = "string";
 }
 

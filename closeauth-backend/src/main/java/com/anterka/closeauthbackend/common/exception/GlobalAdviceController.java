@@ -1,98 +1,70 @@
 package com.anterka.closeauthbackend.common.exception;
 
-import lombok.Builder;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+import com.anterka.closeauthbackend.common.dto.CustomApiResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
-import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
+/**
+ * Global exception handler for all CloseAuth exceptions.
+ * Uses the CloseAuthException hierarchy to provide consistent error responses.
+ */
 @ControllerAdvice
-public class GlobalAdviceController extends RuntimeException {
-    @Data
-    @Builder
-    @RequiredArgsConstructor
-    public static class ErrorResponse {
-        private final String message;
-        private final HttpStatus status;
-        private final LocalDateTime timestamp = LocalDateTime.now();
+@Slf4j
+public class GlobalAdviceController {
+
+    /**
+     * Handles all CloseAuthException subclasses with a single handler.
+     * Each exception provides its own HTTP status and error code.
+     */
+    @ExceptionHandler(CloseAuthException.class)
+    public ResponseEntity<CustomApiResponse<ErrorDetails>> handleCloseAuthException(CloseAuthException ex) {
+        log.warn("CloseAuth exception occurred: {} - {}", ex.getErrorCode(), ex.getMessage());
+
+        ErrorDetails errorDetails = new ErrorDetails(ex.getErrorCode(), ex.getMessage());
+
+        return ResponseEntity.status(ex.getHttpStatus())
+                .body(CustomApiResponse.error(ex.getMessage(), errorDetails));
     }
 
-    @ExceptionHandler(UserNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleUserNotFoundException(UserNotFoundException ex) {
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.NOT_FOUND), HttpStatus.NOT_FOUND);
+    /**
+     * Handles validation errors from @Valid annotations.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<CustomApiResponse<Map<String, String>>> handleValidationExceptions(
+            MethodArgumentNotValidException ex) {
+
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error ->
+                errors.put(error.getField(), error.getDefaultMessage())
+        );
+
+        log.warn("Validation failed: {}", errors);
+
+        return ResponseEntity.badRequest()
+                .body(CustomApiResponse.error("Validation failed", errors));
     }
 
-    @ExceptionHandler(CredentialValidationException.class)
-    public ResponseEntity<ErrorResponse> handleCredentialValidationException(CredentialValidationException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.UNAUTHORIZED), HttpStatus.UNAUTHORIZED);
+    /**
+     * Handles any unexpected exceptions.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<CustomApiResponse<ErrorDetails>> handleGenericException(Exception ex) {
+        log.error("Unexpected error occurred: {}", ex.getMessage(), ex);
+
+        ErrorDetails errorDetails = new ErrorDetails("INTERNAL_ERROR", "An unexpected error occurred");
+
+        return ResponseEntity.internalServerError()
+                .body(CustomApiResponse.error("An unexpected error occurred. Please try again later.", errorDetails));
     }
 
-    @ExceptionHandler(DataAlreadyExistsException.class)
-    public ResponseEntity<ErrorResponse> handleEmailAlreadyExistsException(DataAlreadyExistsException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT), HttpStatus.CONFLICT);
-    }
-
-    @ExceptionHandler(UserAuthenticationException.class)
-    public ResponseEntity<ErrorResponse> handleUserAuthenticationException(UserAuthenticationException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.FORBIDDEN), HttpStatus.FORBIDDEN);
-    }
-
-    @ExceptionHandler(UserRegistrationException.class)
-    public ResponseEntity<ErrorResponse> handleEnterpriseRegException(UserRegistrationException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT), HttpStatus.CONFLICT);
-    }
-
-    @ExceptionHandler(EmailVerificationException.class)
-    public ResponseEntity<ErrorResponse> handleEmailVerificationException(EmailVerificationException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.EXPECTATION_FAILED), HttpStatus.EXPECTATION_FAILED);
-    }
-
-    @ExceptionHandler(InvalidTokenException.class)
-    public ResponseEntity<ErrorResponse> handleInvalidTokenException(InvalidTokenException ex) {
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(PasswordMismatchedException.class)
-    public ResponseEntity<ErrorResponse> handlePasswordMisMatchedException(PasswordMismatchedException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(WeakPasswordException.class)
-    public ResponseEntity<ErrorResponse> handleWeakPasswordException(WeakPasswordException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(PasswordReusedException.class)
-    public ResponseEntity<ErrorResponse> handlePasswordReusedException(PasswordReusedException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(ClientOwnershipException.class)
-    public ResponseEntity<ErrorResponse> handleClientOwnershipException(ClientOwnershipException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.FORBIDDEN), HttpStatus.FORBIDDEN);
-    }
-
-    @ExceptionHandler(RoleAlreadyExistsException.class)
-    public ResponseEntity<ErrorResponse> handleRoleAlreadyExistsException(RoleAlreadyExistsException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT), HttpStatus.CONFLICT);
-    }
-
-    @ExceptionHandler(ThemeNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleThemeNotFoundException(ThemeNotFoundException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.NOT_FOUND), HttpStatus.NOT_FOUND);
-    }
-
-    @ExceptionHandler(InvalidThemeConfigurationException.class)
-    public ResponseEntity<ErrorResponse> handleInvalidThemeConfigurationException(InvalidThemeConfigurationException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(ThemeActivationException.class)
-    public ResponseEntity<ErrorResponse> handleThemeActivationException(ThemeActivationException ex){
-        return new ResponseEntity<>(new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
+    /**
+     * Error details record for structured error responses.
+     */
+    public record ErrorDetails(String errorCode, String details) {}
 }

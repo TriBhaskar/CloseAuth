@@ -28,6 +28,7 @@ type OAuthContext struct {
 	State           string `json:"state"`
 	Timestamp       int64  `json:"timestamp"`
 	SpringSessionID string `json:"spring_session_id,omitempty"` // JSESSIONID from Spring for session continuity
+	Username        string `json:"username,omitempty"`          // Username from login, used for consent page
 }
 
 // GetEncryptionKey retrieves or generates encryption key for OAuth context cookies

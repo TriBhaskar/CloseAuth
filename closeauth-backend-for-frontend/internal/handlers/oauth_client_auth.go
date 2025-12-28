@@ -65,11 +65,36 @@ func (h *OAuthClientAuthHandler) HandleOAuthLoginGet(w http.ResponseWriter, r *h
 	// Fetch client theme from database
 	themeData := h.getClientTheme(r, clientID)
 
+	// Fetch client info from Spring Authorization Server
+	clientName := clientID
+	logoURL := themeData.LogoURL
+	
+	if clientID != "" && h.authenticatedClient != nil {
+		clientInfo, err := h.authenticatedClient.GetClientInfo(r.Context(), clientID)
+		if err != nil {
+			log.Printf("Failed to fetch client info for %s: %v (using defaults)", clientID, err)
+		} else {
+			// Use client name from server
+			if clientInfo.ClientName != "" {
+				clientName = clientInfo.ClientName
+			}
+			// Use logo URI from server if available, otherwise keep theme logo
+			if clientInfo.LogoURI != "" {
+				logoURL = clientInfo.LogoURI
+				themeData.LogoURL = logoURL
+			}
+		}
+	}
+	
+	if clientName == "" {
+		clientName = "Application"
+	}
+
 	// Build login data
 	loginData := templates.OAuthLoginData{
 		CSRFToken:   csrfToken,
 		Theme:       themeData,
-		ClientName:  h.getClientName(clientID),
+		ClientName:  clientName,
 		ErrorMsg:    "",
 		ContinueURL: continueURL,
 	}
@@ -231,6 +256,22 @@ func (h *OAuthClientAuthHandler) HandleOAuthLoginPost(w http.ResponseWriter, r *
 
 	log.Printf("OAuth client login successful for user: %s, client: %s", username, clientID)
 
+	// Save username and new Spring JSESSIONID to OAuth context for consent page
+	if oauthCtx != nil {
+		oauthCtx.Username = username
+		// Update SpringSessionID with the new session from login response
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "JSESSIONID" {
+				oauthCtx.SpringSessionID = cookie.Value
+				log.Printf("INFO: Saved new Spring JSESSIONID to OAuth context for consent")
+				break
+			}
+		}
+		if err := middleware.SaveOAuthContext(w, oauthCtx); err != nil {
+			log.Printf("WARNING: Failed to save OAuth context: %v", err)
+		}
+	}
+
 	// After successful login, redirect back to OAuth flow or continue URL
 	log.Printf("DEBUG: continueURL='%s', oauthCtx is nil=%v", continueURL, oauthCtx == nil)
 	
@@ -258,8 +299,8 @@ func (h *OAuthClientAuthHandler) HandleOAuthLoginPost(w http.ResponseWriter, r *
 
 	log.Printf("INFO: Final redirect URL: %s", redirectURL)
 
-	// Clear the OAuth context cookie since we're done with it
-	middleware.ClearOAuthContext(w)
+	// Note: We don't clear OAuth context here anymore - consent page needs it
+	// The context will be cleared after consent is granted/denied
 
 	// Handle HTMX vs standard redirect
 	if middleware.IsHTMXRequest(r) {
@@ -425,6 +466,256 @@ func (h *OAuthClientAuthHandler) HandleOAuthResendRegistrationOTP(w http.Respons
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`<span class="text-green-600 dark:text-green-400 text-sm">Verification code resent successfully!</span>`))
+}
+
+// HandleOAuthConsentGet renders the OAuth consent page
+// Spring Authorization Server redirects here: /oauth/consent?scope=...&client_id=...&state=...
+func (h *OAuthClientAuthHandler) HandleOAuthConsentGet(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters from Spring Authorization Server
+	clientID := r.URL.Query().Get("client_id")
+	scopeParam := r.URL.Query().Get("scope")
+	state := r.URL.Query().Get("state")
+
+	log.Printf("OAuth consent page requested: client_id=%s, scope=%s, state=%s", clientID, scopeParam, state)
+
+	// Get OAuth context to retrieve username and redirect_uri
+	oauthCtx, err := middleware.GetOAuthContext(r)
+	if err != nil {
+		log.Printf("WARNING: Could not retrieve OAuth context for consent: %v", err)
+	}
+
+	username := ""
+	redirectURI := ""
+	if oauthCtx != nil {
+		username = oauthCtx.Username
+		redirectURI = oauthCtx.RedirectURI
+		// If clientID not in query, use from context
+		if clientID == "" {
+			clientID = oauthCtx.ClientID
+		}
+	}
+
+	// Get CSRF token
+	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
+
+	// Fetch client theme from database
+	themeData := h.getClientTheme(r, clientID)
+
+	// Fetch client info from Spring Authorization Server
+	clientName := clientID
+	logoURL := themeData.LogoURL
+
+	if clientID != "" && h.authenticatedClient != nil {
+		clientInfo, err := h.authenticatedClient.GetClientInfo(r.Context(), clientID)
+		if err != nil {
+			log.Printf("Failed to fetch client info for consent page %s: %v", clientID, err)
+		} else {
+			if clientInfo.ClientName != "" {
+				clientName = clientInfo.ClientName
+			}
+			if clientInfo.LogoURI != "" {
+				logoURL = clientInfo.LogoURI
+			}
+		}
+	}
+
+	if clientName == "" {
+		clientName = "Application"
+	}
+
+	// Parse scopes from query parameter (space-separated)
+	scopes := strings.Fields(scopeParam)
+	scopeDisplays := templates.MapScopesToDisplay(scopes)
+
+	// Build consent data
+	consentData := templates.OAuthConsentData{
+		CSRFToken:   csrfToken,
+		Theme:       themeData,
+		ClientID:    clientID,
+		ClientName:  clientName,
+		LogoURL:     logoURL,
+		Username:    username,
+		Email:       "", // Email not available yet
+		Scopes:      scopeDisplays,
+		State:       state,
+		RedirectURI: redirectURI,
+		ErrorMsg:    "",
+	}
+
+	// Render the consent template
+	component := templates.OAuthConsent(consentData)
+	templ.Handler(component).ServeHTTP(w, r)
+}
+
+// HandleOAuthConsentPost processes the consent form submission
+func (h *OAuthClientAuthHandler) HandleOAuthConsentPost(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Printf("Error parsing consent form: %v", err)
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract form values
+	action := r.FormValue("action")
+	clientID := r.FormValue("client_id")
+	state := r.FormValue("state")
+	redirectURI := r.FormValue("redirect_uri")
+	scopes := r.Form["scope"] // Multiple scope values
+
+	log.Printf("OAuth consent submitted: action=%s, client_id=%s, state=%s, scopes=%v", action, clientID, state, scopes)
+
+	// Get OAuth context for additional parameters needed for authorize request
+	oauthCtx, err := middleware.GetOAuthContext(r)
+	if err != nil {
+		log.Printf("WARNING: Could not retrieve OAuth context for consent: %v", err)
+	}
+
+	// Fill in missing values from OAuth context
+	if oauthCtx != nil {
+		if redirectURI == "" {
+			redirectURI = oauthCtx.RedirectURI
+		}
+		if state == "" {
+			state = oauthCtx.State
+		}
+		if clientID == "" {
+			clientID = oauthCtx.ClientID
+		}
+	}
+
+	// Handle deny action
+	if action == "deny" {
+		log.Printf("User denied consent for client: %s", clientID)
+
+		// Clear OAuth context
+		middleware.ClearOAuthContext(w)
+
+		// Redirect to client with access_denied error
+		if redirectURI != "" {
+			errorURL := redirectURI
+			if strings.Contains(redirectURI, "?") {
+				errorURL += "&"
+			} else {
+				errorURL += "?"
+			}
+			errorURL += "error=access_denied&error_description=User+denied+consent"
+			if state != "" {
+				errorURL += "&state=" + url.QueryEscape(state)
+			}
+			http.Redirect(w, r, errorURL, http.StatusFound)
+		} else {
+			http.Redirect(w, r, "/", http.StatusFound)
+		}
+		return
+	}
+
+	// Handle approve action - POST to Spring Authorization Server's authorize endpoint
+	if action == "approve" {
+		log.Printf("User approved consent for client: %s with scopes: %v", clientID, scopes)
+
+		// Build the authorize URL with consent parameters
+		// Spring expects the consent to be submitted to the authorize endpoint
+		authorizeURL := h.endpoints.GetAuthorizeURL()
+
+		// Build form data for Spring Authorization Server consent submission
+		// IMPORTANT: Only send client_id, state, and scope for consent confirmation
+		// Including response_type or redirect_uri makes Spring treat this as a NEW authorization request
+		// instead of a consent confirmation, causing the consent loop issue
+		formData := url.Values{}
+		formData.Set("client_id", clientID)
+		formData.Set("state", state)
+		// Add all consented scopes (space-separated as per OAuth2 spec)
+		scopeStr := strings.Join(scopes, " ")
+		formData.Set("scope", scopeStr)
+
+		log.Printf("Submitting consent to Spring: URL=%s, Data=%s", authorizeURL, formData.Encode())
+
+		// Create request to Spring Authorization Server
+		req, err := http.NewRequest("POST", authorizeURL, strings.NewReader(formData.Encode()))
+		if err != nil {
+			log.Printf("Error creating consent request: %v", err)
+			http.Error(w, "Failed to process consent", http.StatusInternalServerError)
+			return
+		}
+
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		// Use the preserved JSESSIONID from OAuth context for session continuity
+		// This is critical because the browser won't send Spring's JSESSIONID to BFF (different domain)
+		if oauthCtx != nil && oauthCtx.SpringSessionID != "" {
+			req.AddCookie(&http.Cookie{
+				Name:  "JSESSIONID",
+				Value: oauthCtx.SpringSessionID,
+			})
+			log.Printf("INFO: Using preserved Spring JSESSIONID for consent submission")
+		} else {
+			log.Printf("WARNING: No Spring JSESSIONID found in OAuth context, consent may fail")
+			// Fallback: try forwarding cookies from browser (unlikely to work)
+			for _, cookie := range r.Cookies() {
+				if cookie.Name == "JSESSIONID" {
+					req.AddCookie(cookie)
+				}
+			}
+		}
+
+		// Create HTTP client that doesn't follow redirects
+		httpClient := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			log.Printf("Error submitting consent to Spring: %v", err)
+			http.Error(w, "Failed to submit consent", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		log.Printf("Spring consent response: Status=%d", resp.StatusCode)
+
+		// Clear OAuth context after successful consent
+		middleware.ClearOAuthContext(w)
+
+		// Forward any cookies from Spring
+		for _, cookie := range resp.Cookies() {
+			http.SetCookie(w, cookie)
+		}
+
+		// Handle Spring's response
+		if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther {
+			// Spring is redirecting - follow to client's redirect_uri
+			location := resp.Header.Get("Location")
+			if location != "" {
+				log.Printf("Redirecting to: %s", location)
+				http.Redirect(w, r, location, http.StatusFound)
+				return
+			}
+		}
+
+		// If Spring returned 200, the authorization was successful
+		// Redirect back to client's redirect_uri with the code
+		if resp.StatusCode == http.StatusOK {
+			log.Printf("Consent approved, redirecting to client")
+			if redirectURI != "" {
+				http.Redirect(w, r, redirectURI, http.StatusFound)
+			} else {
+				http.Redirect(w, r, "/", http.StatusFound)
+			}
+			return
+		}
+
+		// Handle errors
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Unexpected response from Spring: Status=%d, Body=%s", resp.StatusCode, string(body))
+		http.Error(w, "Consent processing failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Unknown action
+	http.Error(w, "Invalid action", http.StatusBadRequest)
 }
 
 // getClientTheme fetches the client's theme from the database

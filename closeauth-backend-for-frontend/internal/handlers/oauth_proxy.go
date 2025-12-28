@@ -148,9 +148,22 @@ func (h *OAuthProxyHandler) proxyToSpring(r *http.Request, endpoint string) (*ht
 	// Copy headers (excluding cookies which are handled separately)
 	h.copyHeaders(proxyReq.Header, r.Header)
 
-	// Forward JSESSIONID cookie if present (maintains session with Spring)
+	// Forward JSESSIONID cookie for session continuity with Spring
+	// First check browser's cookie, then fall back to oauth_context
 	if cookie, err := r.Cookie("JSESSIONID"); err == nil {
 		proxyReq.AddCookie(cookie)
+		log.Printf("DEBUG: Using JSESSIONID from browser cookie")
+	} else {
+		// Browser doesn't have JSESSIONID - check oauth_context (stored after login)
+		if oauthCtx, err := middleware.GetOAuthContext(r); err == nil && oauthCtx.SpringSessionID != "" {
+			proxyReq.AddCookie(&http.Cookie{
+				Name:  "JSESSIONID",
+				Value: oauthCtx.SpringSessionID,
+			})
+			log.Printf("DEBUG: Using JSESSIONID from oauth_context: %s", oauthCtx.SpringSessionID)
+		} else {
+			log.Printf("DEBUG: No JSESSIONID available for Spring proxy request")
+		}
 	}
 
 	// Execute request
@@ -201,6 +214,14 @@ func (h *OAuthProxyHandler) isLoginRedirect(path string) bool {
 
 // handleUnauthenticatedUser saves OAuth context and redirects to BFF login page
 func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *http.Request, params map[string]string, resp *http.Response) {
+	// Check if we already have an oauth_context with username (user already logged in)
+	existingCtx, _ := middleware.GetOAuthContext(r)
+	if existingCtx != nil && existingCtx.Username != "" {
+		// User already logged in but Spring still redirecting to login - this shouldn't happen
+		// Log it and let the flow continue (might be session expiry on Spring side)
+		log.Printf("WARNING: User has oauth_context with username=%s but Spring still redirecting to login", existingCtx.Username)
+	}
+
 	// Extract JSESSIONID from Spring's response cookies to preserve session continuity
 	var springSessionID string
 	
@@ -219,6 +240,12 @@ func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *
 	}
 
 	// Create OAuth context to preserve authorization request parameters
+	// Preserve username from existing context if present
+	username := ""
+	if existingCtx != nil {
+		username = existingCtx.Username
+	}
+	
 	oauthCtx := &middleware.OAuthContext{
 		ResponseType:    params["response_type"],
 		ClientID:        params["client_id"],
@@ -226,6 +253,7 @@ func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *
 		Scope:           params["scope"],
 		State:           params["state"],
 		SpringSessionID: springSessionID,
+		Username:        username,
 	}
 
 	// Save context in encrypted cookie
@@ -235,7 +263,7 @@ func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *
 		return
 	}
 
-	log.Printf("INFO: OAuth context saved for client_id=%s, springSessionID=%s, redirecting to login", params["client_id"], springSessionID)
+	log.Printf("INFO: OAuth context saved for client_id=%s, springSessionID=%s, username=%s, redirecting to login", params["client_id"], springSessionID, username)
 
 	// Redirect to BFF's OAuth client login page (themed based on client_id)
 	http.Redirect(w, r, "/oauth/login?continue=true", http.StatusFound)

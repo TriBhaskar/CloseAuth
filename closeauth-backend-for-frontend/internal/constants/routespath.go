@@ -53,6 +53,7 @@ const (
 	// GET routes - display themed pages
 	RouteOAuthClientLogin    = "/oauth/login"
 	RouteOAuthClientRegister = "/oauth/register"
+	RouteOAuthConsent        = "/oauth/consent"
 	
 	// POST routes - handle form submissions
 	RouteOAuthClientLoginPost          = "/closeauth/login"

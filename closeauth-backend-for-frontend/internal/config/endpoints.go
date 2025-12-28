@@ -16,14 +16,15 @@ type EndpointsConfig struct {
 
 // OAuth2Endpoints holds OAuth2-related endpoints
 type OAuth2Endpoints struct {
-	BaseURL      string // Full base URL with context path
-	Token        string // /oauth2/token
-	Authorize    string // /oauth2/authorize
-	Login        string // /login
-	Introspect   string // /oauth2/introspect
-	Revocation   string // /oauth2/revoke
-	JWKS         string // /oauth2/jwks
+	BaseURL        string // Full base URL with context path
+	Token          string // /oauth2/token
+	Authorize      string // /oauth2/authorize
+	Login          string // /login
+	Introspect     string // /oauth2/introspect
+	Revocation     string // /oauth2/revoke
+	JWKS           string // /oauth2/jwks
 	RegisterClient string // /connect/register
+	ClientInfo     string // /oauth2/client-info
 }
 
 // CloseAuthEndpoints holds CloseAuth admin API endpoints
@@ -60,6 +61,7 @@ func LoadEndpointsConfig() (*EndpointsConfig, error) {
 			Revocation:     getEnvOrDefault("OAUTH2_REVOCATION_URL", "/oauth2/revoke"),
 			JWKS:           getEnvOrDefault("OAUTH2_JWKS_URL", "/oauth2/jwks"),
 			RegisterClient: getEnvOrDefault("OAUTH2_REGISTER_CLIENT_URL", "/connect/register"),
+			ClientInfo:     getEnvOrDefault("OAUTH2_CLIENT_INFO_URL", "/oauth2/client-info"),
 		},
 		CloseAuth: CloseAuthEndpoints{
 			AdminLogin:              getEnvOrDefault("CLOSEAUTH_ADMIN_LOGIN_URL", "/api/v1/admin/auth/login"),
@@ -118,6 +120,11 @@ func (e *EndpointsConfig) GetJWKSURL() string {
 // GetRegisterClientURL returns the full client registration endpoint URL
 func (e *EndpointsConfig) GetRegisterClientURL() string {
 	return e.GetOAuth2URL(e.OAuth2.RegisterClient)
+}
+
+// GetClientInfoURL returns the full client info endpoint URL with client_id parameter
+func (e *EndpointsConfig) GetClientInfoURL(clientID string) string {
+	return e.GetOAuth2URL(e.OAuth2.ClientInfo) + "?client_id=" + clientID
 }
 
 // GetAdminLoginURL returns the full admin login endpoint URL

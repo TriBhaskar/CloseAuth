@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"closeauth-backend-for-frontend/internal/config"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -164,4 +165,55 @@ func (ac *AuthenticatedClient) PostJSON(ctx context.Context, url string, jsonBod
 // Note: Most CloseAuth admin endpoints expect JSON, not form data
 func (ac *AuthenticatedClient) PostForm(ctx context.Context, url string, formData io.Reader) (*http.Response, error) {
 	return ac.Post(ctx, url, "application/x-www-form-urlencoded", formData)
+}
+
+// GetClientInfo fetches client information (name, logo, scopes) from Spring Authorization Server
+func (ac *AuthenticatedClient) GetClientInfo(ctx context.Context, clientID string) (*ClientInfoResult, error) {
+	if clientID == "" {
+		return nil, fmt.Errorf("client ID is required")
+	}
+
+	url := ac.endpoints.GetClientInfoURL(clientID)
+	ac.logger.Debug("Fetching client info", "client_id", clientID, "url", url)
+
+	resp, err := ac.Get(ctx, url)
+	if err != nil {
+		ac.logger.Error("Failed to fetch client info", "error", err, "client_id", clientID)
+		return nil, fmt.Errorf("failed to fetch client info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		ac.logger.Error("Client info request failed",
+			"status_code", resp.StatusCode,
+			"client_id", clientID,
+			"response", string(body))
+		return nil, fmt.Errorf("client info request failed with status %d", resp.StatusCode)
+	}
+
+	var clientInfo ClientInfoResult
+	if err := decodeJSON(resp.Body, &clientInfo); err != nil {
+		ac.logger.Error("Failed to decode client info response", "error", err)
+		return nil, fmt.Errorf("failed to decode client info: %w", err)
+	}
+
+	ac.logger.Info("Client info fetched successfully",
+		"client_id", clientInfo.ClientID,
+		"client_name", clientInfo.ClientName)
+
+	return &clientInfo, nil
+}
+
+// ClientInfoResult represents the response from the client-info endpoint
+type ClientInfoResult struct {
+	ClientID   string   `json:"clientId"`
+	ClientName string   `json:"clientName"`
+	LogoURI    string   `json:"logoUri"`
+	Scopes     []string `json:"scopes"`
+}
+
+// decodeJSON is a helper to decode JSON response
+func decodeJSON(r io.Reader, v interface{}) error {
+	return json.NewDecoder(r).Decode(v)
 }

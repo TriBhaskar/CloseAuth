@@ -76,6 +76,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Post(constants.RouteOAuthClientRegisterVerifyOTP, s.oauthClientAuthHandler.HandleOAuthVerifyRegistrationOTP)
 	r.Post(constants.RouteOAuthClientRegisterResendOTP, s.oauthClientAuthHandler.HandleOAuthResendRegistrationOTP)
 	
+	// OAuth consent page - Spring Authorization Server redirects here for user consent
+	r.Get(constants.RouteOAuthConsent, s.oauthClientAuthHandler.HandleOAuthConsentGet)
+	r.Post(constants.RouteOAuthConsent, s.oauthClientAuthHandler.HandleOAuthConsentPost)
+	
 	    // Catch-all route for 404s - redirect to home page
     r.NotFound(func(w http.ResponseWriter, r *http.Request) {
         http.Redirect(w, r, constants.RouteHome, http.StatusTemporaryRedirect)

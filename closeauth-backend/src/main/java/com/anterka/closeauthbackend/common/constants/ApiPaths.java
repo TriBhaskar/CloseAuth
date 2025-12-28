@@ -29,6 +29,7 @@ public class ApiPaths {
     public static final String JWKS_URL = OAUTH2_BASE + "/jwks";
     public static final String REVOCATION_URL = OAUTH2_BASE + "/revoke";
     public static final String INTROSPECTION_URL = OAUTH2_BASE + "/introspect";
+    public static final String CLIENT_INFO_URL = OAUTH2_BASE + "/client-info";
 
     // Client Configuration Management
     public static final String CLIENT_CONFIG_BASE = API_V1_BASE + "/clients";
@@ -47,7 +48,8 @@ public class ApiPaths {
             ADMIN_BASE + VERIFY_EMAIL,
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
-            ADMIN_BASE + RESET_PASSWORD
+            ADMIN_BASE + RESET_PASSWORD,
+            CLIENT_INFO_URL
     };
 
 

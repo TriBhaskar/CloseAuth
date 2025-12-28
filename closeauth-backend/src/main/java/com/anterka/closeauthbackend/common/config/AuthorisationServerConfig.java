@@ -57,6 +57,9 @@ public class AuthorisationServerConfig {
     @Value("${closeauth.bff.login-page}")
     private String loginPageUrl;
 
+    @Value("${closeauth.bff.consent-page}")
+    private String consentPageUrl;
+
     /**
      * Filter Chain 1: OAuth2 Authorization Server endpoints
      * Handles: /oauth2/**, /connect/register (OIDC dynamic client registration), /.well-known/**
@@ -71,6 +74,8 @@ public class AuthorisationServerConfig {
 
         http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
                 .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
+                        .authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
+                                .consentPage(consentPageUrl))
                         .oidc(oidc -> oidc
                                 .clientRegistrationEndpoint(clientRegistrationEndpoint -> clientRegistrationEndpoint
                                         .authenticationProviders(configureCustomClientMetadataConverters()))))

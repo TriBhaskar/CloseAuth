@@ -30,6 +30,7 @@ public class ApiPaths {
     public static final String REVOCATION_URL = OAUTH2_BASE + "/revoke";
     public static final String INTROSPECTION_URL = OAUTH2_BASE + "/introspect";
     public static final String CLIENT_INFO_URL = OAUTH2_BASE + "/client-info";
+    public static final String USER_REGISTER_URL = OAUTH2_BASE + "/register";
 
     // Client Configuration Management
     public static final String CLIENT_CONFIG_BASE = API_V1_BASE + "/clients";
@@ -49,7 +50,8 @@ public class ApiPaths {
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
             ADMIN_BASE + RESET_PASSWORD,
-            CLIENT_INFO_URL
+            CLIENT_INFO_URL,
+            USER_REGISTER_URL + "/**"
     };
 
 

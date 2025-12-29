@@ -16,18 +16,18 @@ public interface ApplicationRegistrationConfigRepository extends JpaRepository<A
     Optional<ApplicationRegistrationConfig> findByClient(Client client);
 
     /**
-     * Find configuration by client ID
+     * Find configuration by OAuth2 client ID (client.clientId field)
      */
-    Optional<ApplicationRegistrationConfig> findByClientId(String clientId);
+    Optional<ApplicationRegistrationConfig> findByClient_ClientId(String clientId);
 
     /**
-     * Check if configuration exists for a client
+     * Check if configuration exists for a client by OAuth2 client ID
      */
-    boolean existsByClientId(String clientId);
+    boolean existsByClient_ClientId(String clientId);
 
     /**
-     * Delete configuration by client ID
+     * Delete configuration by OAuth2 client ID
      */
-    void deleteByClientId(String clientId);
+    void deleteByClient_ClientId(String clientId);
 }
 

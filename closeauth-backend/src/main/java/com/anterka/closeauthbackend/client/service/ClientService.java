@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.server.authorization.jackson2.OAuth2A
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -37,15 +38,18 @@ public class ClientService implements RegisteredClientRepository {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final PasswordEncoder passwordEncoder;
     private final ClientInitializationService clientInitializationService;
+    private final ApplicationRegistrationConfigService applicationRegistrationConfigService;
 
     public ClientService(
             ClientRepository clientRepository,
             PasswordEncoder passwordEncoder,
-            ClientInitializationService clientInitializationService) {
+            ClientInitializationService clientInitializationService,
+            ApplicationRegistrationConfigService applicationRegistrationConfigService) {
         Assert.notNull(clientRepository, "clientRepository cannot be null");
         this.clientRepository = clientRepository;
         this.passwordEncoder = passwordEncoder;
         this.clientInitializationService = clientInitializationService;
+        this.applicationRegistrationConfigService = applicationRegistrationConfigService;
 
         ClassLoader classLoader = ClientService.class.getClassLoader();
         List<Module> securityModules = SecurityJackson2Modules.getModules(classLoader);
@@ -54,10 +58,21 @@ public class ClientService implements RegisteredClientRepository {
     }
 
     @Override
+    @Transactional
     public void save(RegisteredClient registeredClient) {
         Assert.notNull(registeredClient, "registeredClient cannot be null");
         log.info("Saving registered client: {}", registeredClient.getClientId());
+
+        // Check if this is a new client (not an update)
+        boolean isNewClient = this.clientRepository.findById(registeredClient.getId()).isEmpty();
+
         this.clientRepository.save(toEntity(registeredClient));
+
+        // Create default registration config for new clients (e.g., from OIDC /connect/register)
+        if (isNewClient) {
+            log.info("New client detected, creating default registration config for: {}", registeredClient.getClientId());
+            applicationRegistrationConfigService.createDefaultConfig(registeredClient.getClientId());
+        }
     }
 
     @Override

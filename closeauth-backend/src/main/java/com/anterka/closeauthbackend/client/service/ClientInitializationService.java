@@ -27,7 +27,6 @@ public class ClientInitializationService {
     private final ClientOwnershipRepository clientOwnershipRepository;
     private final UserRepository userRepository;
     private final ApplicationRoleService applicationRoleService;
-    private final ApplicationRegistrationConfigService registrationConfigService;
     private final ClientThemeService clientThemeService;
     private final AuditLogService auditLogService;
 
@@ -88,11 +87,10 @@ public class ClientInitializationService {
 
     /**
      * Create default configurations for a new client
+     * Note: Registration config is created in ClientService.save() for all clients
+     * (including OIDC dynamic registration). This method creates additional configs.
      */
     private void createDefaultConfigurations(String clientId, Integer userId) {
-        // Create default registration config
-        registrationConfigService.createDefaultConfig(clientId);
-        log.info("Created default registration config for client: {}", clientId);
 
         // Create default theme
         clientThemeService.createDefaultTheme(clientId);

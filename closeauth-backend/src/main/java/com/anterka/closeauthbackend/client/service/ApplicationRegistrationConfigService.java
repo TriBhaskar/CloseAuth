@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.client.service;
 
+import com.anterka.closeauthbackend.auth.enums.VerificationMode;
 import com.anterka.closeauthbackend.client.entity.Client;
 import com.anterka.closeauthbackend.client.repository.ClientRepository;
 import com.anterka.closeauthbackend.client.dto.request.UpdateApplicationRegistrationConfigDto;
@@ -55,7 +56,7 @@ public class ApplicationRegistrationConfigService {
     public RegistrationConfigResponse getConfig(String clientId, HttpServletRequest request) {
         verifyClientOwnership(clientId, request);
 
-        ApplicationRegistrationConfig config = configRepository.findByClientId(clientId)
+        ApplicationRegistrationConfig config = configRepository.findByClient_ClientId(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Registration config not found for client"));
 
         return mapToResponse(config);
@@ -70,7 +71,7 @@ public class ApplicationRegistrationConfigService {
                                                    String ipAddress, String userAgent, HttpServletRequest request) {
         verifyClientOwnership(clientId, request);
 
-        ApplicationRegistrationConfig config = configRepository.findByClientId(clientId)
+        ApplicationRegistrationConfig config = configRepository.findByClient_ClientId(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Registration config not found for client"));
 
         Map<String, Object> beforeState = captureState(config);
@@ -156,14 +157,14 @@ public class ApplicationRegistrationConfigService {
                 .orElseThrow(() -> new EntityNotFoundException("Client not found"));
 
         // Check if config already exists
-        if (configRepository.findByClientId(clientId).isPresent()) {
+        if (configRepository.findByClient_ClientId(clientId).isPresent()) {
             log.info("Registration config already exists for client: {}", clientId);
-            return configRepository.findByClientId(clientId).get();
+            return configRepository.findByClient_ClientId(clientId).get();
         }
 
         ApplicationRegistrationConfig config = ApplicationRegistrationConfig.builder()
                 .client(client)
-                .verificationMethod("EMAIL")
+                .verificationMethod(VerificationMode.EMAIL.name())
                 .requireEmailVerification(true)
                 .requirePhoneVerification(false)
                 .requireAdminApproval(false)

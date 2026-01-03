@@ -1,0 +1,179 @@
+package templates
+
+import (
+	"closeauth-backend-for-frontend/internal/templates/components/icon"
+	"closeauth-backend-for-frontend/internal/templates/components/card"
+	"closeauth-backend-for-frontend/internal/templates/components/badge"
+	"closeauth-backend-for-frontend/internal/templates/components/button"
+)
+
+templ Security() {
+	@AdminLayout("security") {
+		<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
+			<div class="p-6">
+				<!-- Header -->
+				<div class="mb-8">
+					<h1 class="text-3xl font-bold text-gray-900 dark:text-white">Security & Compliance</h1>
+					<p class="text-gray-600 dark:text-slate-400 mt-1">Monitor security events, access patterns, and audit logs</p>
+				</div>
+
+				<!-- Stats Cards -->
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+					@securityStatCard("Critical Alerts", "3", "red")
+					@securityStatCard("Blocked Attacks", "156", "orange")
+					@securityStatCard("Tokens Revoked", "42", "green")
+					@securityStatCard("Audit Events", "1,247", "blue")
+				</div>
+
+				<!-- Tabs -->
+				<div class="flex gap-1 mb-6 border-b border-gray-200 dark:border-slate-700">
+					<button class="px-4 py-2 text-sm font-medium text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white">
+						Security Events
+					</button>
+					<button class="px-4 py-2 text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300">
+						Audit Logs
+					</button>
+					<button class="px-4 py-2 text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300">
+						IP Access
+					</button>
+				</div>
+
+				<!-- Search and Filter -->
+				<div class="flex items-center justify-between mb-6">
+					<div class="relative">
+						<input
+							type="text"
+							placeholder="Search events..."
+							class="pl-10 pr-4 py-2 w-80 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+						/>
+						@icon.Search(icon.Props{Class: "absolute left-3 top-2.5 size-5 text-gray-400 dark:text-slate-500"})
+					</div>
+					<button class="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
+						@icon.Funnel(icon.Props{Class: "size-4"})
+						<span>All Severities</span>
+						@icon.ChevronDown(icon.Props{Class: "size-4"})
+					</button>
+				</div>
+
+				<!-- Security Events List -->
+				<div class="space-y-4">
+					@securityEventCard("critical", "Brute Force Attack Detected", "500+ failed login attempts in 5 minutes", "192.168.1.105", "Unknown VPN", "5 min ago", false)
+					@securityEventCard("high", "Unusual Token Pattern", "Token refresh rate 10x normal for client 'mobile-app'", "45.33.32.156", "New York, US", "23 min ago", false)
+					@securityEventCard("medium", "New Admin Login Location", "Admin user logged in from new geographic location", "89.247.1.42", "Berlin, Germany", "1 hour ago", true)
+					@securityEventCard("low", "Mass Token Revocation", "Client 'legacy-system' had all tokens revoked", "10.0.0.1", "Internal", "2 hours ago", true)
+					@securityEventCard("high", "SQL Injection Attempt", "Malicious payload detected in authorization request", "203.0.113.42", "Unknown", "3 hours ago", true)
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ securityStatCard(title, value, color string) {
+	@card.Card() {
+		@card.Content(card.ContentProps{Class: "pt-6"}) {
+			<div class="flex items-center gap-3">
+				<div class={ "p-2 rounded-full", templ.KV("text-red-600 dark:text-red-400", color == "red"), templ.KV("text-orange-600 dark:text-orange-400", color == "orange"), templ.KV("text-green-600 dark:text-green-400", color == "green"), templ.KV("text-blue-600 dark:text-blue-400", color == "blue") }>
+					if color == "red" {
+						@icon.CircleAlert(icon.Props{Class: "size-5"})
+					} else if color == "orange" {
+						@icon.TriangleAlert(icon.Props{Class: "size-5"})
+					} else if color == "green" {
+						@icon.CircleCheck(icon.Props{Class: "size-5"})
+					} else {
+						@icon.FileText(icon.Props{Class: "size-5"})
+					}
+				</div>
+				<div>
+					<div class={ "text-sm font-medium", templ.KV("text-red-600 dark:text-red-400", color == "red"), templ.KV("text-orange-600 dark:text-orange-400", color == "orange"), templ.KV("text-green-600 dark:text-green-400", color == "green"), templ.KV("text-blue-600 dark:text-blue-400", color == "blue") }>
+						{ title }
+					</div>
+					<div class="text-2xl font-bold text-gray-900 dark:text-white">{ value }</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ securityEventCard(severity, title, description, ip, location, timeAgo string, resolved bool) {
+	<div class={ "border-l-4 bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden", templ.KV("border-red-500", severity == "critical"), templ.KV("border-orange-500", severity == "high"), templ.KV("border-blue-500", severity == "medium"), templ.KV("border-gray-400", severity == "low") }>
+		<div class="p-4">
+			<div class="flex items-start justify-between">
+				<div class="flex items-start gap-3">
+					<div class={ "p-2 rounded-lg", templ.KV("bg-red-100 dark:bg-red-900/30", severity == "critical"), templ.KV("bg-orange-100 dark:bg-orange-900/30", severity == "high"), templ.KV("bg-blue-100 dark:bg-blue-900/30", severity == "medium"), templ.KV("bg-gray-100 dark:bg-slate-700", severity == "low") }>
+						if severity == "critical" {
+							@icon.ShieldAlert(icon.Props{Class: "size-5 text-red-600 dark:text-red-400"})
+						} else if severity == "high" {
+							@icon.TriangleAlert(icon.Props{Class: "size-5 text-orange-600 dark:text-orange-400"})
+						} else if severity == "medium" {
+							@icon.Info(icon.Props{Class: "size-5 text-blue-600 dark:text-blue-400"})
+						} else {
+							@icon.Circle(icon.Props{Class: "size-5 text-gray-600 dark:text-slate-400"})
+						}
+					</div>
+					<div>
+						<div class="flex items-center gap-2">
+							<h3 class="font-semibold text-gray-900 dark:text-white">{ title }</h3>
+							@badge.Badge(badge.Props{
+								Class: severityBadgeClass(severity),
+							}) {
+								{ severity }
+							}
+							if resolved {
+								@badge.Badge(badge.Props{
+									Variant: badge.VariantOutline,
+									Class: "text-green-600 border-green-300 dark:text-green-400 dark:border-green-700",
+								}) {
+									@icon.CircleCheck(icon.Props{Class: "size-3 mr-1"})
+									Resolved
+								}
+							}
+						</div>
+						<p class="text-sm text-gray-600 dark:text-slate-400 mt-1">{ description }</p>
+						<div class="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-slate-500">
+							<span class="flex items-center gap-1">
+								@icon.Globe(icon.Props{Class: "size-3"})
+								{ ip }
+							</span>
+							<span>•</span>
+							<span>{ location }</span>
+							<span class="flex items-center gap-1">
+								@icon.Clock(icon.Props{Class: "size-3"})
+								{ timeAgo }
+							</span>
+						</div>
+					</div>
+				</div>
+				<div class="flex items-center gap-2">
+					@button.Button(button.Props{
+						Variant: button.VariantOutline,
+						Size: button.SizeSm,
+					}) {
+						@icon.Eye(icon.Props{Class: "size-4 mr-1"})
+						Details
+					}
+					if !resolved && (severity == "critical" || severity == "high") {
+						@button.Button(button.Props{
+							Variant: button.VariantOutline,
+							Size: button.SizeSm,
+						}) {
+							Block IP
+						}
+					}
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+func severityBadgeClass(severity string) string {
+	switch severity {
+	case "critical":
+		return "bg-red-500 text-white border-red-500"
+	case "high":
+		return "bg-orange-500 text-white border-orange-500"
+	case "medium":
+		return "bg-blue-500 text-white border-blue-500"
+	default:
+		return "bg-gray-500 text-white border-gray-500"
+	}
+}

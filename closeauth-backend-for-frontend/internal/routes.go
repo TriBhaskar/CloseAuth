@@ -56,6 +56,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Get(constants.RouteAdminClients, s.clientHandler.HandleClients)
 	r.Get(constants.RouteAdminClientNew, s.clientHandler.HandleCreateClientGet)
 	r.Post(constants.RouteAdminClients, s.clientHandler.HandleCreateClientPost)
+	r.Handle(constants.RouteAdminAnalytics, templ.Handler(templates.Analytics()))
+	r.Handle(constants.RouteAdminSecurity, templ.Handler(templates.Security()))
+	r.Handle(constants.RouteAdminSettings, templ.Handler(templates.Settings()))
 	
 	// Authentication routes
 	r.Post(constants.RouteLogin, s.authHandler.HandleLoginPost)

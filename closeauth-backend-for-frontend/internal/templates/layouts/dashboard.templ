@@ -1,337 +1,242 @@
 package templates
 
 import (
-	"closeauth-backend-for-frontend/internal/templates/components/avatar"
-	"closeauth-backend-for-frontend/internal/templates/components/button"
 	"closeauth-backend-for-frontend/internal/templates/components/icon"
-  "closeauth-backend-for-frontend/internal/templates/components/badge"
-	"closeauth-backend-for-frontend/internal/constants"
+	"closeauth-backend-for-frontend/internal/templates/components/card"
+	"closeauth-backend-for-frontend/internal/templates/components/badge"
 )
 
 templ Dashboard() {
-        @AdminLayout("dashboard") {
-                <div class="bg-gray-50 min-h-screen">
-      <!-- Main content -->
-      <div class="flex-1 p-6">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-8">
-          <div>
-            <h1 class="text-3xl font-bold text-gray-900">
-              Welcome back, John Doe
-            </h1>
-            <p class="text-gray-600 mt-1">
-              Here's what's happening with your authentication server.
-            </p>
-          </div>
-          <div class="flex items-center space-x-4">
-            <span
-              class="bg-teal-100 text-teal-800 text-sm font-medium px-3 py-1 rounded-full">
-              Administrator</span>
-            @avatar.Avatar() {
-              @avatar.Image(avatar.ImageProps{
-                Src: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face",
-                Alt: "User avatar",
-              })
-              @avatar.Fallback() {
-                JD
-              }
-            }
-          </div>
-        </div>
+	@AdminLayout("overview") {
+		<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
+			<div class="p-6">
+				<!-- Header -->
+				<div class="mb-8">
+					<h1 class="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+					<p class="text-gray-600 dark:text-slate-400 mt-1">Monitor your OAuth system health and activity</p>
+				</div>
 
-        <!-- Stats Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <!-- Total Users -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-gray-500 text-sm font-medium">Total Users</h3>
-              <div class="p-2 bg-gray-100 rounded-lg">
-                <svg
-                  class="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  ></path>
-                </svg>
-              </div>
-            </div>
-            <div class="text-3xl font-bold text-gray-900 mb-2">1,247</div>
-            <div class="text-sm text-green-600">+12% from last month</div>
-          </div>
+				<!-- Stats Cards Row -->
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+					@dashboardStatCard("OAuth Clients", "24", "+2 this week", "positive", "blue") {
+						@icon.LayoutGrid(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Total Users", "12,847", "+324 this month", "positive", "blue") {
+						@icon.Users(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Daily Requests", "89.2K", "+12.5% vs yesterday", "positive", "blue") {
+						@icon.ArrowUpRight(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Success Rate", "99.2%", "+0.3% improvement", "positive", "green") {
+						@icon.TrendingUp(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Active Sessions", "3,241", "Real-time", "neutral", "blue") {
+						@icon.Activity(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Failed Auth", "156", "-23% vs yesterday", "positive", "orange") {
+						@icon.TriangleAlert(icon.Props{Class: "size-5"})
+					}
+				</div>
 
-          <!-- Active Clients -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-gray-500 text-sm font-medium">Active Clients</h3>
-              <div class="p-2 bg-gray-100 rounded-lg">
-                <svg
-                  class="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                  ></path>
-                </svg>
-              </div>
-            </div>
-            <div class="text-3xl font-bold text-gray-900 mb-2">8</div>
-            <div class="text-sm text-green-600">2 new this week</div>
-          </div>
+				<!-- OAuth Requests Section -->
+				<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+					<!-- Chart -->
+					@card.Card(card.Props{Class: "lg:col-span-2"}) {
+						@card.Header() {
+							<div class="flex items-center justify-between">
+								<div>
+									@card.Title() { OAuth Requests }
+									@card.Description() { Authorization and token requests over 24 hours }
+								</div>
+								<div class="flex items-center gap-4 text-sm">
+									<div class="flex items-center gap-2">
+										<span class="w-3 h-3 rounded-full bg-blue-500"></span>
+										<span class="text-gray-600 dark:text-slate-400">Authorizations</span>
+									</div>
+									<div class="flex items-center gap-2">
+										<span class="w-3 h-3 rounded-full bg-cyan-400"></span>
+										<span class="text-gray-600 dark:text-slate-400">Tokens</span>
+									</div>
+								</div>
+							</div>
+						}
+						@card.Content() {
+							<!-- Chart Placeholder -->
+							<div class="h-48 bg-gradient-to-b from-blue-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-lg flex items-center justify-center border border-gray-200 dark:border-slate-700">
+								<div class="text-center text-gray-400 dark:text-slate-500">
+									<svg class="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+									</svg>
+									<p class="text-sm">Request Chart (00:00 - 24:00)</p>
+								</div>
+							</div>
+						}
+					}
 
-          <!-- Active Sessions -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-gray-500 text-sm font-medium">Active Sessions</h3>
-              <div class="p-2 bg-gray-100 rounded-lg">
-                <svg
-                  class="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  ></path>
-                </svg>
-              </div>
-            </div>
-            <div class="text-3xl font-bold text-gray-900 mb-2">342</div>
-            <div class="text-sm text-green-600">+5% from yesterday</div>
-          </div>
+					<!-- Top Clients -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() { Top Clients by Usage }
+						}
+						@card.Content() {
+							<div class="space-y-4">
+								@topClientItem("Web Application", "45,820 requests", 92)
+								@topClientItem("Mobile App iOS", "32,100 requests", 64)
+								@topClientItem("Mobile App Android", "28,450 requests", 57)
+								@topClientItem("Partner API", "15,200 requests", 30)
+								@topClientItem("Internal Dashboard", "7,800 requests", 16)
+							</div>
+						}
+					}
+				</div>
 
-          <!-- Security Events -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-gray-500 text-sm font-medium">Security Events</h3>
-              <div class="p-2 bg-gray-100 rounded-lg">
-                <svg
-                  class="w-5 h-5 text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5l-6.928-7.5a2 2 0 00-3.048 0l-6.928 7.5C1.502 17.333 2.462 19 4.002 19z"
-                  ></path>
-                </svg>
-              </div>
-            </div>
-            <div class="text-3xl font-bold text-gray-900 mb-2">3</div>
-            <div class="text-sm text-gray-500">All resolved</div>
-          </div>
-        </div>
+				<!-- Bottom Row -->
+				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+					<!-- Recent Activity -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() { Recent Activity }
+						}
+						@card.Content() {
+							<div class="space-y-4">
+								@activityItem("error", "Multiple failed login attempts detected", "Mobile App", "2 min ago")
+								@activityItem("success", "New OAuth client registered successfully", "Dashboard API", "15 min ago")
+								@activityItem("warning", "Rate limit threshold reached", "Partner Portal", "32 min ago")
+								@activityItem("success", "Token refresh completed", "Web Application", "1 hour ago")
+								@activityItem("info", "Scheduled maintenance completed", "", "2 hours ago")
+								@activityItem("error", "Invalid redirect URI blocked", "Unknown Client", "3 hours ago")
+							</div>
+						}
+					}
 
-        <!-- Recent Client Applications -->
-        <div class="bg-white rounded-xl border border-gray-200 mb-8">
-          <div class="p-6 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-xl font-semibold text-gray-900">
-                  Recent Client Applications
-                </h2>
-                <p class="text-gray-600 text-sm mt-1">
-                  Manage your registered OAuth2 clients
-                </p>
-              </div>
-              @button.Button(button.Props{
-                Variant: button.VariantDefault,
-                Class: "bg-blue-600 hover:bg-blue-700 text-white px-4 py-2",
-              }) {
-                @icon.Plus(icon.Props{Size: 16, Class: "mr-2"})
-                Add Client
-              }
-            </div>
-          </div>
+					<!-- Security Alerts -->
+					@card.Card() {
+						@card.Header(card.HeaderProps{Class: "flex-row items-center justify-between"}) {
+							@card.Title() { Security Alerts }
+							<a href="/admin/security" class="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300">View All</a>
+						}
+						@card.Content() {
+							<div class="space-y-3">
+								@securityAlertItem("critical", "Brute Force Attack Detected", "Multiple failed login attempts from IP 192.168.1.105", "5 min ago")
+								@securityAlertItem("high", "Unusual Token Pattern", "Abnormal token refresh rate from client 'mobile-app'", "23 min ago")
+								@securityAlertItem("medium", "New Geographic Location", "Admin login from unrecognized location (Germany)", "1 hour ago")
+							</div>
+						}
+					}
+				</div>
+			</div>
+		</div>
+	}
+}
 
-          <div class="p-6">
-            <div class="space-y-4">
-              <!-- Web App -->
-              <div
-                class="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
-              >
-                <div class="flex items-center">
-                  <div class="p-3 bg-gray-100 rounded-lg mr-4">
-                  @icon.Globe(icon.Props{Size: 24, Class: "text-gray-600"})
-                  </div>
-                  <div>
-                    <h3 class="font-semibold text-gray-900">Web App</h3>
-                    <p class="text-sm text-gray-600">
-                      SPA • Last used 2 hours ago
-                    </p>
-                  </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                  @badge.Badge(badge.Props{
-                    Variant: badge.VariantSecondary,
-                    Class: "bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full",}) {active}
-              @button.Button(button.Props{
-                Size: button.SizeLg,
-                Class: "text-gray-400 hover:text-gray-600",
-              }) {
-                @icon.Settings(icon.Props{Size: 16})
-              }
-                </div>
-              </div>
+templ dashboardStatCard(title, value, change, changeType, color string) {
+	@card.Card() {
+		@card.Content(card.ContentProps{Class: "pt-4 pb-4"}) {
+			<div class="flex items-start justify-between">
+				<div>
+					<div class="flex items-center gap-2">
+						<span class="text-sm text-gray-500 dark:text-slate-400">{ title }</span>
+						<div class={ "p-1 rounded", templ.KV("bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400", color == "blue"), templ.KV("bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400", color == "green"), templ.KV("bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400", color == "orange") }>
+							{ children... }
+						</div>
+					</div>
+					<div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{ value }</div>
+					<div class={ "text-xs mt-1", templ.KV("text-green-600 dark:text-green-400", changeType == "positive"), templ.KV("text-red-600 dark:text-red-400", changeType == "negative"), templ.KV("text-gray-500 dark:text-slate-400", changeType == "neutral") }>
+						{ change }
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
 
-              <!-- Mobile App -->
-              <div
-                class="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
-              >
-                <div class="flex items-center">
-                  <div class="p-3 bg-gray-100 rounded-lg mr-4">
-                    @icon.Smartphone(icon.Props{Size: 24, Class: "text-gray-600"})
-                  </div>
-                  <div>
-                    <h3 class="font-semibold text-gray-900">Mobile App</h3>
-                    <p class="text-sm text-gray-600">
-                      Native • Last used 1 day ago
-                    </p>
-                  </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                @badge.Badge(badge.Props{
-                    Variant: badge.VariantSecondary,
-                    Class: "bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full",}) {active}
-              @button.Button(button.Props{
-                Size: button.SizeLg,
-                Class: "text-gray-400 hover:text-gray-600",
-              }) {
-                @icon.Settings(icon.Props{Size: 16})
-              }
-                </div>
-              </div>
+templ topClientItem(name, requests string, percentage int) {
+	<div>
+		<div class="flex items-center justify-between mb-1">
+			<span class="text-sm font-medium text-gray-900 dark:text-white">{ name }</span>
+			<span class="text-xs text-gray-500 dark:text-slate-400">{ requests }</span>
+		</div>
+		<div class="h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+			<div class="h-full bg-blue-500 rounded-full" style={ "width: " + percentToString(percentage) + "%" }></div>
+		</div>
+	</div>
+}
 
-              <!-- API Service -->
-              <div
-                class="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
-              >
-                <div class="flex items-center">
-                  <div class="p-3 bg-gray-100 rounded-lg mr-4">
-                    @icon.Server(icon.Props{Size: 24, Class: "text-gray-600"})
-                  </div>
-                  <div>
-                    <h3 class="font-semibold text-gray-900">API Service</h3>
-                    <p class="text-sm text-gray-600">
-                      M2M • Last used 3 days ago
-                    </p>
-                  </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                  <span
-                    class="bg-gray-100 text-gray-800 text-sm font-medium px-3 py-1 rounded-full"
-                    >inactive</span>
-                  @button.Button(button.Props{
-                Size: button.SizeLg,
-                Class: "text-gray-400 hover:text-gray-600",
-              }) {
-                @icon.Settings(icon.Props{Size: 16})
-              }
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+templ activityItem(activityType, message, source, time string) {
+	<div class="flex items-start gap-3">
+		<div class={ "p-1.5 rounded-full", templ.KV("bg-red-100 dark:bg-red-900/30", activityType == "error"), templ.KV("bg-green-100 dark:bg-green-900/30", activityType == "success"), templ.KV("bg-orange-100 dark:bg-orange-900/30", activityType == "warning"), templ.KV("bg-blue-100 dark:bg-blue-900/30", activityType == "info") }>
+			if activityType == "error" {
+				@icon.CircleX(icon.Props{Class: "size-4 text-red-600 dark:text-red-400"})
+			} else if activityType == "success" {
+				@icon.CircleCheck(icon.Props{Class: "size-4 text-green-600 dark:text-green-400"})
+			} else if activityType == "warning" {
+				@icon.TriangleAlert(icon.Props{Class: "size-4 text-orange-600 dark:text-orange-400"})
+			} else {
+				@icon.Info(icon.Props{Class: "size-4 text-blue-600 dark:text-blue-400"})
+			}
+		</div>
+		<div class="flex-1 min-w-0">
+			<p class="text-sm text-gray-900 dark:text-white">{ message }</p>
+			<div class="flex items-center gap-2 mt-0.5">
+				if source != "" {
+					@badge.Badge(badge.Props{
+						Variant: badge.VariantSecondary,
+						Class: "text-xs",
+					}) {
+						{ source }
+					}
+				}
+				<span class="text-xs text-gray-500 dark:text-slate-500">{ time }</span>
+			</div>
+		</div>
+	</div>
+}
 
-        <!-- Bottom Action Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <!-- User Management -->
-          <a
-            href={ templ.SafeURL(constants.RouteAdminUsers) }
-            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
-          >
-            <div class="flex items-center mb-4">
-              <div class="p-3 bg-blue-100 rounded-lg mr-4">
-                <svg
-                  class="w-6 h-6 text-blue-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  ></path>
-                </svg>
-              </div>
-              <h3 class="font-semibold text-gray-900">User Management</h3>
-            </div>
-            <p class="text-gray-600 text-sm">View and manage user accounts</p>
-          </a>
+templ securityAlertItem(severity, title, description, time string) {
+	<div class={ "p-3 rounded-lg border-l-4", templ.KV("bg-red-50 dark:bg-red-900/20 border-red-500", severity == "critical"), templ.KV("bg-orange-50 dark:bg-orange-900/20 border-orange-500", severity == "high"), templ.KV("bg-blue-50 dark:bg-blue-900/20 border-blue-500", severity == "medium") }>
+		<div class="flex items-start gap-2">
+			if severity == "critical" {
+				@icon.CircleX(icon.Props{Class: "size-4 text-red-600 dark:text-red-400 mt-0.5"})
+			} else if severity == "high" {
+				@icon.TriangleAlert(icon.Props{Class: "size-4 text-orange-600 dark:text-orange-400 mt-0.5"})
+			} else {
+				@icon.Info(icon.Props{Class: "size-4 text-blue-600 dark:text-blue-400 mt-0.5"})
+			}
+			<div class="flex-1">
+				<div class="flex items-center gap-2">
+					<span class="font-medium text-sm text-gray-900 dark:text-white">{ title }</span>
+					@badge.Badge(badge.Props{
+						Class: dashboardSeverityBadgeClass(severity),
+					}) {
+						{ severity }
+					}
+				</div>
+				<p class="text-xs text-gray-600 dark:text-slate-400 mt-1">{ description }</p>
+				<span class="text-xs text-gray-500 dark:text-slate-500 mt-1 block">{ time }</span>
+			</div>
+		</div>
+	</div>
+}
 
-          <!-- Security Settings -->
-          <a
-            href="/admin/settings"
-            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
-          >
-            <div class="flex items-center mb-4">
-              <div class="p-3 bg-red-100 rounded-lg mr-4">
-                <svg
-                  class="w-6 h-6 text-red-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                  ></path>
-                </svg>
-              </div>
-              <h3 class="font-semibold text-gray-900">Security Settings</h3>
-            </div>
-            <p class="text-gray-600 text-sm">
-              Configure authentication policies
-            </p>
-          </a>
+func percentToString(p int) string {
+	if p >= 100 {
+		return "100"
+	}
+	if p >= 10 {
+		return string(rune('0'+p/10)) + string(rune('0'+p%10))
+	}
+	return string(rune('0' + p))
+}
 
-          <!-- API Documentation -->
-          <a
-            href="/public/docs"
-            class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer block"
-          >
-            <div class="flex items-center mb-4">
-              <div class="p-3 bg-green-100 rounded-lg mr-4">
-                <svg
-                  class="w-6 h-6 text-green-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  ></path>
-                </svg>
-              </div>
-              <h3 class="font-semibold text-gray-900">API Documentation</h3>
-            </div>
-            <p class="text-gray-600 text-sm">Integration guides and examples</p>
-          </a>
-        </div>
-      </div>
-    </div>
-        }
+func dashboardSeverityBadgeClass(severity string) string {
+	switch severity {
+	case "critical":
+		return "bg-red-500 text-white border-red-500 text-xs"
+	case "high":
+		return "bg-orange-500 text-white border-orange-500 text-xs"
+	case "medium":
+		return "bg-blue-500 text-white border-blue-500 text-xs"
+	default:
+		return "bg-gray-500 text-white border-gray-500 text-xs"
+	}
 }

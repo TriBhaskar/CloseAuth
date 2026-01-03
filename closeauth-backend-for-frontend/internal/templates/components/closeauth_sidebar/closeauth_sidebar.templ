@@ -4,94 +4,49 @@ import "closeauth-backend-for-frontend/internal/templates/components/sidebar"
 import "closeauth-backend-for-frontend/internal/constants"
 import "closeauth-backend-for-frontend/internal/templates/components/icon"
 import "closeauth-backend-for-frontend/internal/templates/components/avatar"
-import "closeauth-backend-for-frontend/internal/templates/components/dropdown"
 
 templ CloseAuthSidebar(activePage string) {
 	@sidebar.Layout() {
-		    @sidebar.Sidebar(sidebar.Props{
+		@sidebar.Sidebar(sidebar.Props{
 			Collapsible: sidebar.CollapsibleIcon,
-			Variant:     sidebar.VariantFloating,
-		    }) {
+			Variant:     sidebar.VariantSidebar,
+			Class:       "bg-slate-800 text-white border-r-0",
+		}) {
 			@sidebar.Header() {
 				@sidebar.Menu() {
 					@sidebar.MenuItem() {
 						@sidebar.MenuButton(sidebar.MenuButtonProps{
 							Href: constants.RouteAdminDashboard,
+							Class: "hover:bg-slate-700",
 						}) {
-							<div class="h-8 w-8 bg-teal-600 rounded-lg flex items-center justify-center">
-								<span class="text-white font-bold text-sm">CA</span>
+							<div class="h-8 w-8 bg-teal-500 rounded-lg flex items-center justify-center">
+								<span class="text-white font-bold text-sm">O</span>
 							</div>
-							<span class="font-semibold text-xl">CloseAuth</span>
+							<span class="font-semibold text-lg text-white">OAuth Admin</span>
 						}
 					}
 				}
 			}
 			@sidebar.Content() {
 				@sidebar.Group() {
-					@sidebar.GroupLabel() {
-						Platform
-					}
 					@sidebar.Menu() {
-					@sidebar.MenuItem() {
-						@sidebar.MenuButton(sidebar.MenuButtonProps{
-							Href:     constants.RouteAdminDashboard,
-							Tooltip:  "Dashboard",
-								IsActive: activePage == "dashboard",
-								Class:    "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
-							}) {
-								@icon.LayoutDashboard(icon.Props{Class: "size-4"})
-								<span>Dashboard</span>
-							}
+						@sidebarNavItem("overview", "Overview", constants.RouteAdminDashboard, activePage) {
+							@icon.LayoutDashboard(icon.Props{Class: "size-5"})
 						}
-					@sidebar.MenuItem() {
-						@sidebar.MenuButton(sidebar.MenuButtonProps{
-							Href:     constants.RouteAdminUsers,
-							Tooltip:  "Users",
-								IsActive: activePage == "users",
-								Class:    "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
-							}) {
-								@icon.Users(icon.Props{Class: "size-4"})
-								<span>Users</span>
-							}
+						@sidebarNavItem("clients", "Clients", constants.RouteAdminClients, activePage) {
+							@icon.LayoutGrid(icon.Props{Class: "size-5"})
 						}
-					@sidebar.MenuItem() {
-						@sidebar.MenuButton(sidebar.MenuButtonProps{
-							Href:     constants.RouteAdminClients,
-							Tooltip:  "Client Apps",
-								IsActive: activePage == "clients",
-								Class:    "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
-							}) {
-								@icon.LayoutGrid(icon.Props{Class: "size-4"})
-								<span>Client Apps</span>
-							}
+						@sidebarNavItem("users", "Users", constants.RouteAdminUsers, activePage) {
+							@icon.Users(icon.Props{Class: "size-5"})
 						}
-					}
-				}
-				@sidebar.Separator()
-				@sidebar.Group() {
-					@sidebar.GroupLabel() {
-						System
-					}
-					@sidebar.Menu() {
-						@sidebar.MenuItem() {
-							@sidebar.MenuButton(sidebar.MenuButtonProps{
-								Href:    "/admin/audit",
-								Tooltip: "Security",
-								Class:   "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
-							}) {
-								@icon.ShieldCheck(icon.Props{Class: "size-4"})
-								<span>Security</span>
-							}
+						@sidebarNavItem("analytics", "Analytics", constants.RouteAdminAnalytics, activePage) {
+							@icon.ChartBar(icon.Props{Class: "size-5"})
 						}
-						@sidebar.MenuItem() {
-							@sidebar.MenuButton(sidebar.MenuButtonProps{
-								Href:    "/admin/settings",
-								Tooltip: "API Keys",
-								Class:   "flex items-center px-3 py-2 text-sm font-medium rounded-l-md hover:bg-gray-50 transition-colors duration-200 text-gray-700 hover:text-gray-900",
-							}) {
-								@icon.Key(icon.Props{Class: "size-4"})
-								<span>API Keys</span>
-							}
+						@sidebarNavItem("security", "Security", constants.RouteAdminSecurity, activePage) {
+							@icon.Shield(icon.Props{Class: "size-5"})
+						}
+						@sidebarNavItem("settings", "Settings", constants.RouteAdminSettings, activePage) {
+							@icon.Settings(icon.Props{Class: "size-5"})
 						}
 					}
 				}
@@ -99,73 +54,104 @@ templ CloseAuthSidebar(activePage string) {
 			@sidebar.Footer() {
 				@sidebar.Menu() {
 					@sidebar.MenuItem() {
-						@dropdown.Dropdown() {
-								@dropdown.Trigger() {
-								@sidebar.MenuButton(sidebar.MenuButtonProps{
-									Size: sidebar.MenuButtonSizeLg,
-									Class: "flex items-center gap-3 rounded-md p-2 hover:bg-gray-50 transition-colors text-gray-700",
-								}) {
-									@avatar.Avatar(avatar.Props{Class: "size-8 rounded-lg"}) {
-										@avatar.Image(avatar.ImageProps{
-											Src: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face",
-										})
-										@avatar.Fallback() {
-											JD
-										}
-									}
-									<div class="grid flex-1 text-left text-sm leading-tight">
-										<span class="truncate font-medium">John Doe</span>
-										<span class="truncate text-xs text-muted-foreground">john@example.com</span>
-									</div>
-									@icon.ChevronsUpDown(icon.Props{Class: "ml-auto size-4"})
-								}
+						<div class="flex items-center gap-3 p-2 text-slate-300">
+							@avatar.Avatar(avatar.Props{Class: "size-9 rounded-lg bg-slate-600"}) {
+								<span class="text-sm font-medium text-white">AD</span>
 							}
-							@dropdown.Content(dropdown.ContentProps{
-								Class:     "w-56",
-								Placement: dropdown.PlacementTopStart,
-							}) {
-								@dropdown.Label() {
-									<div class="font-normal">
-										<div class="font-medium">John Doe</div>
-										<div class="text-xs text-muted-foreground">john@example.com</div>
-									</div>
-								}
-								@dropdown.Separator()
-								@dropdown.Item() {
-									<a href="/admin/profile" class="flex items-center w-full">
-										@icon.User(icon.Props{Size: 16, Class: "mr-2"})
-										<span>Profile</span>
-									</a>
-								}
-								@dropdown.Item() {
-									<a href="/admin/settings" class="flex items-center w-full">
-										@icon.Settings(icon.Props{Size: 16, Class: "mr-2"})
-										<span>Settings</span>
-									</a>
-								}
-								@dropdown.Separator()
-								@dropdown.Item() {
-									<a href="/auth/logout" class="flex items-center w-full text-red-600">
-										@icon.LogOut(icon.Props{Size: 16, Class: "mr-2"})
-										<span>Log out</span>
-									</a>
-								}
-							}
-						}
+							<div class="flex-1 min-w-0">
+								<div class="text-sm font-medium text-white truncate">Admin User</div>
+								<div class="text-xs text-slate-400 truncate">admin@compan...</div>
+							</div>
+							<a href="/auth/logout" class="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors" title="Logout">
+								@icon.LogOut(icon.Props{Class: "size-4"})
+							</a>
+						</div>
 					}
 				}
 			}
 		}
 		@sidebar.Inset() {
-			<div class="flex h-full flex-col">
-				<div class="flex h-14 items-center gap-4 border-b px-6 bg-white">
-					@sidebar.Trigger()
-					<span class="text-sm text-muted-foreground">Press <kbd class="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">Ctrl+B</kbd> to toggle sidebar</span>
+			<div class="flex h-full flex-col bg-gray-50 dark:bg-slate-900">
+				<!-- Top Header Bar -->
+				<div class="flex h-14 items-center justify-between border-b border-gray-200 dark:border-slate-700 px-6 bg-white dark:bg-slate-800">
+					<div class="flex items-center gap-4">
+						@sidebar.Trigger()
+					</div>
+					<div class="flex items-center gap-2">
+						<!-- Notification Bell -->
+						<button class="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400">
+							@icon.Bell(icon.Props{Class: "size-5"})
+							<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+						</button>
+						<!-- Theme Toggle -->
+						<button 
+							id="theme-toggle"
+							onclick="toggleTheme()"
+							class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400"
+							title="Toggle theme"
+						>
+							<!-- Sun icon for dark mode -->
+							<span class="hidden dark:block">
+								@icon.Sun(icon.Props{Class: "size-5"})
+							</span>
+							<!-- Moon icon for light mode -->
+							<span class="block dark:hidden">
+								@icon.Moon(icon.Props{Class: "size-5"})
+							</span>
+						</button>
+						<script>
+							function toggleTheme() {
+								const html = document.documentElement;
+								if (html.classList.contains('dark')) {
+									html.classList.remove('dark');
+									localStorage.setItem('theme', 'light');
+								} else {
+									html.classList.add('dark');
+									localStorage.setItem('theme', 'dark');
+								}
+							}
+							// Initialize theme on page load
+							(function() {
+								const saved = localStorage.getItem('theme');
+								const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+								if (saved === 'dark' || (!saved && prefersDark)) {
+									document.documentElement.classList.add('dark');
+								} else {
+									document.documentElement.classList.remove('dark');
+								}
+							})();
+						</script>
+					</div>
 				</div>
+				<!-- Main Content Area -->
 				<div class="flex-1 overflow-y-auto">
 					{ children... }
 				</div>
 			</div>
+		}
+	}
+}
+
+// Helper component for navigation items
+templ sidebarNavItem(pageId, label, href string, activePage string) {
+	@sidebar.MenuItem() {
+		if activePage == pageId {
+			@sidebar.MenuButton(sidebar.MenuButtonProps{
+				Href:     href,
+				IsActive: true,
+				Class:    "bg-teal-600 text-white hover:bg-teal-600",
+			}) {
+				{ children... }
+				<span>{ label }</span>
+			}
+		} else {
+			@sidebar.MenuButton(sidebar.MenuButtonProps{
+				Href:  href,
+				Class: "text-slate-300 hover:bg-slate-700 hover:text-white",
+			}) {
+				{ children... }
+				<span>{ label }</span>
+			}
 		}
 	}
 }

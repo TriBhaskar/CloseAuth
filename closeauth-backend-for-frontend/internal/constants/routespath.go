@@ -27,6 +27,9 @@ const (
 	RouteAdminUsers     = "/admin/users"
 	RouteAdminClients   = "/admin/clients"
 	RouteAdminClientNew = "/admin/clients/new"
+	RouteAdminAnalytics = "/admin/analytics"
+	RouteAdminSecurity  = "/admin/security"
+	RouteAdminSettings  = "/admin/settings"
 )
 
 // Authentication page routes (GET)

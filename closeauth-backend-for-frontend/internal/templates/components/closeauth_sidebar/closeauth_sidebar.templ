@@ -4,8 +4,9 @@ import "closeauth-backend-for-frontend/internal/templates/components/sidebar"
 import "closeauth-backend-for-frontend/internal/constants"
 import "closeauth-backend-for-frontend/internal/templates/components/icon"
 import "closeauth-backend-for-frontend/internal/templates/components/avatar"
+import "strings"
 
-templ CloseAuthSidebar(activePage string) {
+templ CloseAuthSidebar(activePage string, userEmail string) {
 	@sidebar.Layout() {
 		@sidebar.Sidebar(sidebar.Props{
 			Collapsible: sidebar.CollapsibleIcon,
@@ -56,13 +57,22 @@ templ CloseAuthSidebar(activePage string) {
 					@sidebar.MenuItem() {
 						<div class="flex items-center gap-3 p-2 text-slate-300">
 							@avatar.Avatar(avatar.Props{Class: "size-9 rounded-lg bg-slate-600"}) {
-								<span class="text-sm font-medium text-white">AD</span>
+								if userEmail != "" && len(userEmail) >= 2 {
+									<span class="text-sm font-medium text-white">{ strings.ToUpper(userEmail[:2]) }</span>
+								} else {
+									<span class="text-sm font-medium text-white">U</span>
+								}
 							}
 							<div class="flex-1 min-w-0">
-								<div class="text-sm font-medium text-white truncate">Admin User</div>
-								<div class="text-xs text-slate-400 truncate">admin@compan...</div>
+								if userEmail != "" {
+									<div class="text-sm font-medium text-white truncate">{ userEmail }</div>
+									<div class="text-xs text-slate-400 truncate">Logged in</div>
+								} else {
+									<div class="text-sm font-medium text-white truncate">User</div>
+									<div class="text-xs text-slate-400 truncate">No session</div>
+								}
 							</div>
-							<a href="/auth/logout" class="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors" title="Logout">
+							<a href={ templ.SafeURL(constants.RouteAdminLogout) } class="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors" title="Logout">
 								@icon.LogOut(icon.Props{Class: "size-4"})
 							</a>
 						</div>

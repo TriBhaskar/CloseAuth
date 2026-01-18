@@ -1,0 +1,229 @@
+package templates
+
+import button "closeauth-backend-for-frontend/internal/templates/components/button"
+import card "closeauth-backend-for-frontend/internal/templates/components/card"
+import icon "closeauth-backend-for-frontend/internal/templates/components/icon"
+import "closeauth-backend-for-frontend/internal/constants"
+
+templ HomeWithAuth(isLoggedIn bool, userEmail string) {
+    <!-- Hero Section -->
+    <div class="bg-gradient-to-br from-gray-50 to-gray-100 pt-16 pb-20">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center">
+          <!-- Enterprise Authentication Server Badge -->
+          <div
+            class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-teal-100 text-teal-800 mb-8"
+          >
+            Enterprise Authentication Server
+          </div>
+
+          <!-- Main Heading -->
+          <h1 class="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+            Lightweight, Scalable Authentication<br />
+            { "for" } Modern Applications
+          </h1>
+
+          <!-- Subtitle -->
+          <p class="text-xl text-gray-600 max-w-4xl mx-auto mb-12">
+            CloseAuth provides centralized identity management with OAuth2.1 &
+            OpenID Connect. Focus on your business logic while we handle user
+            authentication, authorization, and security.
+          </p>
+
+          <!-- Conditional CTA Buttons -->
+          <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+            if !isLoggedIn {
+                @button.Button(button.Props{
+                  Href: constants.RouteAdminRegister,
+                  Variant: button.VariantDefault,
+                  Size: button.SizeLg,
+                  Class: "bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 rounded-lg text-lg font-semibold transition-colors text-center",
+                }) {
+                  Start Free Trial →
+                }
+                @button.Button(button.Props{
+                  Href:  constants.RouteAdminLogin,
+                  Variant: button.VariantOutline,
+                  Size: button.SizeLg,
+                  Class: "border border-gray-300 hover:border-gray-400 text-gray-700 px-8 py-6 rounded-lg text-lg font-semibold transition-colors text-center",
+                }) {
+                  View Demo
+                }
+            } else {
+                <div class="bg-white rounded-lg shadow-md p-8 max-w-md mx-auto">
+                    <p class="text-lg text-gray-700 mb-6">Welcome back, <span class="font-semibold text-teal-600">{ userEmail }</span>!</p>
+                    @button.Button(button.Props{
+                      Href: constants.RouteAdminDashboard,
+                      Variant: button.VariantDefault,
+                      Size: button.SizeLg,
+                      Class: "bg-teal-600 hover:bg-teal-700 text-white w-full",
+                    }) {
+                      Go to Dashboard →
+                    }
+                </div>
+            }
+          </div>
+
+          <!-- Feature Pills -->
+          <div
+            class="flex flex-wrap justify-center gap-6 text-sm text-gray-600"
+          >
+            <div class="flex items-center">
+              <svg
+                class="w-5 h-5 text-green-500 mr-2"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              No credit card required
+            </div>
+            <div class="flex items-center">
+              <svg
+                class="w-5 h-5 text-green-500 mr-2"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              Free for 30 days
+            </div>
+            <div class="flex items-center">
+              <svg
+                class="w-5 h-5 text-green-500 mr-2"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              Cancel anytime
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="py-16 bg-white">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl font-bold text-gray-900 mb-4">
+            Everything You Need for Authentication
+          </h2>
+          <p class="text-lg text-gray-600">
+            Enterprise-grade features out of the box
+          </p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8">
+          <!-- Feature 1 -->
+          @card.Card() {
+            @card.Header() {
+              <div class="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center mb-4">
+                @icon.Shield(icon.Props{Class: "w-6 h-6 text-teal-600"})
+              </div>
+              @card.Title() {
+                OAuth 2.1 & OpenID Connect
+              }
+            }
+            @card.Content() {
+              <p class="text-gray-600">
+                Industry-standard protocols for secure authentication and
+                authorization with modern best practices.
+              </p>
+            }
+          }
+
+          <!-- Feature 2 -->
+          @card.Card() {
+            @card.Header() {
+              <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                @icon.Users(icon.Props{Class: "w-6 h-6 text-blue-600"})
+              </div>
+              @card.Title() {
+                Multi-Tenant Support
+              }
+            }
+            @card.Content() {
+              <p class="text-gray-600">
+                Easily manage multiple applications and organizations with
+                isolated data and custom branding.
+              </p>
+            }
+          }
+
+          <!-- Feature 3 -->
+          @card.Card() {
+            @card.Header() {
+              <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                @icon.Key(icon.Props{Class: "w-6 h-6 text-purple-600"})
+              </div>
+              @card.Title() {
+                Advanced Security
+              }
+            }
+            @card.Content() {
+              <p class="text-gray-600">
+                PKCE flow, token rotation, rate limiting, and comprehensive
+                security features to protect your users.
+              </p>
+            }
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA Section -->
+    <div class="bg-gradient-to-r from-teal-600 to-blue-600 py-16">
+      <div class="max-w-4xl mx-auto text-center px-4">
+        <h2 class="text-3xl font-bold text-white mb-4">
+          Ready to Get Started?
+        </h2>
+        <p class="text-xl text-teal-100 mb-8">
+          Join thousands of developers building secure applications with
+          CloseAuth
+        </p>
+        if !isLoggedIn {
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+              @button.Button(button.Props{
+                Href:  constants.RouteAdminRegister,
+                Variant: button.VariantDefault,
+                Size: button.SizeLg,
+                Class: "bg-white hover:bg-gray-100 text-teal-600 px-8 py-6 rounded-lg text-lg font-semibold transition-colors text-center",
+              }) {
+                Create Free Account
+              }
+              @button.Button(button.Props{
+                Href:  constants.RouteAdminLogin,
+                Variant: button.VariantOutline,
+                Size: button.SizeLg,
+                Class: "border-2 border-white text-white hover:bg-white hover:text-teal-600 px-8 py-6 rounded-lg text-lg font-semibold transition-all text-center",
+              }) {
+                Sign In to Dashboard
+              }
+            </div>
+        } else {
+            @button.Button(button.Props{
+              Href:  constants.RouteAdminDashboard,
+              Variant: button.VariantDefault,
+              Size: button.SizeLg,
+              Class: "bg-white hover:bg-gray-100 text-teal-600 px-8 py-6 rounded-lg text-lg font-semibold transition-colors text-center",
+            }) {
+              Go to Dashboard →
+            }
+        }
+      </div>
+    </div>
+}

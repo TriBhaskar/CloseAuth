@@ -27,8 +27,8 @@ type ClientStats struct {
 	MobileApps    int
 }
 
-templ Clients(stats ClientStats, clients []Client) {
-	@AdminLayout("clients") {
+templ Clients(stats ClientStats, clients []Client, userEmail string) {
+	@AdminLayout("clients", userEmail) {
 		<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
 			<div class="p-6">
 				<!-- Header -->

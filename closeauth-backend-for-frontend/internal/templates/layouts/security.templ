@@ -7,8 +7,8 @@ import (
 	"closeauth-backend-for-frontend/internal/templates/components/button"
 )
 
-templ Security() {
-	@AdminLayout("security") {
+templ Security(userEmail string) {
+	@AdminLayout("security", userEmail) {
 		<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
 			<div class="p-6">
 				<!-- Header -->

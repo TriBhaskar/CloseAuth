@@ -20,6 +20,7 @@ import (
 type Server struct {
     port                   int
     authHandler            *handlers.AuthHandler
+    adminHandler           *handlers.AdminHandler
     clientHandler          *handlers.ClientHandler
     publicHandler          *handlers.PublicHandler
     oauthProxyHandler      *handlers.OAuthProxyHandler
@@ -49,6 +50,7 @@ func NewServer() (*http.Server, *Server, error) {
     newServer := &Server{
         port:                   port,
         authHandler:            handlers.NewAuthHandler(),
+        adminHandler:           handlers.NewAdminHandler(),
         clientHandler:          handlers.NewClientHandler(),
         publicHandler:          handlers.NewPublicHandler(),
         oauthProxyHandler:      handlers.NewOAuthProxyHandler(),

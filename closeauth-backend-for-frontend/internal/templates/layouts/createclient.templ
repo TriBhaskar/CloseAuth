@@ -21,8 +21,8 @@ type ApplicationType struct {
 	Label string
 }
 
-templ CreateClient(data CreateClientData, csrfToken string) {
-    @AdminLayout("clients") {
+templ CreateClient(data CreateClientData, csrfToken string, userEmail string) {
+    @AdminLayout("clients", userEmail) {
         <div class="bg-gray-50 min-h-screen">
             <div class="max-w-4xl mx-auto py-8 px-6">
                 <!-- Header -->

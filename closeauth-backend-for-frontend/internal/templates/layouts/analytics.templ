@@ -4,8 +4,8 @@ import (
 	"closeauth-backend-for-frontend/internal/templates/components/card"
 )
 
-templ Analytics() {
-	@AdminLayout("analytics") {
+templ Analytics(userEmail string) {
+	@AdminLayout("analytics", userEmail) {
 		<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
 			<div class="p-6">
 				<!-- Header -->

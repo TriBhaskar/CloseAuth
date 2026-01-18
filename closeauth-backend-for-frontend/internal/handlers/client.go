@@ -23,6 +23,14 @@ func NewClientHandler() *ClientHandler {
 
 // HandleClients displays the clients list page
 func (h *ClientHandler) HandleClients(w http.ResponseWriter, r *http.Request) {
+	// Get user session
+	session, err := middleware.GetValidSession(r)
+	if err != nil {
+		log.Printf("Error getting session: %v", err)
+		http.Redirect(w, r, constants.RouteAdminLogin, http.StatusSeeOther)
+		return
+	}
+
 	// Sample data - in a real application, this would come from a database
 	stats := templates.ClientStats{
 		TotalClients:  4,
@@ -75,12 +83,20 @@ func (h *ClientHandler) HandleClients(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render the template
-	component := templates.Clients(stats, clients)
+	component := templates.Clients(stats, clients, session.Email)
 	templ.Handler(component).ServeHTTP(w, r)
 }
 
 // HandleCreateClientGet displays the create client form
 func (h *ClientHandler) HandleCreateClientGet(w http.ResponseWriter, r *http.Request) {
+	// Get user session
+	session, err := middleware.GetValidSession(r)
+	if err != nil {
+		log.Printf("Error getting session: %v", err)
+		http.Redirect(w, r, constants.RouteAdminLogin, http.StatusSeeOther)
+		return
+	}
+
 	// Create sample data for the create client form
 	data := templates.CreateClientData{
 		AvailableScopes: []templates.Scope{
@@ -103,7 +119,7 @@ func (h *ClientHandler) HandleCreateClientGet(w http.ResponseWriter, r *http.Req
 	csrfToken := middleware.GetCSRFTokenFromContext(r.Context())
 
 	// Render the template
-	component := templates.CreateClient(data, csrfToken)
+	component := templates.CreateClient(data, csrfToken, session.Email)
 	templ.Handler(component).ServeHTTP(w, r)
 }
 

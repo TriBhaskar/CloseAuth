@@ -4,6 +4,11 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"closeauth-backend-for-frontend/internal/middleware"
+	templates "closeauth-backend-for-frontend/internal/templates/layouts"
+
+	"github.com/a-h/templ"
 )
 
 // PublicHandler contains dependencies for public/general handlers
@@ -14,6 +19,27 @@ type PublicHandler struct {
 // NewPublicHandler creates a new public handler instance
 func NewPublicHandler() *PublicHandler {
 	return &PublicHandler{}
+}
+
+// HandleHome renders the home page with conditional UI based on login state
+func (h *PublicHandler) HandleHome(w http.ResponseWriter, r *http.Request) {
+	// Set no-cache headers to prevent stale authenticated state after logout
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, private, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// Check if user is logged in
+	session, err := middleware.GetValidSession(r)
+	isLoggedIn := err == nil && session != nil
+
+	var userEmail string
+	if isLoggedIn {
+		userEmail = session.Email
+	}
+
+	// Render public template with login state
+	component := templates.PublicWithAuth(isLoggedIn, userEmail)
+	templ.Handler(component).ServeHTTP(w, r)
 }
 
 // HelloWorldHandler returns a simple JSON hello world response

@@ -3,9 +3,9 @@ package templates
 import "closeauth-backend-for-frontend/internal/templates/components/closeauth_sidebar"
 import templates "closeauth-backend-for-frontend/internal/templates"
 
-templ AdminLayout(activePage string) {
+templ AdminLayout(activePage string, userEmail string) {
 	@templates.Base() {
-		@closeauth_sidebar.CloseAuthSidebar(activePage) {
+		@closeauth_sidebar.CloseAuthSidebar(activePage, userEmail) {
 			{ children... }
 		}
 	}

@@ -37,6 +37,7 @@ const (
 	RouteAdminLogin          = "/admin/auth/login"
 	RouteAdminRegister       = "/admin/auth/register"
 	RouteAdminForgotPassword = "/admin/auth/forgot-password"
+	RouteAdminLogout         = "/admin/auth/logout"
 )
 
 // Authentication action routes (POST)

@@ -3,12 +3,10 @@ package server
 import (
 	"closeauth-backend-for-frontend/internal/constants"
 	"closeauth-backend-for-frontend/internal/middleware"
-	templates "closeauth-backend-for-frontend/internal/templates/layouts"
 	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 )
@@ -45,23 +43,29 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Handle("/static/*", staticHandler)
 	
 	// Public routes - can be cached for better performance
-	r.Handle(constants.RouteHome, templ.Handler(templates.Public()))
+	r.Get(constants.RouteHome, s.publicHandler.HandleHome)
 	r.Get(constants.RouteAdminLogin, s.authHandler.HandleLoginGet)
 	r.Get(constants.RouteAdminRegister, s.authHandler.HandleRegisterGet)
 	r.Get(constants.RouteAdminForgotPassword, s.authHandler.HandleForgotPasswordGet)
 	
-	// Admin routes - you might want selective no-cache for sensitive pages
-	r.Handle(constants.RouteAdminDashboard, templ.Handler(templates.Dashboard()))
-	r.Handle(constants.RouteAdminUsers, templ.Handler(templates.Users()))
-	r.Get(constants.RouteAdminClients, s.clientHandler.HandleClients)
-	r.Get(constants.RouteAdminClientNew, s.clientHandler.HandleCreateClientGet)
-	r.Post(constants.RouteAdminClients, s.clientHandler.HandleCreateClientPost)
-	r.Handle(constants.RouteAdminAnalytics, templ.Handler(templates.Analytics()))
-	r.Handle(constants.RouteAdminSecurity, templ.Handler(templates.Security()))
-	r.Handle(constants.RouteAdminSettings, templ.Handler(templates.Settings()))
+	// Protected Admin routes - require authentication
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireAuth)
+		r.Use(middleware.NoCacheMiddleware) // Prevent browser caching
+		
+		r.Get(constants.RouteAdminDashboard, s.adminHandler.HandleDashboard)
+		r.Get(constants.RouteAdminUsers, s.adminHandler.HandleUsers)
+		r.Get(constants.RouteAdminClients, s.clientHandler.HandleClients)
+		r.Get(constants.RouteAdminClientNew, s.clientHandler.HandleCreateClientGet)
+		r.Post(constants.RouteAdminClients, s.clientHandler.HandleCreateClientPost)
+		r.Get(constants.RouteAdminAnalytics, s.adminHandler.HandleAnalytics)
+		r.Get(constants.RouteAdminSecurity, s.adminHandler.HandleSecurity)
+		r.Get(constants.RouteAdminSettings, s.adminHandler.HandleSettings)
+	})
 	
 	// Authentication routes
 	r.Post(constants.RouteLogin, s.authHandler.HandleLoginPost)
+	r.Get(constants.RouteAdminLogout, s.authHandler.HandleLogout)
 	r.Post(constants.RouteRegister, s.authHandler.HandleRegisterPost)
 	r.Post(constants.RouteRegisterVerify, s.authHandler.HandleVerifyRegistrationOTP)
 	r.Post(constants.RouteRegisterResend, s.authHandler.HandleResendRegistrationOTP)

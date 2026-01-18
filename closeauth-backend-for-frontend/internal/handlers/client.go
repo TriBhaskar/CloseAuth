@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"closeauth-backend-for-frontend/internal/constants"
@@ -13,12 +13,14 @@ import (
 
 // ClientHandler contains dependencies for client management handlers
 type ClientHandler struct {
-	// Add dependencies here if needed (e.g., database, client service)
+	logger *slog.Logger
 }
 
 // NewClientHandler creates a new client handler instance
 func NewClientHandler() *ClientHandler {
-	return &ClientHandler{}
+	return &ClientHandler{
+		logger: slog.Default().With("handler", "client"),
+	}
 }
 
 // HandleClients displays the clients list page
@@ -26,7 +28,7 @@ func (h *ClientHandler) HandleClients(w http.ResponseWriter, r *http.Request) {
 	// Get user session
 	session, err := middleware.GetValidSession(r)
 	if err != nil {
-		log.Printf("Error getting session: %v", err)
+		h.logger.Error("session_validation_failed", "error", err)
 		http.Redirect(w, r, constants.RouteAdminLogin, http.StatusSeeOther)
 		return
 	}
@@ -92,7 +94,7 @@ func (h *ClientHandler) HandleCreateClientGet(w http.ResponseWriter, r *http.Req
 	// Get user session
 	session, err := middleware.GetValidSession(r)
 	if err != nil {
-		log.Printf("Error getting session: %v", err)
+		h.logger.Error("session_validation_failed", "error", err)
 		http.Redirect(w, r, constants.RouteAdminLogin, http.StatusSeeOther)
 		return
 	}
@@ -147,8 +149,7 @@ func (h *ClientHandler) HandleCreateClientPost(w http.ResponseWriter, r *http.Re
 	}
 
 	// In a real application, you would save this to a database
-	log.Printf("Creating new client: name=%s, type=%s, description=%s, logoUrl=%s, redirectUris=%v, scopes=%v", 
-		name, clientType, description, logoUrl, redirectUris, scopes)
+	h.logger.Info("creating_new_client", "name", name, "type", clientType, "description", description, "logo_url", logoUrl, "redirect_uris_count", len(redirectUris), "scopes_count", len(scopes))
 
 	// Redirect back to clients list
 	http.Redirect(w, r, constants.RouteAdminClients, http.StatusSeeOther)

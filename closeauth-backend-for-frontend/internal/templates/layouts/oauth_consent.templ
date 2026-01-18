@@ -1,11 +1,12 @@
 package templates
 
 import "closeauth-backend-for-frontend/internal/constants"
+import "closeauth-backend-for-frontend/internal/templates/models"
 
 // OAuthConsentData contains all data needed for the OAuth consent page
 type OAuthConsentData struct {
     CSRFToken   string
-    Theme       ThemeData
+    Theme       models.ThemeData
     ClientID    string
     ClientName  string
     LogoURL     string

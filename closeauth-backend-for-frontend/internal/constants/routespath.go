@@ -23,33 +23,31 @@ const (
 
 // Admin routes
 const (
-	RouteAdminDashboard = "/admin/dashboard"
-	RouteAdminUsers     = "/admin/users"
-	RouteAdminClients   = "/admin/clients"
-	RouteAdminClientNew = "/admin/clients/new"
-	RouteAdminAnalytics = "/admin/analytics"
-	RouteAdminSecurity  = "/admin/security"
-	RouteAdminSettings  = "/admin/settings"
-)
-
-// Authentication page routes (GET)
-const (
-	RouteAdminLogin          = "/admin/auth/login"
-	RouteAdminRegister       = "/admin/auth/register"
-	RouteAdminForgotPassword = "/admin/auth/forgot-password"
-	RouteAdminLogout         = "/admin/auth/logout"
+	RouteAdminDashboard         = "/admin/dashboard"
+	RouteAdminUsers             = "/admin/users"
+	RouteAdminClients           = "/admin/clients"
+	RouteAdminClientNew         = "/admin/clients/new"
+	RouteAdminAnalytics         = "/admin/analytics"
+	RouteAdminSecurity          = "/admin/security"
+	RouteAdminSettings          = "/admin/settings"
+	RouteAdminLogin             = "/admin/login"
+	RouteAdminRegister          = "/admin/register"
+	RouteAdminRegisterOTP       = "/admin/register/otp"
+	RouteAdminRegisterVerifyOTP = "/admin/register/verify-otp"
+	RouteAdminForgotPassword    = "/admin/forgot-password"
+	RouteAdminLogout            = "/admin/logout"
 )
 
 // Authentication action routes (POST)
 const (
-	RouteLogin       = "/admin/auth/login"
-	RouteRegister        = "/admin/auth/register"
-	RouteRegisterVerify  = "/admin/auth/register/verify-otp"
-	RouteRegisterResend  = "/admin/auth/register/resend-otp"
-	RouteForgotPasswordRequest = "/admin/auth/forgot-password/request"
-	RouteForgotPasswordVerify  = "/admin/auth/forgot-password/verify-otp"
-	RouteForgotPasswordResend  = "/admin/auth/forgot-password/resend-otp"
-	RouteForgotPasswordReset   = "/admin/auth/forgot-password/reset"
+	RouteLogin                 = "/admin/login"
+	RouteRegister              = "/admin/register"
+	RouteRegisterVerify        = "/admin/register/verify-otp"
+	RouteRegisterResend        = "/admin/register/resend-otp"
+	RouteForgotPasswordRequest = "/admin/forgot-password/request"
+	RouteForgotPasswordVerify  = "/admin/forgot-password/verify-otp"
+	RouteForgotPasswordResend  = "/admin/forgot-password/resend-otp"
+	RouteForgotPasswordReset   = "/admin/forgot-password/reset"
 )
 
 // OAuth2 client authentication routes (client-specific themed pages)

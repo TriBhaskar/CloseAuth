@@ -1,8 +1,8 @@
 package templates
 
 import "closeauth-backend-for-frontend/internal/templates/components/card"
-import "closeauth-backend-for-frontend/internal/templates/components/dialog"
 import "closeauth-backend-for-frontend/internal/constants"
+import "closeauth-backend-for-frontend/internal/templates/components/auth"
 import templates "closeauth-backend-for-frontend/internal/templates"
 
 templ Register(csrfToken string) {
@@ -28,7 +28,7 @@ templ Register(csrfToken string) {
                             
                             <form class="space-y-6" action={ templ.SafeURL(constants.RouteRegister) } method="POST" 
                                   hx-post={ constants.RouteRegister }
-                                  hx-target="#otp-dialog-content" 
+                                  hx-target="#form-container" 
                                   hx-indicator="#loading"
                                   hx-swap="innerHTML"
                                   hx-on::before-request="clearErrors()"
@@ -165,24 +165,6 @@ templ Register(csrfToken string) {
             </div>
         </div>
         
-        <!-- OTP Verification Dialog -->
-        @dialog.Dialog(dialog.Props{ID: "otp-verification-dialog", Open: false}) {
-            @dialog.Content(dialog.ContentProps{Class: "max-w-md bg-white", Open: false}) {
-                @dialog.Header() {
-                    @dialog.Title() {
-                        Verify Your Email
-                    }
-                    @dialog.Description() {
-                        We've sent a verification code to your email address
-                    }
-                }
-                
-                <div id="otp-dialog-content">
-                    <!-- This will be populated by the server response -->
-                </div>
-            }
-        }
-        
         <script>
             // Form enhancement functions
             function clearErrors() {
@@ -200,51 +182,9 @@ templ Register(csrfToken string) {
                 }
             }
             
-            // Open OTP dialog
-            function openOTPDialog() {
-                const dialogElement = document.querySelector('[data-tui-dialog][data-dialog-instance="otp-verification-dialog"]');
-                const content = dialogElement?.querySelector('[data-tui-dialog-content]');
-                const backdrop = dialogElement?.querySelector('[data-tui-dialog-backdrop]');
-                
-                if (content && backdrop) {
-                    content.setAttribute('data-tui-dialog-open', 'true');
-                    content.removeAttribute('data-tui-dialog-hidden');
-                    backdrop.setAttribute('data-tui-dialog-open', 'true');
-                    backdrop.removeAttribute('data-tui-dialog-hidden');
-                }
-            }
-            
-            // Close OTP dialog
-            function closeOTPDialog() {
-                const dialogElement = document.querySelector('[data-tui-dialog][data-dialog-instance="otp-verification-dialog"]');
-                const content = dialogElement?.querySelector('[data-tui-dialog-content]');
-                const backdrop = dialogElement?.querySelector('[data-tui-dialog-backdrop]');
-                
-                if (content && backdrop) {
-                    content.setAttribute('data-tui-dialog-open', 'false');
-                    backdrop.setAttribute('data-tui-dialog-open', 'false');
-                    setTimeout(() => {
-                        content.setAttribute('data-tui-dialog-hidden', 'true');
-                        backdrop.setAttribute('data-tui-dialog-hidden', 'true');
-                    }, 300);
-                }
-            }
-            
             document.addEventListener('DOMContentLoaded', function() {
                 // Global HTMX error event listener
                 document.body.addEventListener('htmx:responseError', handleErrorResponse);
-                
-                // Listen for custom event to open OTP dialog
-                document.body.addEventListener('openOTPDialog', openOTPDialog);
-                
-                // Listen for HTMX after swap event
-                document.body.addEventListener('htmx:afterSwap', function(event) {
-                    // Check if the swap target was the OTP dialog content
-                    if (event.detail.target.id === 'otp-dialog-content') {
-                        // Open the dialog after content is loaded
-                        openOTPDialog();
-                    }
-                });
                 
                 // Clear errors when user starts typing
                 const inputs = document.querySelectorAll('#register-form input[type="text"], #register-form input[type="email"], #register-form input[type="password"]');
@@ -264,91 +204,16 @@ templ Register(csrfToken string) {
                     }
                 }
                 
-                password.addEventListener('input', validatePasswords);
-                confirmPassword.addEventListener('input', validatePasswords);
+                if (password && confirmPassword) {
+                    password.addEventListener('input', validatePasswords);
+                    confirmPassword.addEventListener('input', validatePasswords);
+                }
             });
         </script>
-        @dialog.Script()
     }
 }
 
 // OTP Verification Form Component (returned by server after registration)
 templ RegisterOTPForm(csrfToken string, email string) {
-    <!-- Success message -->
-    <div class="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
-        <div class="flex">
-            <div class="flex-shrink-0">
-                <svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                </svg>
-            </div>
-            <div class="ml-3">
-                <p class="text-sm text-green-800">Verification code sent to { email }</p>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Error/Info message container -->
-    <div id="otp-message-container"></div>
-    
-    <form id="verify-otp-form" class="space-y-4" method="POST"
-          hx-post={ constants.RouteRegisterVerify }
-          hx-target="#otp-message-container"
-          hx-indicator="#otp-loading"
-          hx-swap="innerHTML"
-          hx-on::before-request="document.getElementById('otp-message-container').innerHTML = ''"
-          hx-disabled-elt="button[type=submit]">
-        <input type="hidden" name="csrf_token" value={ csrfToken }/>
-        <input type="hidden" name="email" value={ email }/>
-        
-        <div>
-            <label for="register-otp" class="block text-sm font-medium text-gray-700">
-                Verification Code
-            </label>
-            <input
-                id="register-otp"
-                name="otp"
-                type="text"
-                inputmode="numeric"
-                pattern="[0-9]{6}"
-                maxlength="6"
-                required
-                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-2xl tracking-widest shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                placeholder="000000"
-                autocomplete="one-time-code"
-                oninput="this.value = this.value.replace(/[^0-9]/g, '')"
-            />
-            <p class="mt-2 text-xs text-gray-500">
-                Enter the 6-digit code sent to your email
-            </p>
-        </div>
-        
-        <div>
-            <button
-                type="submit"
-                class="group relative flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-            >
-                <span class="htmx-indicator" id="otp-loading">
-                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                </span>
-                Verify & Complete Registration
-            </button>
-        </div>
-        
-        <div class="text-center">
-            <button
-                type="button"
-                class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                hx-post={ constants.RouteRegisterResend }
-                hx-vals='{"email": "{ email }", "csrf_token": "{ csrfToken }"}'
-                hx-target="#otp-message-container"
-                hx-swap="innerHTML"
-            >
-                Didn't receive the code? Resend
-            </button>
-        </div>
-    </form>
+	@auth.AdminOTPDialog(csrfToken, email)
 }

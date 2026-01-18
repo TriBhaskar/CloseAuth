@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"closeauth-backend-for-frontend/internal/middleware"
@@ -13,12 +13,14 @@ import (
 
 // PublicHandler contains dependencies for public/general handlers
 type PublicHandler struct {
-	// Add dependencies here if needed
+	logger *slog.Logger
 }
 
 // NewPublicHandler creates a new public handler instance
 func NewPublicHandler() *PublicHandler {
-	return &PublicHandler{}
+	return &PublicHandler{
+		logger: slog.Default().With("handler", "public"),
+	}
 }
 
 // HandleHome renders the home page with conditional UI based on login state
@@ -52,7 +54,7 @@ func (h *PublicHandler) HelloWorldHandler(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if _, err := w.Write(jsonResp); err != nil {
-		log.Printf("Failed to write response: %v", err)
+		h.logger.Error("response_write_failed", "error", err)
 	}
 }
 

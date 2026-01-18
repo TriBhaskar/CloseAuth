@@ -5,7 +5,7 @@ import (
 	"closeauth-backend-for-frontend/internal/middleware"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,6 +21,7 @@ import (
 type OAuthProxyHandler struct {
 	endpoints  *config.EndpointsConfig
 	bffBaseURL string // Base URL of this BFF server (e.g., http://localhost:8088)
+	logger     *slog.Logger
 }
 
 // NewOAuthProxyHandler creates a new OAuth proxy handler instance.
@@ -28,12 +29,13 @@ type OAuthProxyHandler struct {
 func NewOAuthProxyHandler() *OAuthProxyHandler {
 	endpoints, err := config.LoadEndpointsConfig()
 	if err != nil {
-		log.Printf("Warning: Failed to load endpoints config: %v", err)
+		slog.Warn("failed to load endpoints config", "error", err)
 	}
 	
 	return &OAuthProxyHandler{
 		endpoints:  endpoints,
 		bffBaseURL: config.GetEnvOrDefault("BFF_BASE_URL", "http://localhost:8088"),
+		logger:     slog.Default().With("handler", "oauth_proxy"),
 	}
 }
 
@@ -52,7 +54,7 @@ func NewOAuthProxyHandler() *OAuthProxyHandler {
 //     c. Spring generates authorization code
 //     d. Spring redirects to client's redirect_uri with code
 func (h *OAuthProxyHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
-	log.Printf("INFO: Handling OAuth2 authorize request: %s %s", r.Method, r.URL.String())
+	h.logger.Debug("oauth_authorize_request", "method", r.Method, "url", r.URL.String())
 	// Extract and validate OAuth parameters
 	params := h.extractOAuthParams(r)
 	if err := h.validateOAuthParams(params); err != nil {
@@ -63,7 +65,7 @@ func (h *OAuthProxyHandler) HandleAuthorize(w http.ResponseWriter, r *http.Reque
 	// Proxy request to Spring Authorization Server
 	resp, err := h.proxyToSpring(r, h.endpoints.OAuth2.Authorize)
 	if err != nil {
-		log.Printf("ERROR: Failed to proxy authorize request: %v", err)
+		h.logger.Error("authorize_proxy_failed", "error", err)
 		http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -91,7 +93,7 @@ func (h *OAuthProxyHandler) HandleToken(w http.ResponseWriter, r *http.Request) 
 	// Proxy request to Spring Authorization Server
 	resp, err := h.proxyToSpring(r, h.endpoints.OAuth2.Token)
 	if err != nil {
-		log.Printf("ERROR: Failed to proxy token request: %v", err)
+		h.logger.Error("token_proxy_failed", "error", err)
 		http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -152,7 +154,7 @@ func (h *OAuthProxyHandler) proxyToSpring(r *http.Request, endpoint string) (*ht
 	// First check browser's cookie, then fall back to oauth_context
 	if cookie, err := r.Cookie("JSESSIONID"); err == nil {
 		proxyReq.AddCookie(cookie)
-		log.Printf("DEBUG: Using JSESSIONID from browser cookie")
+		h.logger.Debug("jsessionid_from_browser_cookie")
 	} else {
 		// Browser doesn't have JSESSIONID - check oauth_context (stored after login)
 		if oauthCtx, err := middleware.GetOAuthContext(r); err == nil && oauthCtx.SpringSessionID != "" {
@@ -160,9 +162,9 @@ func (h *OAuthProxyHandler) proxyToSpring(r *http.Request, endpoint string) (*ht
 				Name:  "JSESSIONID",
 				Value: oauthCtx.SpringSessionID,
 			})
-			log.Printf("DEBUG: Using JSESSIONID from oauth_context: %s", oauthCtx.SpringSessionID)
+			h.logger.Debug("jsessionid_from_oauth_context", "session_id_length", len(oauthCtx.SpringSessionID))
 		} else {
-			log.Printf("DEBUG: No JSESSIONID available for Spring proxy request")
+			h.logger.Debug("no_jsessionid_available")
 		}
 	}
 
@@ -180,22 +182,22 @@ func (h *OAuthProxyHandler) handleAuthorizeRedirect(w http.ResponseWriter, r *ht
 
 	parsedLocation, err := url.Parse(location)
 	if err != nil {
-		log.Printf("ERROR: Failed to parse redirect location '%s': %v", location, err)
+		h.logger.Error("redirect_location_parse_failed", "location", location, "error", err)
 		http.Error(w, "Invalid redirect from authorization server", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("DEBUG: Redirect location=%s, parsed path=%s", location, parsedLocation.Path)
+	h.logger.Debug("oauth_redirect_received", "location", location, "parsed_path", parsedLocation.Path)
 
 	// Check if Spring is redirecting to login (user not authenticated)
 	if h.isLoginRedirect(parsedLocation.Path) {
-		log.Printf("INFO: User not authenticated, initiating BFF login flow")
+		h.logger.Info("user_not_authenticated_initiating_bff_login")
 		h.handleUnauthenticatedUser(w, r, params, resp)
 		return
 	}
 
 	// Forward other redirects (e.g., authorization code redirect to client)
-	log.Printf("INFO: Forwarding redirect to: %s", location)
+	h.logger.Debug("forwarding_redirect", "location", location)
 	h.forwardCookies(w, resp)
 	http.Redirect(w, r, location, resp.StatusCode)
 }
@@ -219,24 +221,23 @@ func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *
 	if existingCtx != nil && existingCtx.Username != "" {
 		// User already logged in but Spring still redirecting to login - this shouldn't happen
 		// Log it and let the flow continue (might be session expiry on Spring side)
-		log.Printf("WARNING: User has oauth_context with username=%s but Spring still redirecting to login", existingCtx.Username)
+		h.logger.Warn("user_already_logged_in_but_spring_redirecting_to_login", "username", existingCtx.Username)
 	}
 
 	// Extract JSESSIONID from Spring's response cookies to preserve session continuity
 	var springSessionID string
 	
-	// Debug: Log all cookies from Spring response
-	log.Printf("INFO: Checking Spring response for cookies...")
+	h.logger.Debug("checking_spring_response_cookies")
 	for _, cookie := range resp.Cookies() {
-		log.Printf("INFO: Found cookie from Spring: %s=%s", cookie.Name, cookie.Value)
+		h.logger.Debug("found_cookie_from_spring", "name", cookie.Name, "value_length", len(cookie.Value))
 		if cookie.Name == "JSESSIONID" {
 			springSessionID = cookie.Value
-			log.Printf("INFO: Captured Spring JSESSIONID for session continuity: %s", springSessionID)
+			h.logger.Debug("captured_spring_jsessionid", "session_id_length", len(springSessionID))
 		}
 	}
 	
 	if springSessionID == "" {
-		log.Printf("WARNING: No JSESSIONID found in Spring's redirect response")
+		h.logger.Warn("no_jsessionid_found_in_spring_response")
 	}
 
 	// Create OAuth context to preserve authorization request parameters
@@ -258,12 +259,12 @@ func (h *OAuthProxyHandler) handleUnauthenticatedUser(w http.ResponseWriter, r *
 
 	// Save context in encrypted cookie
 	if err := middleware.SaveOAuthContext(w, oauthCtx); err != nil {
-		log.Printf("ERROR: Failed to save OAuth context: %v", err)
+		h.logger.Error("oauth_context_save_failed", "error", err)
 		http.Error(w, "Failed to save authorization context", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("INFO: OAuth context saved for client_id=%s, springSessionID=%s, username=%s, redirecting to login", params["client_id"], springSessionID, username)
+	h.logger.Info("oauth_context_saved", "client_id", params["client_id"], "session_id_length", len(springSessionID), "username", username)
 
 	// Redirect to BFF's OAuth client login page (themed based on client_id)
 	http.Redirect(w, r, "/oauth/login?continue=true", http.StatusFound)
@@ -282,7 +283,7 @@ func (h *OAuthProxyHandler) forwardResponse(w http.ResponseWriter, resp *http.Re
 
 	// Copy response body
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		log.Printf("ERROR: Failed to copy response body: %v", err)
+		h.logger.Error("response_body_copy_failed", "error", err)
 	}
 }
 

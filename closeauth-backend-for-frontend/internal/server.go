@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"closeauth-backend-for-frontend/internal/config"
 	"closeauth-backend-for-frontend/internal/database"
@@ -58,15 +58,21 @@ func NewServer() (*http.Server, *Server, error) {
         db:                     db,
     }
     
-    log.Printf("Starting server on port %d\n", newServer.port)
+    slog.Info("starting server", "port", newServer.port)
 
-    // Declare Server config
+    // Load server configuration
+    serverConfig := config.LoadServerConfig()
+    if err := serverConfig.Validate(); err != nil {
+        return nil, nil, fmt.Errorf("invalid server configuration: %w", err)
+    }
+
+    // Create HTTP server with configuration
     httpServer := &http.Server{
         Addr:         fmt.Sprintf(":%d", newServer.port),
         Handler:      newServer.RegisterRoutes(),
-        IdleTimeout:  time.Minute,
-        ReadTimeout:  10 * time.Second,
-        WriteTimeout: 30 * time.Second,
+        IdleTimeout:  serverConfig.IdleTimeout,
+        ReadTimeout:  serverConfig.ReadTimeout,
+        WriteTimeout: serverConfig.WriteTimeout,
     }
     
     log.Printf("Server configured on port %d\n", newServer.port)

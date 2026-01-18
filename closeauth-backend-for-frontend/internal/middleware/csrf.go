@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"time"
 )
 
 const (
@@ -115,16 +114,15 @@ func GetCSRFToken(r *http.Request, config CSRFConfig) (string, error) {
 
 // SetCSRFToken sets CSRF token in cookie
 func SetCSRFToken(w http.ResponseWriter, token string, config CSRFConfig) {
-	cookie := &http.Cookie{
+	cookie := NewSecureCookieWithOptions(CookieOptions{
 		Name:     config.CookieName,
 		Value:    token,
 		Path:     config.CookiePath,
-		Domain:   config.CookieDomain,
-		Expires:  time.Now().Add(24 * time.Hour), // 24 hour expiry
-		Secure:   config.Secure,
+		MaxAge:   86400, // 24 hours in seconds
 		HttpOnly: config.HttpOnly,
+		Secure:   config.Secure,
 		SameSite: config.SameSite,
-	}
+	})
 	http.SetCookie(w, cookie)
 }
 

@@ -57,16 +57,8 @@ func SetSession(w http.ResponseWriter, session *Session) error {
 		maxAge = 0
 	}
 
-	// Set cookie
-	cookie := &http.Cookie{
-		Name:     SessionCookieName,
-		Value:    encodedData,
-		Path:     "/",
-		MaxAge:   maxAge,
-		HttpOnly: true,
-		Secure:   isProductionEnv(),
-		SameSite: http.SameSiteLaxMode,
-	}
+	// Set cookie using helper
+	cookie := NewSecureCookie(SessionCookieName, encodedData, maxAge)
 	http.SetCookie(w, cookie)
 
 	return nil
@@ -116,16 +108,7 @@ func GetValidSession(r *http.Request) (*Session, error) {
 
 // ClearSession removes the session cookie
 func ClearSession(w http.ResponseWriter) {
-	cookie := &http.Cookie{
-		Name:     SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   isProductionEnv(),
-		SameSite: http.SameSiteLaxMode,
-	}
-	http.SetCookie(w, cookie)
+	ClearCookie(w, SessionCookieName)
 }
 
 // Session context key for request context

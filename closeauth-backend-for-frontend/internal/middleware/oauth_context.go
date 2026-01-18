@@ -12,11 +12,17 @@ import (
 	"net/url"
 	"os"
 	"time"
+
+	"closeauth-backend-for-frontend/internal/config"
 )
 
 const (
 	OAuthContextCookieName = "oauth_context"
-	CookieMaxAge           = 600 // 10 minutes
+)
+
+var (
+	// middlewareConfig is loaded once at package initialization
+	middlewareConfig = config.LoadMiddlewareConfig()
 )
 
 // OAuthContext stores OAuth authorization request parameters
@@ -68,16 +74,8 @@ func SaveOAuthContext(w http.ResponseWriter, ctx *OAuthContext) error {
 	// Encode to base64 for cookie storage
 	encodedData := base64.URLEncoding.EncodeToString(encryptedData)
 
-	// Set cookie
-	cookie := &http.Cookie{
-		Name:     OAuthContextCookieName,
-		Value:    encodedData,
-		Path:     "/",
-		MaxAge:   CookieMaxAge,
-		HttpOnly: true,
-		Secure:   isProductionEnv(), // Enable HTTPS-only in production
-		SameSite: http.SameSiteLaxMode,
-	}
+	// Set cookie using helper
+	cookie := NewSecureCookie(OAuthContextCookieName, encodedData, middlewareConfig.OAuthContextCookieMaxAge)
 	http.SetCookie(w, cookie)
 
 	return nil
@@ -108,8 +106,8 @@ func GetOAuthContext(r *http.Request) (*OAuthContext, error) {
 		return nil, fmt.Errorf("failed to unmarshal OAuth context: %w", err)
 	}
 
-	// Check if context has expired (10 minutes)
-	if time.Now().Unix()-ctx.Timestamp > CookieMaxAge {
+	// Check if context has expired
+	if time.Now().Unix()-ctx.Timestamp > int64(middlewareConfig.OAuthContextCookieMaxAge) {
 		return nil, fmt.Errorf("OAuth context has expired")
 	}
 
@@ -118,22 +116,8 @@ func GetOAuthContext(r *http.Request) (*OAuthContext, error) {
 
 // ClearOAuthContext removes the OAuth context cookie
 func ClearOAuthContext(w http.ResponseWriter) {
-	cookie := &http.Cookie{
-		Name:     OAuthContextCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   isProductionEnv(), // Enable HTTPS-only in production
-		SameSite: http.SameSiteLaxMode,
-	}
-	http.SetCookie(w, cookie)
-}
-
-// isProductionEnv checks if the application is running in production mode
-func isProductionEnv() bool {
-	env := os.Getenv("ENVIRONMENT")
-	return env == "production" || env == "prod"
+	ClearCookie(w, OAuthContextCookieName)
+	http.SetCookie(w, DeleteCookie(OAuthContextCookieName))
 }
 
 // BuildAuthorizeURL reconstructs the OAuth authorize URL from context

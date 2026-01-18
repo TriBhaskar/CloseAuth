@@ -1,0 +1,158 @@
+package auth
+
+import "closeauth-backend-for-frontend/internal/constants"
+import "closeauth-backend-for-frontend/internal/templates/models"
+
+// OAuthOTPDialog renders a dialog for OTP verification in OAuth client flows.
+// Uses OAuth-specific routes for client-branded authentication.
+templ OAuthOTPDialog(csrfToken, email, clientID string, theme models.ThemeData) {
+	<div
+		id="otp-verification-modal"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+		role="dialog"
+		aria-modal="true"
+	>
+		<div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+			<div class="text-center mb-6">
+				<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-theme-primary opacity-20 mb-4">
+					<svg class="h-6 w-6 text-theme-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+					</svg>
+				</div>
+				<h3 class="text-lg font-semibold text-theme">Verify your email</h3>
+				<p class="text-sm text-theme opacity-70 mt-2">
+					We've sent a verification code to <strong class="text-theme-primary">{ email }</strong>
+				</p>
+			</div>
+			<form
+				action={ templ.SafeURL(constants.RouteOAuthClientRegisterVerifyOTP) }
+				method="POST"
+				hx-post={ constants.RouteOAuthClientRegisterVerifyOTP }
+				hx-target="#error-container"
+				hx-swap="innerHTML"
+				class="space-y-4"
+			>
+				<input type="hidden" name="csrf_token" value={ csrfToken }/>
+				<input type="hidden" name="email" value={ email }/>
+				if clientID != "" {
+					<input type="hidden" name="client_id" value={ clientID }/>
+				}
+				<div>
+					<label for="otp" class="block text-sm font-medium text-theme mb-1">
+						Verification code
+					</label>
+					<input
+						id="otp"
+						name="otp"
+						type="text"
+						inputmode="numeric"
+						pattern="[0-9]*"
+						maxlength="6"
+						required
+						autofocus
+						class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-3 text-center text-2xl tracking-widest shadow-sm bg-white dark:bg-gray-800 text-theme focus:border-theme-primary focus:outline-none focus:ring-theme-primary"
+						placeholder="000000"
+					/>
+				</div>
+				<button
+					type="submit"
+					class="w-full rounded-md bg-indigo-600 bg-theme-button px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 hover:bg-theme-button-hover focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-theme-primary focus:ring-offset-2 transition-colors"
+				>
+					Verify email
+				</button>
+			</form>
+			<div class="mt-4 text-center">
+				<p class="text-sm text-theme opacity-70">
+					Didn't receive the code?
+					<button
+						type="button"
+						hx-post={ templ.SafeURL(constants.RouteOAuthClientRegisterResendOTP) }
+						hx-vals={ `{"csrf_token": "` + csrfToken + `", "email": "` + email + `", "client_id": "` + clientID + `"}` }
+						hx-target="#resend-status"
+						hx-swap="innerHTML"
+						class="font-medium text-indigo-600 text-theme-primary hover:text-indigo-500 hover:opacity-80"
+					>
+						Resend
+					</button>
+				</p>
+				<div id="resend-status" class="mt-2"></div>
+			</div>
+		</div>
+	</div>
+}
+
+// AdminOTPDialog renders a dialog for OTP verification in admin registration flows.
+// Uses admin-specific routes without client theming.
+templ AdminOTPDialog(csrfToken, email string) {
+	<div
+		id="otp-verification-modal"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+		role="dialog"
+		aria-modal="true"
+	>
+		<div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+			<div class="text-center mb-6">
+				<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900 mb-4">
+					<svg class="h-6 w-6 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+					</svg>
+				</div>
+				<h3 class="text-lg font-semibold text-gray-900 dark:text-white">Verify your email</h3>
+				<p class="text-sm text-gray-600 dark:text-gray-400 mt-2">
+					We've sent a verification code to <strong class="text-indigo-600 dark:text-indigo-400">{ email }</strong>
+				</p>
+			</div>
+			<div id="admin-otp-error"></div>
+			<form
+				action={ templ.SafeURL(constants.RouteRegisterVerify) }
+				method="POST"
+				hx-post={ constants.RouteRegisterVerify }
+				hx-target="#admin-otp-error"
+				hx-swap="innerHTML"
+				class="space-y-4"
+			>
+				<input type="hidden" name="csrf_token" value={ csrfToken }/>
+				<input type="hidden" name="email" value={ email }/>
+				<div>
+					<label for="otp" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+						Verification code
+					</label>
+					<input
+						id="otp"
+						name="otp"
+						type="text"
+						inputmode="numeric"
+						pattern="[0-9]*"
+						maxlength="6"
+						required
+						autofocus
+						class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-3 text-center text-2xl tracking-widest shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+						placeholder="000000"
+					/>
+				</div>
+				<button
+					type="submit"
+					class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+				>
+					Verify email
+				</button>
+			</form>
+			<div class="mt-4 text-center">
+				<p class="text-sm text-gray-600 dark:text-gray-400">
+					Didn't receive the code?
+					<button
+						type="button"
+						hx-post={ constants.RouteRegisterResend }
+						hx-vals={ `{"csrf_token": "` + csrfToken + `", "email": "` + email + `"}` }
+						hx-target="#admin-otp-resend-status"
+						hx-swap="innerHTML"
+						class="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500"
+					>
+						Resend
+					</button>
+				</p>
+				<div id="admin-otp-resend-status" class="mt-2"></div>
+			</div>
+		</div>
+	</div>
+}

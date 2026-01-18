@@ -2,14 +2,15 @@ package templates
 
 import "closeauth-backend-for-frontend/internal/templates/components/card"
 import "closeauth-backend-for-frontend/internal/constants"
+import "closeauth-backend-for-frontend/internal/templates/models"
 
 // OAuthLoginData contains all data needed for the OAuth login page
 type OAuthLoginData struct {
-    CSRFToken   string
-    Theme       ThemeData
-    ClientName  string
-    ErrorMsg    string
-    ContinueURL string // URL to redirect after successful login
+	CSRFToken   string
+	Theme       models.ThemeData
+	ClientName  string
+	ErrorMsg    string
+	ContinueURL string // URL to redirect after successful login
 }
 
 // OAuthLogin renders a client-themed login page for OAuth2 flows

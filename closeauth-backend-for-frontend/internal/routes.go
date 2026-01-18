@@ -46,6 +46,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Get(constants.RouteHome, s.publicHandler.HandleHome)
 	r.Get(constants.RouteAdminLogin, s.authHandler.HandleLoginGet)
 	r.Get(constants.RouteAdminRegister, s.authHandler.HandleRegisterGet)
+	r.Post(constants.RouteAdminRegister, s.authHandler.HandleRegisterPost)
+	r.Get(constants.RouteAdminRegisterOTP, s.authHandler.HandleRegisterOTP)
+	r.Post(constants.RouteAdminRegisterVerifyOTP, s.authHandler.HandleVerifyOTP)
 	r.Get(constants.RouteAdminForgotPassword, s.authHandler.HandleForgotPasswordGet)
 	
 	// Protected Admin routes - require authentication
@@ -66,7 +69,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Authentication routes
 	r.Post(constants.RouteLogin, s.authHandler.HandleLoginPost)
 	r.Get(constants.RouteAdminLogout, s.authHandler.HandleLogout)
-	r.Post(constants.RouteRegister, s.authHandler.HandleRegisterPost)
+	// r.Post(constants.RouteRegister, s.authHandler.HandleRegisterPost) // Covered by admin route
 	r.Post(constants.RouteRegisterVerify, s.authHandler.HandleVerifyRegistrationOTP)
 	r.Post(constants.RouteRegisterResend, s.authHandler.HandleResendRegistrationOTP)
 	r.Post(constants.RouteForgotPasswordRequest, s.authHandler.HandleForgotPasswordRequest)

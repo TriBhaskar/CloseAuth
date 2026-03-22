@@ -76,28 +76,73 @@ CREATE TABLE global_roles (
 CREATE TABLE client_themes (
     id              SERIAL PRIMARY KEY,
     client_id       VARCHAR(100) NOT NULL,
-    theme_name      VARCHAR(100) NOT NULL,        -- e.g. 'default', 'dark', 'corporate'
+    theme_name      VARCHAR(100) NOT NULL,        -- 'light', 'dark', 'custom'
     is_active       BOOLEAN DEFAULT TRUE,
+    is_default      BOOLEAN DEFAULT FALSE,        -- Which theme to use by default
+
+    -- Core theme data (always needed - denormalized for performance)
+    logo_url        VARCHAR(500),
+
+    -- Light mode colors
+    light_primary_color      VARCHAR(7),          -- #RRGGBB
+    light_background_color   VARCHAR(7),
+    light_button_color       VARCHAR(7),
+    light_text_color         VARCHAR(7),
+
+    -- Dark mode colors
+    dark_primary_color       VARCHAR(7),
+    dark_background_color    VARCHAR(7),
+    dark_button_color        VARCHAR(7),
+    dark_text_color          VARCHAR(7),
+
+    -- User preferences
+    default_mode             VARCHAR(10) CHECK (default_mode IN ('light', 'dark', 'system')),
+    allow_mode_toggle        BOOLEAN DEFAULT TRUE,
+
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
     UNIQUE(client_id, theme_name),
-    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE
+    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE,
+
+    -- Validation constraints
+    CONSTRAINT valid_light_colors CHECK (
+        light_primary_color ~ '^#[0-9A-Fa-f]{6}$' AND
+        light_background_color ~ '^#[0-9A-Fa-f]{6}$' AND
+        light_button_color ~ '^#[0-9A-Fa-f]{6}$' AND
+        light_text_color ~ '^#[0-9A-Fa-f]{6}$'
+    ),
+    CONSTRAINT valid_dark_colors CHECK (
+        dark_primary_color ~ '^#[0-9A-Fa-f]{6}$' AND
+        dark_background_color ~ '^#[0-9A-Fa-f]{6}$' AND
+        dark_button_color ~ '^#[0-9A-Fa-f]{6}$' AND
+        dark_text_color ~ '^#[0-9A-Fa-f]{6}$'
+    )
 );
 
+-- Index for fast lookups
+CREATE INDEX idx_client_themes_client_active ON client_themes(client_id, is_active);
+CREATE INDEX idx_client_themes_default ON client_themes(client_id, is_default);
+
 -- =========================
--- Theme Configuration Details
+-- Extended Theme Configuration (Optional)
 -- =========================
+-- Use this ONLY for advanced/custom properties not in core schema
 CREATE TABLE theme_configurations (
     id              SERIAL PRIMARY KEY,
     theme_id        INTEGER NOT NULL,
-    config_key      VARCHAR(100) NOT NULL,        -- e.g. 'primary_color', 'logo_url', 'font_family'
-    config_value    TEXT NOT NULL,                -- JSON value or simple text
-    config_type     VARCHAR(50) DEFAULT 'string', -- string, color, url, json, number
+    config_key      VARCHAR(100) NOT NULL,        -- e.g. 'font_family', 'border_radius', 'custom_css'
+    config_value    TEXT NOT NULL,
+    config_type     VARCHAR(50) DEFAULT 'string', -- string, url, json, number, css
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
     UNIQUE(theme_id, config_key),
     FOREIGN KEY(theme_id) REFERENCES client_themes(id) ON DELETE CASCADE
 );
+
+-- Index for config lookups
+CREATE INDEX idx_theme_config_theme ON theme_configurations(theme_id);
 
 -- =========================
 -- Global Users

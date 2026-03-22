@@ -1,0 +1,16 @@
+package templates
+
+import components"closeauth-backend-for-frontend/internal/templates/components"
+import templates"closeauth-backend-for-frontend/internal/templates"
+templ Public() {
+    
+    @templates.Base() {
+    <div class="min-h-screen bg-white">
+    @components.Header()
+    <main class="flex-1">
+        @templates.Home()
+    </main>
+    @components.Footer()
+    </div>
+    }
+}

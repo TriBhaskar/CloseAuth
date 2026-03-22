@@ -1,11 +1,9 @@
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-    content: [
-               "./cmd/web/**/*.html", "./cmd/web/**/*.templ",
-    ],
-    theme: {
-        extend: {},
-    },
-    plugins: [],
-}
-
+/** @type {import('@tailwindcss/cli').Config} */
+export default {
+  darkMode: 'class',
+  content: [
+    "./internal/templates/**/*.{templ,go}",
+    "./static/**/*.html",
+    "./cmd/**/*.go",
+  ],
+};

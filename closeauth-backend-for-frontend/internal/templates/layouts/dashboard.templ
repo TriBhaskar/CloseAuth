@@ -1,0 +1,242 @@
+package templates
+
+import (
+	"closeauth-backend-for-frontend/internal/templates/components/icon"
+	"closeauth-backend-for-frontend/internal/templates/components/card"
+	"closeauth-backend-for-frontend/internal/templates/components/badge"
+)
+
+templ Dashboard(userEmail string) {
+	@AdminLayout("overview", userEmail) {
+		<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
+			<div class="p-6">
+				<!-- Header -->
+				<div class="mb-8">
+					<h1 class="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+					<p class="text-gray-600 dark:text-slate-400 mt-1">Monitor your OAuth system health and activity</p>
+				</div>
+
+				<!-- Stats Cards Row -->
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+					@dashboardStatCard("OAuth Clients", "24", "+2 this week", "positive", "blue") {
+						@icon.LayoutGrid(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Total Users", "12,847", "+324 this month", "positive", "blue") {
+						@icon.Users(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Daily Requests", "89.2K", "+12.5% vs yesterday", "positive", "blue") {
+						@icon.ArrowUpRight(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Success Rate", "99.2%", "+0.3% improvement", "positive", "green") {
+						@icon.TrendingUp(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Active Sessions", "3,241", "Real-time", "neutral", "blue") {
+						@icon.Activity(icon.Props{Class: "size-5"})
+					}
+					@dashboardStatCard("Failed Auth", "156", "-23% vs yesterday", "positive", "orange") {
+						@icon.TriangleAlert(icon.Props{Class: "size-5"})
+					}
+				</div>
+
+				<!-- OAuth Requests Section -->
+				<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+					<!-- Chart -->
+					@card.Card(card.Props{Class: "lg:col-span-2"}) {
+						@card.Header() {
+							<div class="flex items-center justify-between">
+								<div>
+									@card.Title() { OAuth Requests }
+									@card.Description() { Authorization and token requests over 24 hours }
+								</div>
+								<div class="flex items-center gap-4 text-sm">
+									<div class="flex items-center gap-2">
+										<span class="w-3 h-3 rounded-full bg-blue-500"></span>
+										<span class="text-gray-600 dark:text-slate-400">Authorizations</span>
+									</div>
+									<div class="flex items-center gap-2">
+										<span class="w-3 h-3 rounded-full bg-cyan-400"></span>
+										<span class="text-gray-600 dark:text-slate-400">Tokens</span>
+									</div>
+								</div>
+							</div>
+						}
+						@card.Content() {
+							<!-- Chart Placeholder -->
+							<div class="h-48 bg-gradient-to-b from-blue-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-lg flex items-center justify-center border border-gray-200 dark:border-slate-700">
+								<div class="text-center text-gray-400 dark:text-slate-500">
+									<svg class="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+									</svg>
+									<p class="text-sm">Request Chart (00:00 - 24:00)</p>
+								</div>
+							</div>
+						}
+					}
+
+					<!-- Top Clients -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() { Top Clients by Usage }
+						}
+						@card.Content() {
+							<div class="space-y-4">
+								@topClientItem("Web Application", "45,820 requests", 92)
+								@topClientItem("Mobile App iOS", "32,100 requests", 64)
+								@topClientItem("Mobile App Android", "28,450 requests", 57)
+								@topClientItem("Partner API", "15,200 requests", 30)
+								@topClientItem("Internal Dashboard", "7,800 requests", 16)
+							</div>
+						}
+					}
+				</div>
+
+				<!-- Bottom Row -->
+				<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+					<!-- Recent Activity -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() { Recent Activity }
+						}
+						@card.Content() {
+							<div class="space-y-4">
+								@activityItem("error", "Multiple failed login attempts detected", "Mobile App", "2 min ago")
+								@activityItem("success", "New OAuth client registered successfully", "Dashboard API", "15 min ago")
+								@activityItem("warning", "Rate limit threshold reached", "Partner Portal", "32 min ago")
+								@activityItem("success", "Token refresh completed", "Web Application", "1 hour ago")
+								@activityItem("info", "Scheduled maintenance completed", "", "2 hours ago")
+								@activityItem("error", "Invalid redirect URI blocked", "Unknown Client", "3 hours ago")
+							</div>
+						}
+					}
+
+					<!-- Security Alerts -->
+					@card.Card() {
+						@card.Header(card.HeaderProps{Class: "flex-row items-center justify-between"}) {
+							@card.Title() { Security Alerts }
+							<a href="/admin/security" class="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300">View All</a>
+						}
+						@card.Content() {
+							<div class="space-y-3">
+								@securityAlertItem("critical", "Brute Force Attack Detected", "Multiple failed login attempts from IP 192.168.1.105", "5 min ago")
+								@securityAlertItem("high", "Unusual Token Pattern", "Abnormal token refresh rate from client 'mobile-app'", "23 min ago")
+								@securityAlertItem("medium", "New Geographic Location", "Admin login from unrecognized location (Germany)", "1 hour ago")
+							</div>
+						}
+					}
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ dashboardStatCard(title, value, change, changeType, color string) {
+	@card.Card() {
+		@card.Content(card.ContentProps{Class: "pt-4 pb-4"}) {
+			<div class="flex items-start justify-between">
+				<div>
+					<div class="flex items-center gap-2">
+						<span class="text-sm text-gray-500 dark:text-slate-400">{ title }</span>
+						<div class={ "p-1 rounded", templ.KV("bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400", color == "blue"), templ.KV("bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400", color == "green"), templ.KV("bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400", color == "orange") }>
+							{ children... }
+						</div>
+					</div>
+					<div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{ value }</div>
+					<div class={ "text-xs mt-1", templ.KV("text-green-600 dark:text-green-400", changeType == "positive"), templ.KV("text-red-600 dark:text-red-400", changeType == "negative"), templ.KV("text-gray-500 dark:text-slate-400", changeType == "neutral") }>
+						{ change }
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ topClientItem(name, requests string, percentage int) {
+	<div>
+		<div class="flex items-center justify-between mb-1">
+			<span class="text-sm font-medium text-gray-900 dark:text-white">{ name }</span>
+			<span class="text-xs text-gray-500 dark:text-slate-400">{ requests }</span>
+		</div>
+		<div class="h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+			<div class="h-full bg-blue-500 rounded-full" style={ "width: " + percentToString(percentage) + "%" }></div>
+		</div>
+	</div>
+}
+
+templ activityItem(activityType, message, source, time string) {
+	<div class="flex items-start gap-3">
+		<div class={ "p-1.5 rounded-full", templ.KV("bg-red-100 dark:bg-red-900/30", activityType == "error"), templ.KV("bg-green-100 dark:bg-green-900/30", activityType == "success"), templ.KV("bg-orange-100 dark:bg-orange-900/30", activityType == "warning"), templ.KV("bg-blue-100 dark:bg-blue-900/30", activityType == "info") }>
+			if activityType == "error" {
+				@icon.CircleX(icon.Props{Class: "size-4 text-red-600 dark:text-red-400"})
+			} else if activityType == "success" {
+				@icon.CircleCheck(icon.Props{Class: "size-4 text-green-600 dark:text-green-400"})
+			} else if activityType == "warning" {
+				@icon.TriangleAlert(icon.Props{Class: "size-4 text-orange-600 dark:text-orange-400"})
+			} else {
+				@icon.Info(icon.Props{Class: "size-4 text-blue-600 dark:text-blue-400"})
+			}
+		</div>
+		<div class="flex-1 min-w-0">
+			<p class="text-sm text-gray-900 dark:text-white">{ message }</p>
+			<div class="flex items-center gap-2 mt-0.5">
+				if source != "" {
+					@badge.Badge(badge.Props{
+						Variant: badge.VariantSecondary,
+						Class: "text-xs",
+					}) {
+						{ source }
+					}
+				}
+				<span class="text-xs text-gray-500 dark:text-slate-500">{ time }</span>
+			</div>
+		</div>
+	</div>
+}
+
+templ securityAlertItem(severity, title, description, time string) {
+	<div class={ "p-3 rounded-lg border-l-4", templ.KV("bg-red-50 dark:bg-red-900/20 border-red-500", severity == "critical"), templ.KV("bg-orange-50 dark:bg-orange-900/20 border-orange-500", severity == "high"), templ.KV("bg-blue-50 dark:bg-blue-900/20 border-blue-500", severity == "medium") }>
+		<div class="flex items-start gap-2">
+			if severity == "critical" {
+				@icon.CircleX(icon.Props{Class: "size-4 text-red-600 dark:text-red-400 mt-0.5"})
+			} else if severity == "high" {
+				@icon.TriangleAlert(icon.Props{Class: "size-4 text-orange-600 dark:text-orange-400 mt-0.5"})
+			} else {
+				@icon.Info(icon.Props{Class: "size-4 text-blue-600 dark:text-blue-400 mt-0.5"})
+			}
+			<div class="flex-1">
+				<div class="flex items-center gap-2">
+					<span class="font-medium text-sm text-gray-900 dark:text-white">{ title }</span>
+					@badge.Badge(badge.Props{
+						Class: dashboardSeverityBadgeClass(severity),
+					}) {
+						{ severity }
+					}
+				</div>
+				<p class="text-xs text-gray-600 dark:text-slate-400 mt-1">{ description }</p>
+				<span class="text-xs text-gray-500 dark:text-slate-500 mt-1 block">{ time }</span>
+			</div>
+		</div>
+	</div>
+}
+
+func percentToString(p int) string {
+	if p >= 100 {
+		return "100"
+	}
+	if p >= 10 {
+		return string(rune('0'+p/10)) + string(rune('0'+p%10))
+	}
+	return string(rune('0' + p))
+}
+
+func dashboardSeverityBadgeClass(severity string) string {
+	switch severity {
+	case "critical":
+		return "bg-red-500 text-white border-red-500 text-xs"
+	case "high":
+		return "bg-orange-500 text-white border-orange-500 text-xs"
+	case "medium":
+		return "bg-blue-500 text-white border-blue-500 text-xs"
+	default:
+		return "bg-gray-500 text-white border-gray-500 text-xs"
+	}
+}

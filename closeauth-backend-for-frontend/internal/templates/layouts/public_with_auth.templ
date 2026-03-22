@@ -1,0 +1,51 @@
+package templates
+
+import components "closeauth-backend-for-frontend/internal/templates/components"
+import templates "closeauth-backend-for-frontend/internal/templates"
+import "closeauth-backend-for-frontend/internal/constants"
+
+templ PublicWithAuth(isLoggedIn bool, userEmail string) {
+    @templates.Base() {
+        <div class="min-h-screen bg-white">
+            @HeaderWithAuth(isLoggedIn, userEmail)
+            <main class="flex-1">
+                @templates.HomeWithAuth(isLoggedIn, userEmail)
+            </main>
+            @components.Footer()
+        </div>
+    }
+}
+
+templ HeaderWithAuth(isLoggedIn bool, userEmail string) {
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Left: Logo and brand -->
+                <div class="flex items-center space-x-3">
+                    <img class="h-8 w-8" src="/static/images/testlogo.png" alt="CloseAuth Logo" />
+                    <span class="text-xl font-bold text-gray-900">CloseAuth</span>
+                </div>
+                
+                <!-- Center: Navigation Menu (hidden on mobile) -->
+                <nav class="hidden md:flex items-center space-x-8">
+                    <a href="#" class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium">Home</a>
+                    <a href="#" class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium">Documentation</a>
+                    <a href="#" class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium">API</a>
+                    <a href="#" class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium">Pricing</a>
+                </nav>
+                
+                <!-- Right: Conditional auth buttons -->
+                <div class="flex items-center space-x-4">
+                    if !isLoggedIn {
+                        <a href={ templ.SafeURL(constants.RouteAdminLogin) } class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium">Sign in</a>
+                        <a href={ templ.SafeURL(constants.RouteAdminRegister) } class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">Sign up</a>
+                    } else {
+                        <span class="text-gray-600 text-sm">{ userEmail }</span>
+                        <a href={ templ.SafeURL(constants.RouteAdminDashboard) } class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">Dashboard</a>
+                        <a href={ templ.SafeURL(constants.RouteAdminLogout) } class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium">Logout</a>
+                    }
+                </div>
+            </div>
+        </div>
+    </header>
+}

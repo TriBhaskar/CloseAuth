@@ -1,0 +1,360 @@
+package templates
+
+import "closeauth-backend-for-frontend/internal/constants"
+
+// Scope represents an OAuth2 scope
+type Scope struct {
+	Value       string
+	Name        string
+	Description string
+}
+
+// CreateClientData contains data for the create client form
+type CreateClientData struct {
+	AvailableScopes []Scope
+	ApplicationTypes []ApplicationType
+}
+
+// ApplicationType represents different OAuth2 application types
+type ApplicationType struct {
+	Value string
+	Label string
+}
+
+templ CreateClient(data CreateClientData, csrfToken string, userEmail string) {
+    @AdminLayout("clients", userEmail) {
+        <div class="bg-gray-50 min-h-screen">
+            <div class="max-w-4xl mx-auto py-8 px-6">
+                <!-- Header -->
+                <div class="mb-8">
+                    <div class="flex items-center mb-4">
+                        <a
+                            href={ templ.SafeURL(constants.RouteAdminClients) }
+                            class="mr-4 p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                            <svg
+                                class="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M15 19l-7-7 7-7"
+                                ></path>
+                            </svg>
+                        </a>
+                        <h1 class="text-3xl font-bold text-gray-900">
+                            Register New Client Application
+                        </h1>
+                    </div>
+                    <p class="text-gray-600">
+                        Create a new OAuth2 client application to integrate with CloseAuth
+                    </p>
+                </div>
+
+                <!-- Form -->
+                <form
+                    action={ templ.SafeURL(constants.RouteAdminClients) }
+                    method="POST"
+                    class="space-y-8"
+                    id="clientForm"
+                >
+                    <input type="hidden" name="csrf_token" value={ csrfToken }/>
+                    <!-- Basic Information -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-6">
+                        <h2 class="text-xl font-semibold text-gray-900 mb-6">
+                            Basic Information
+                        </h2>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Application Name -->
+                            <div class="md:col-span-2">
+                                <label
+                                    for="name"
+                                    class="block text-sm font-medium text-gray-700 mb-2"
+                                >
+                                    Application Name <span class="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="name"
+                                    name="name"
+                                    placeholder="My Web Application"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                />
+                                <p class="mt-1 text-sm text-red-600 hidden" id="name-error">
+                                    Application name is required
+                                </p>
+                            </div>
+
+                            <!-- Description -->
+                            <div class="md:col-span-2">
+                                <label
+                                    for="description"
+                                    class="block text-sm font-medium text-gray-700 mb-2"
+                                >
+                                    Description
+                                </label>
+                                <textarea
+                                    id="description"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="Brief description of your application"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                                ></textarea>
+                            </div>
+
+                            <!-- Application Type -->
+                            <div class="md:col-span-1">
+                                <label
+                                    for="type"
+                                    class="block text-sm font-medium text-gray-700 mb-2"
+                                >
+                                    Application Type <span class="text-red-500">*</span>
+                                </label>
+                                <select
+                                    id="type"
+                                    name="type"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                                >
+                                    <option value="">Select application type</option>
+                                    for _, appType := range data.ApplicationTypes {
+                                        <option value={ appType.Value }>{ appType.Label }</option>
+                                    }
+                                </select>
+                                <p class="mt-1 text-sm text-red-600 hidden" id="type-error">
+                                    Please select an application type
+                                </p>
+                            </div>
+
+                            <!-- Logo URL -->
+                            <div class="md:col-span-1">
+                                <label
+                                    for="logoUrl"
+                                    class="block text-sm font-medium text-gray-700 mb-2"
+                                >
+                                    Logo URL (Optional)
+                                </label>
+                                <input
+                                    type="url"
+                                    id="logoUrl"
+                                    name="logoUrl"
+                                    placeholder="https://example.com/logo.png"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                />
+                                <p class="mt-1 text-sm text-red-600 hidden" id="logoUrl-error">
+                                    Please enter a valid URL
+                                </p>
+                            </div>
+                        </div>
+                    </div>                    <!-- Redirect URIs -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-6">
+                        <h2 class="text-xl font-semibold text-gray-900 mb-2">
+                            Redirect URIs
+                        </h2>
+                        <p class="text-gray-600 mb-6">
+                            Allowed callback URLs for your application after authentication
+                        </p>
+
+                        <div class="space-y-4">
+                            <div id="redirectUris">
+                                <!-- Initial redirect URI input -->
+                                <div class="flex gap-3 redirect-uri-row">
+                                    <input
+                                        type="url"
+                                        name="redirectUris[]"
+                                        placeholder="https://yourapp.com/callback"
+                                        required
+                                        class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    />
+                                    <button
+                                        type="button"
+                                        onclick="removeRedirectUri(this)"
+                                        class="px-4 py-3 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors hidden remove-uri-btn"
+                                    >
+                                        <svg
+                                            class="w-5 h-5"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                            ></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onclick="addRedirectUri()"
+                                class="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-800 transition-colors"
+                            >
+                                Add Another Redirect URI
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Permissions & Scopes -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-6">
+                        <h2 class="text-xl font-semibold text-gray-900 mb-2">
+                            Permissions & Scopes
+                        </h2>
+                        <p class="text-gray-600 mb-6">
+                            Select the permissions your application needs
+                        </p>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            for _, scope := range data.AvailableScopes {
+                                <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                                    <div class="flex-1">
+                                        <h3 class="font-semibold text-gray-900">{ scope.Name }</h3>
+                                        <p class="text-sm text-gray-600">{ scope.Description }</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer ml-4">
+                                        <input
+                                            type="checkbox"
+                                            name="scopes[]"
+                                            value={ scope.Value }
+                                            class="sr-only peer"
+                                        />
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                        <span class="ml-3 text-sm font-medium text-gray-700">{ scope.Value }</span>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+                        <a
+                            href="/admin/clients"
+                            class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                            Cancel
+                        </a>
+                        <button
+                            type="submit"
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            id="submitBtn"
+                        >
+                            <span id="submitText">Create Client Application</span>
+                            <span id="submitLoading" class="hidden items-center">
+                                <svg
+                                    class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <circle
+                                        class="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        stroke-width="4"
+                                    ></circle>
+                                    <path
+                                        class="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                </svg>
+                                Creating...
+                            </span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- JavaScript for dynamic functionality -->
+                <script>
+                    // Add redirect URI functionality
+                    function addRedirectUri() {
+                        const container = document.getElementById('redirectUris');
+                        const newRow = document.createElement('div');
+                        newRow.className = 'flex gap-3 redirect-uri-row';
+                        newRow.innerHTML = `
+                            <input
+                                type="url"
+                                name="redirectUris[]"
+                                placeholder="https://yourapp.com/callback"
+                                required
+                                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            />
+                            <button
+                                type="button"
+                                onclick="removeRedirectUri(this)"
+                                class="px-4 py-3 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors remove-uri-btn"
+                            >
+                                <svg
+                                    class="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    ></path>
+                                </svg>
+                            </button>
+                        `;
+                        container.appendChild(newRow);
+                        updateRemoveButtons();
+                    }
+
+                    // Remove redirect URI functionality
+                    function removeRedirectUri(button) {
+                        const rows = document.querySelectorAll('.redirect-uri-row');
+                        if (rows.length > 1) {
+                            button.parentElement.remove();
+                            updateRemoveButtons();
+                        }
+                    }
+
+                    // Update visibility of remove buttons
+                    function updateRemoveButtons() {
+                        const rows = document.querySelectorAll('.redirect-uri-row');
+                        const removeButtons = document.querySelectorAll('.remove-uri-btn');
+                        
+                        removeButtons.forEach(btn => {
+                            if (rows.length > 1) {
+                                btn.classList.remove('hidden');
+                            } else {
+                                btn.classList.add('hidden');
+                            }
+                        });
+                    }
+
+                    // Form submission with loading state
+                    document.getElementById('clientForm').addEventListener('submit', function(e) {
+                        const submitBtn = document.getElementById('submitBtn');
+                        const submitText = document.getElementById('submitText');
+                        const submitLoading = document.getElementById('submitLoading');
+                        
+                        submitBtn.disabled = true;
+                        submitText.classList.add('hidden');
+                        submitLoading.classList.remove('hidden');
+                        submitLoading.classList.add('flex');
+                    });
+
+                    // Initialize remove button visibility
+                    document.addEventListener('DOMContentLoaded', function() {
+                        updateRemoveButtons();
+                    });
+                </script>
+            </div>
+        </div>
+    }
+}

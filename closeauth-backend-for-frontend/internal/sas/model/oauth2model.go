@@ -58,3 +58,12 @@ type ClientFormRequest struct {
 	Description             string   `json:"description,omitempty"`
 	Scope                   string   `json:"scope,omitempty"`
 }
+
+// ClientInfoResponse represents the response from the client-info endpoint
+// Used to fetch client details like name, logo, and scopes for OAuth login/consent pages
+type ClientInfoResponse struct {
+	ClientID   string   `json:"clientId"`
+	ClientName string   `json:"clientName"`
+	LogoURI    string   `json:"logoUri"`
+	Scopes     []string `json:"scopes"`
+}

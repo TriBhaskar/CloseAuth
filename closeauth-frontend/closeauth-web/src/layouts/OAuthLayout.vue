@@ -4,8 +4,8 @@ import { RouterView } from 'vue-router'
 
 <template>
   <div
-    class="min-h-screen flex flex-col items-center justify-center p-4"
-    style="background-color: hsl(var(--theme-background, var(--background)))"
+    class="min-h-screen flex flex-col items-center justify-center p-4 bg-background"
+    style="background-color: var(--theme-background)"
   >
     <div class="w-full max-w-sm bg-card rounded-xl border border-border shadow-sm p-8">
       <RouterView />

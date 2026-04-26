@@ -6,52 +6,44 @@ import AuthLayout from '@/layouts/AuthLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { adminService } from '@/api/services'
+import { useAuthStore } from '@/stores/auth'
 
-const route = useRoute()
+const route  = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
-const username = ref<string>('')
-const password = ref<string>('')
+const { isLoading, errorMessage, execute } = useAsyncState()
+
+const username    = ref<string>('')
+const password    = ref<string>('')
 const showPassword = ref<boolean>(false)
-const isLoading = ref<boolean>(false)
-const errorMessage = ref<string>('')
-const oauthFlow = ref<boolean>(false)
+const oauthFlow   = ref<boolean>(false)
 
 onMounted(() => {
-  if (route.query.oauth !== undefined) {
-    oauthFlow.value = true
-  }
+  if (route.query.oauth !== undefined) oauthFlow.value = true
 })
 
+// ── Dev mock credentials ───────────────────────────────────────────────────────
+// Remove this block once the real backend login endpoint is wired up.
+const MOCK_USER     = 'admin@closeauth.dev'
+const MOCK_PASSWORD = 'admin'
+
 const handleSubmit = async () => {
-  isLoading.value = true
-  errorMessage.value = ''
-
-  try {
-    const response = await fetch('/api/admin/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username: username.value,
-        password: password.value,
-      }),
-    })
-
-    const json = await response.json().catch(() => null)
-
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Unable to sign in. Please try again.'
-      return
-    }
-
+  // DEV BYPASS: accept mock credentials without hitting the API
+  if (username.value === MOCK_USER && password.value === MOCK_PASSWORD) {
+    authStore.setUser(MOCK_USER, 'admin', 'Admin')
     await router.push('/admin/dashboard')
-  } catch {
-    errorMessage.value = 'Unable to sign in. Please try again.'
-  } finally {
-    isLoading.value = false
+    return
   }
+
+  const result = await execute(() =>
+    adminService.login({ username: username.value, password: password.value }),
+  )
+  if (!result) return
+  await authStore.fetchMe()
+  await router.push('/admin/dashboard')
 }
 </script>
 

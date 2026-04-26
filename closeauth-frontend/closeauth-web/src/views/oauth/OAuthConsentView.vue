@@ -13,36 +13,34 @@ import {
   Shield,
   User,
 } from 'lucide-vue-next'
+import { useOAuthTheme } from '@/composables/useOAuthTheme'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { oauthService } from '@/api/services'
+import { adminService } from '@/api/services'
 
 const route = useRoute()
 
+// ── Composables ────────────────────────────────────────────────────────────────
+const { clientId, clientName, clientLogoUrl, loadTheme } = useOAuthTheme()
+const { isLoading, execute } = useAsyncState()
+
 // ── State ──────────────────────────────────────────────────────────────────────
-const clientName = ref('the application')
-const clientLogoUrl = ref('')
 const username = ref('')
 const userEmail = ref('')
 const scopes = ref<string[]>([])
-const isLoading = ref(false)
-
-// Query params
-const clientId = ref('')
 const state = ref('')
 const redirectUri = ref('')
 
 // ── Scope metadata ─────────────────────────────────────────────────────────────
-type ScopeInfo = {
-  label: string
-  description: string
-  icon: typeof Shield
-}
+type ScopeInfo = { label: string; description: string; icon: typeof Shield }
 
 const scopeMap: Record<string, ScopeInfo> = {
-  openid: { label: 'Sign you in', description: 'Verify your identity', icon: KeyRound },
-  profile: { label: 'View your profile', description: 'Access your name and picture', icon: User },
-  email: { label: 'Access your email', description: 'Know your email address', icon: Mail },
-  offline_access: { label: 'Stay signed in', description: "Access when you're not active", icon: RefreshCw },
-  'read:users': { label: 'Read users', description: 'List and view user data', icon: Eye },
-  'write:users': { label: 'Manage users', description: 'Create and modify users', icon: PenLine },
+  openid:         { label: 'Sign you in',        description: 'Verify your identity',          icon: KeyRound  },
+  profile:        { label: 'View your profile',   description: 'Access your name and picture',  icon: User      },
+  email:          { label: 'Access your email',   description: 'Know your email address',       icon: Mail      },
+  offline_access: { label: 'Stay signed in',      description: "Access when you're not active", icon: RefreshCw },
+  'read:users':   { label: 'Read users',          description: 'List and view user data',       icon: Eye       },
+  'write:users':  { label: 'Manage users',        description: 'Create and modify users',       icon: PenLine   },
 }
 
 const scopeInfo = computed(() =>
@@ -54,76 +52,45 @@ const scopeInfo = computed(() =>
 
 // ── On mount ───────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  clientId.value = (route.query.client_id as string) ?? ''
-  state.value = (route.query.state as string) ?? ''
+  state.value       = (route.query.state        as string) ?? ''
   redirectUri.value = (route.query.redirect_uri as string) ?? ''
-  const rawScope = (route.query.scope as string) ?? ''
-  scopes.value = rawScope ? rawScope.split(' ').filter(Boolean) : []
+  const rawScope    = (route.query.scope        as string) ?? ''
+  scopes.value      = rawScope ? rawScope.split(' ').filter(Boolean) : []
 
-  // Fetch theme + client info
-  if (clientId.value) {
-    try {
-      const res = await fetch(`/api/oauth/theme?client_id=${encodeURIComponent(clientId.value)}`)
-      if (res.ok) {
-        const data = await res.json().catch(() => null)
-        if (data?.clientName) clientName.value = data.clientName
-        if (data?.clientLogoUrl) clientLogoUrl.value = data.clientLogoUrl
-        if (data?.themeButton) document.documentElement.style.setProperty('--theme-button', data.themeButton)
-        if (data?.themeBackground) document.documentElement.style.setProperty('--theme-background', data.themeBackground)
-        if (data?.themeText) document.documentElement.style.setProperty('--theme-text', data.themeText)
-      }
-    } catch { /* fallback already set */ }
-  }
+  await loadTheme()
 
   // Fetch current user
   try {
-    const res = await fetch('/api/admin/me')
-    if (res.ok) {
-      const data = await res.json().catch(() => null)
-      if (data?.username) username.value = data.username
-      if (data?.email) userEmail.value = data.email
-    }
-  } catch { /* silently fail */ }
+    const user = await adminService.getMe()
+    username.value  = user.username
+    userEmail.value = user.email
+  } catch { /* silently fail — consent still works without user display */ }
 })
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
 const handleAllow = async () => {
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/oauth/consent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'approve',
-        client_id: clientId.value,
-        state: state.value,
-        redirect_uri: redirectUri.value,
-        scopes: scopes.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (json?.redirect_url) window.location.href = json.redirect_url
-  } catch { /* silently fail */ }
-  finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    oauthService.submitConsent({
+      action: 'approve',
+      client_id: clientId.value,
+      state: state.value,
+      redirect_uri: redirectUri.value,
+      scopes: scopes.value,
+    }),
+  )
+  if (result?.redirect_url) window.location.href = result.redirect_url
 }
 
 const handleDeny = async () => {
-  try {
-    const response = await fetch('/api/oauth/consent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'deny',
-        client_id: clientId.value,
-        state: state.value,
-        redirect_uri: redirectUri.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (json?.redirect_url) window.location.href = json.redirect_url
-  } catch { /* silently fail */ }
+  const result = await execute(() =>
+    oauthService.submitConsent({
+      action: 'deny',
+      client_id: clientId.value,
+      state: state.value,
+      redirect_uri: redirectUri.value,
+    }),
+  )
+  if (result?.redirect_url) window.location.href = result.redirect_url
 }
 </script>
 

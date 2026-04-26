@@ -6,22 +6,23 @@ import AuthLayout from '@/layouts/AuthLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { apiClient } from '@/api/client'
 
 const router = useRouter()
+const { isLoading, errorMessage, execute } = useAsyncState()
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const step = ref<1 | 2 | 3>(1)
 
-const email = ref('')
-const password = ref('')
+const email           = ref('')
+const password        = ref('')
 const confirmPassword = ref('')
-const showPassword = ref(false)
-const showConfirm = ref(false)
-const isLoading = ref(false)
-const errorMessage = ref('')
+const showPassword    = ref(false)
+const showConfirm     = ref(false)
 
 const otpDigits = ref<string[]>(Array(6).fill(''))
-const otpRefs = ref<HTMLInputElement[]>([])
+const otpRefs   = ref<HTMLInputElement[]>([])
 
 // ── Password Strength ──────────────────────────────────────────────────────────
 const passwordStrength = computed(() => {
@@ -59,14 +60,11 @@ const circleClass = (s: number) => {
   return 'border border-border text-muted-foreground rounded-full'
 }
 
-const labelClass = (s: number) => {
-  if (s === step.value) return 'text-[11px] text-foreground font-medium'
-  return 'text-[11px] text-muted-foreground'
-}
+const labelClass = (s: number) =>
+  s === step.value ? 'text-[11px] text-foreground font-medium' : 'text-[11px] text-muted-foreground'
 
-const lineClass = (afterStep: number) => {
-  return afterStep < step.value ? 'bg-foreground' : 'bg-border'
-}
+const lineClass = (afterStep: number) =>
+  afterStep < step.value ? 'bg-foreground' : 'bg-border'
 
 // ── OTP helpers ────────────────────────────────────────────────────────────────
 const onOtpInput = async (index: number, event: Event) => {
@@ -88,85 +86,37 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
 const handleStep1 = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/admin/forgot-password/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Failed to send code. Please try again.'
-      return
-    }
-    step.value = 2
-  } catch {
-    errorMessage.value = 'Failed to send code. Please try again.'
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    apiClient.post('/admin/forgot-password/request', { email: email.value }),
+  )
+  if (result !== null) step.value = 2
 }
 
 const handleStep2 = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/admin/forgot-password/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value, otp: otpDigits.value.join('') }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Invalid code. Please try again.'
-      return
-    }
-    step.value = 3
-  } catch {
-    errorMessage.value = 'Verification failed. Please try again.'
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    apiClient.post('/admin/forgot-password/verify-otp', {
+      email: email.value,
+      otp: otpDigits.value.join(''),
+    }),
+  )
+  if (result !== null) step.value = 3
 }
 
 const handleResendOtp = async () => {
-  try {
-    await fetch('/api/admin/forgot-password/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value }),
-    })
-  } catch {
-    // silently fail
-  }
+  await execute(() =>
+    apiClient.post('/admin/forgot-password/request', { email: email.value }),
+  )
 }
 
 const handleStep3 = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/admin/forgot-password/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: email.value,
-        otp: otpDigits.value.join(''),
-        password: password.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Failed to reset password. Please try again.'
-      return
-    }
-    await router.push('/admin/login')
-  } catch {
-    errorMessage.value = 'Failed to reset password. Please try again.'
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    apiClient.post('/admin/forgot-password/reset', {
+      email: email.value,
+      otp: otpDigits.value.join(''),
+      password: password.value,
+    }),
+  )
+  if (result !== null) await router.push('/admin/login')
 }
 </script>
 

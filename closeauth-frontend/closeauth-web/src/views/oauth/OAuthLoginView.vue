@@ -1,75 +1,39 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { AlertCircle, Eye, EyeOff, Info, Loader2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useOAuthTheme } from '@/composables/useOAuthTheme'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { oauthService } from '@/api/services'
 
-const route = useRoute()
+// ── Composables ────────────────────────────────────────────────────────────────
+const { clientId, clientName, clientLogoUrl, loadTheme } = useOAuthTheme()
+const { isLoading, errorMessage, execute } = useAsyncState()
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const usernameOrEmail = ref('')
 const password = ref('')
 const rememberMe = ref(false)
 const showPassword = ref(false)
-const isLoading = ref(false)
-const errorMessage = ref('')
-const clientName = ref('the application')
-const clientLogoUrl = ref('')
-const clientId = ref('')
 
 // ── On mount: fetch theme/client info ─────────────────────────────────────────
-onMounted(async () => {
-  clientId.value = (route.query.client_id as string) ?? ''
-  if (!clientId.value) return
-  try {
-    const res = await fetch(`/api/oauth/theme?client_id=${encodeURIComponent(clientId.value)}`)
-    if (res.ok) {
-      const data = await res.json().catch(() => null)
-      if (data?.clientName) clientName.value = data.clientName
-      if (data?.clientLogoUrl) clientLogoUrl.value = data.clientLogoUrl
-      // Apply CSS vars from BFF response
-      if (data?.themeButton) document.documentElement.style.setProperty('--theme-button', data.themeButton)
-      if (data?.themeBackground) document.documentElement.style.setProperty('--theme-background', data.themeBackground)
-      if (data?.themeText) document.documentElement.style.setProperty('--theme-text', data.themeText)
-    }
-  } catch {
-    // fallback — already set above
-  }
-})
+onMounted(loadTheme)
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
-const onRememberMeChange = (value: boolean | 'indeterminate') => {
-  rememberMe.value = value === true
-}
-
 const handleSubmit = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/oauth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        usernameOrEmail: usernameOrEmail.value,
-        password: password.value,
-        rememberMe: rememberMe.value,
-        client_id: clientId.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Unable to sign in. Please try again.'
-      return
-    }
-    if (json?.redirect_url) {
-      window.location.href = json.redirect_url
-    }
-  } catch {
-    errorMessage.value = 'Unable to sign in. Please try again.'
-  } finally {
-    isLoading.value = false
+  const result = await execute(() =>
+    oauthService.login({
+      usernameOrEmail: usernameOrEmail.value,
+      password: password.value,
+      rememberMe: rememberMe.value,
+      client_id: clientId.value,
+    }),
+  )
+  if (result?.redirect_url) {
+    window.location.href = result.redirect_url
   }
 }
 </script>

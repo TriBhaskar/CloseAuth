@@ -6,25 +6,26 @@ import AuthLayout from '@/layouts/AuthLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { adminService } from '@/api/services'
 
 const router = useRouter()
+const { isLoading, errorMessage, execute } = useAsyncState()
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const step = ref<'register' | 'otp'>('register')
 
-const firstName = ref('')
-const lastName = ref('')
-const email = ref('')
-const username = ref('')
-const password = ref('')
+const firstName       = ref('')
+const lastName        = ref('')
+const email           = ref('')
+const username        = ref('')
+const password        = ref('')
 const confirmPassword = ref('')
-const showPassword = ref(false)
-const showConfirm = ref(false)
-const isLoading = ref(false)
-const errorMessage = ref('')
+const showPassword    = ref(false)
+const showConfirm     = ref(false)
 
 const otpDigits = ref<string[]>(Array(6).fill(''))
-const otpRefs = ref<HTMLInputElement[]>([])
+const otpRefs   = ref<HTMLInputElement[]>([])
 
 // ── Password Strength ──────────────────────────────────────────────────────────
 const passwordStrength = computed(() => {
@@ -49,72 +50,33 @@ const strengthSegmentColor = (index: number) => {
   return colors[passwordStrength.value - 1] ?? 'bg-border'
 }
 
-// ── Computed ───────────────────────────────────────────────────────────────────
 const passwordsMatch = computed(
   () => password.value.length > 0 && password.value === confirmPassword.value,
 )
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
 const handleSubmit = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/admin/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        firstName: firstName.value,
-        lastName: lastName.value,
-        email: email.value,
-        username: username.value,
-        password: password.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Registration failed. Please try again.'
-      return
-    }
-    step.value = 'otp'
-  } catch {
-    errorMessage.value = 'Registration failed. Please try again.'
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    adminService.register({
+      firstName: firstName.value,
+      lastName:  lastName.value,
+      email:     email.value,
+      username:  username.value,
+      password:  password.value,
+    }),
+  )
+  if (result) step.value = 'otp'
 }
 
 const handleVerifyOtp = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/admin/register/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value, otp: otpDigits.value.join('') }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Invalid code. Please try again.'
-      return
-    }
-    await router.push('/admin/login')
-  } catch {
-    errorMessage.value = 'Verification failed. Please try again.'
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    adminService.verifyOtp({ email: email.value, otp: otpDigits.value.join('') }),
+  )
+  if (result) await router.push('/admin/login')
 }
 
 const handleResendOtp = async () => {
-  try {
-    await fetch('/api/admin/register/resend-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value }),
-    })
-  } catch {
-    // silently fail
-  }
+  await execute(() => adminService.resendOtp({ email: email.value }))
 }
 
 // ── OTP input helpers ──────────────────────────────────────────────────────────

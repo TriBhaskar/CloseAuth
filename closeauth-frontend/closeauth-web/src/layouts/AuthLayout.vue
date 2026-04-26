@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-background text-foreground min-h-screen flex flex-col relative w-full selection:bg-primary/20 selection:text-primary">
+  <div class="bg-background text-foreground min-h-screen flex flex-col relative w-full bg-mesh-light dark:bg-mesh-dark selection:bg-primary/20 selection:text-primary">
     <!-- Header -->
     <header class="w-full h-14 flex items-center px-6 fixed top-0 left-0 bg-transparent z-10">
       <span class="text-lg font-semibold tracking-tighter">CloseAuth</span>
@@ -7,7 +7,7 @@
 
     <!-- Main Content -->
     <main class="flex-grow flex items-center justify-center p-4 z-10">
-      <div class="w-full max-w-[400px] bg-card border border-border rounded-xl shadow-sm p-8 flex flex-col gap-6">
+      <div class="w-full max-w-[400px] bg-card border border-border rounded-xl p-8 flex flex-col gap-6 card-elevated animate-scale-in">
         <slot name="above" />
         <slot />
         <slot name="footer" />
@@ -28,8 +28,8 @@
 
     <!-- Background Decorative Elements -->
     <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-      <div class="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] blur-[120px] opacity-20 bg-primary rounded-full"></div>
-      <div class="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] blur-[120px] opacity-20 bg-secondary rounded-full"></div>
+      <div class="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] blur-[100px] opacity-30 bg-primary rounded-full animate-pulse-slow"></div>
+      <div class="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] blur-[100px] opacity-20 bg-primary/60 rounded-full"></div>
     </div>
   </div>
 </template>

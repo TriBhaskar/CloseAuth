@@ -1,33 +1,34 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { AlertCircle, Check, Eye, EyeOff, Loader2, Mail } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useOAuthTheme } from '@/composables/useOAuthTheme'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { oauthService } from '@/api/services'
 
-const route = useRoute()
 const router = useRouter()
+
+// ── Composables ────────────────────────────────────────────────────────────────
+const { clientId, clientName, clientLogoUrl, loadTheme } = useOAuthTheme()
+const { isLoading, errorMessage, execute } = useAsyncState()
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const step = ref<'register' | 'otp'>('register')
 
-const firstName = ref('')
-const lastName = ref('')
-const email = ref('')
-const username = ref('')
-const password = ref('')
+const firstName       = ref('')
+const lastName        = ref('')
+const email           = ref('')
+const username        = ref('')
+const password        = ref('')
 const confirmPassword = ref('')
-const showPassword = ref(false)
-const showConfirm = ref(false)
-const isLoading = ref(false)
-const errorMessage = ref('')
-const clientName = ref('the application')
-const clientLogoUrl = ref('')
-const clientId = ref('')
+const showPassword    = ref(false)
+const showConfirm     = ref(false)
 
 const otpDigits = ref<string[]>(Array(6).fill(''))
-const otpRefs = ref<HTMLInputElement[]>([])
+const otpRefs   = ref<HTMLInputElement[]>([])
 
 // ── Password Strength ──────────────────────────────────────────────────────────
 const passwordStrength = computed(() => {
@@ -41,9 +42,9 @@ const passwordStrength = computed(() => {
   return score
 })
 
-const strengthLabel = computed(() => {
-  return ['Too short', 'Weak', 'Fair', 'Good', 'Strong'][passwordStrength.value]
-})
+const strengthLabel = computed(() =>
+  ['Too short', 'Weak', 'Fair', 'Good', 'Strong'][passwordStrength.value],
+)
 
 const strengthSegmentColor = (index: number) => {
   if (index >= passwordStrength.value) return 'bg-border'
@@ -54,26 +55,8 @@ const passwordsMatch = computed(
   () => password.value.length > 0 && password.value === confirmPassword.value,
 )
 
-// ── On mount: fetch theme/client info ─────────────────────────────────────────
-import { onMounted } from 'vue'
-
-onMounted(async () => {
-  clientId.value = (route.query.client_id as string) ?? ''
-  if (!clientId.value) return
-  try {
-    const res = await fetch(`/api/oauth/theme?client_id=${encodeURIComponent(clientId.value)}`)
-    if (res.ok) {
-      const data = await res.json().catch(() => null)
-      if (data?.clientName) clientName.value = data.clientName
-      if (data?.clientLogoUrl) clientLogoUrl.value = data.clientLogoUrl
-      if (data?.themeButton) document.documentElement.style.setProperty('--theme-button', data.themeButton)
-      if (data?.themeBackground) document.documentElement.style.setProperty('--theme-background', data.themeBackground)
-      if (data?.themeText) document.documentElement.style.setProperty('--theme-text', data.themeText)
-    }
-  } catch {
-    // fallback already set
-  }
-})
+// ── On mount ───────────────────────────────────────────────────────────────────
+onMounted(loadTheme)
 
 // ── OTP helpers ────────────────────────────────────────────────────────────────
 const onOtpInput = async (index: number, event: Event) => {
@@ -95,74 +78,37 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
 const handleSubmit = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/oauth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        firstName: firstName.value,
-        lastName: lastName.value,
-        email: email.value,
-        username: username.value,
-        password: password.value,
-        client_id: clientId.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Registration failed. Please try again.'
-      return
-    }
-    step.value = 'otp'
-  } catch {
-    errorMessage.value = 'Registration failed. Please try again.'
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    oauthService.register({
+      firstName: firstName.value,
+      lastName:  lastName.value,
+      email:     email.value,
+      username:  username.value,
+      password:  password.value,
+      client_id: clientId.value,
+    }),
+  )
+  if (result) step.value = 'otp'
 }
 
 const handleVerifyOtp = async () => {
-  errorMessage.value = ''
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/oauth/register/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: email.value,
-        otp: otpDigits.value.join(''),
-        client_id: clientId.value,
-      }),
-    })
-    const json = await response.json().catch(() => null)
-    if (!response.ok) {
-      errorMessage.value = (json?.error as string) || 'Invalid code. Please try again.'
-      return
-    }
-    if (json?.redirect_url) {
-      window.location.href = json.redirect_url
-    } else {
-      await router.push({ path: '/oauth/login', query: { client_id: clientId.value } })
-    }
-  } catch {
-    errorMessage.value = 'Verification failed. Please try again.'
-  } finally {
-    isLoading.value = false
+  const result = await execute(() =>
+    oauthService.verifyOtp({
+      email:     email.value,
+      otp:       otpDigits.value.join(''),
+      client_id: clientId.value,
+    }),
+  )
+  if (!result) return
+  if (result.redirect_url) {
+    window.location.href = result.redirect_url
+  } else {
+    await router.push({ path: '/oauth/login', query: { client_id: clientId.value } })
   }
 }
 
 const handleResendOtp = async () => {
-  try {
-    await fetch('/api/oauth/register/resend-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value, client_id: clientId.value }),
-    })
-  } catch {
-    // silently fail
-  }
+  await execute(() => oauthService.resendOtp({ email: email.value, client_id: clientId.value }))
 }
 </script>
 

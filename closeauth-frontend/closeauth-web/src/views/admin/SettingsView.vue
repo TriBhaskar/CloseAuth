@@ -11,13 +11,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { adminService } from '@/api/services'
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const tabs = ['General', 'Security', 'Tokens', 'Notifications'] as const
 type Tab = typeof tabs[number]
 
 const activeTab = ref<Tab>('General')
-const isSaving  = ref(false)
+const { isLoading: isSaving, execute } = useAsyncState()
 
 const settings = reactive({
   issuerUrl:       'https://auth.company.com',
@@ -27,18 +29,9 @@ const settings = reactive({
 })
 
 // ── Save ───────────────────────────────────────────────────────────────────────
+// TODO(api): replace mock initial values with adminService.getSettings() on mount
 const handleSave = async () => {
-  isSaving.value = true
-  try {
-    await fetch('/api/admin/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    }).catch(() => {})
-    await new Promise((r) => setTimeout(r, 800))
-  } finally {
-    isSaving.value = false
-  }
+  await execute(() => adminService.saveSettings({ ...settings }))
 }
 
 // ── Placeholder tab config ─────────────────────────────────────────────────────
@@ -50,12 +43,12 @@ const placeholders: Record<Exclude<Tab, 'General'>, { icon: typeof Lock; label: 
 </script>
 
 <template>
-  <div class="space-y-6 max-w-3xl">
+  <div class="p-6 space-y-10 font-sans max-w-3xl">
     <!-- ── Header ── -->
     <div class="flex items-start justify-between">
       <div>
         <h1 class="text-2xl font-bold text-foreground tracking-tight">Settings</h1>
-        <p class="text-sm text-muted-foreground mt-1">Configure your OAuth2 server.</p>
+        <p class="text-sm font-medium text-muted-foreground mt-1">Configure your OAuth2 server.</p>
       </div>
       <Button
         variant="default"
@@ -75,7 +68,7 @@ const placeholders: Record<Exclude<Tab, 'General'>, { icon: typeof Lock; label: 
       <button
         v-for="tab in tabs"
         :key="tab"
-        class="px-1 py-2.5 mr-6 text-sm border-b-2 transition-colors whitespace-nowrap"
+        class="px-1 py-3 mr-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
         :class="activeTab === tab
           ? 'border-foreground text-foreground font-medium'
           : 'border-transparent text-muted-foreground hover:text-foreground'"

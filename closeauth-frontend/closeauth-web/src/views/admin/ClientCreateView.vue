@@ -13,19 +13,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useAsyncState } from '@/composables/useAsyncState'
+import { adminService } from '@/api/services'
 
 const router = useRouter()
+const { isLoading, execute } = useAsyncState()
 
 // ── State ──────────────────────────────────────────────────────────────────────
-const appName      = ref('')
-const description  = ref('')
-const appType      = ref('')
-const logoUrl      = ref('')
-const homepageUrl  = ref('')
-const authMethod   = ref('client_secret_basic')
-const redirectUris = ref<string[]>([''])
+const appName        = ref('')
+const description    = ref('')
+const appType        = ref('')
+const logoUrl        = ref('')
+const homepageUrl    = ref('')
+const authMethod     = ref('client_secret_basic')
+const redirectUris   = ref<string[]>([''])
 const selectedScopes = ref<string[]>(['openid'])
-const isLoading    = ref(false)
 
 // ── Available scopes ───────────────────────────────────────────────────────────
 const availableScopes = [
@@ -50,34 +52,24 @@ const toggleScope = (key: string) => {
 
 // ── Submit ─────────────────────────────────────────────────────────────────────
 const handleSubmit = async () => {
-  isLoading.value = true
-  try {
-    const response = await fetch('/api/admin/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        appName:      appName.value,
-        description:  description.value,
-        appType:      appType.value,
-        logoUrl:      logoUrl.value,
-        homepageUrl:  homepageUrl.value,
-        authMethod:   authMethod.value,
-        redirectUris: redirectUris.value.filter(Boolean),
-        scopes:       selectedScopes.value,
-      }),
-    })
-    if (!response.ok) throw new Error('Failed to register client')
-    await router.push('/admin/clients')
-  } catch (err) {
-    console.error(err)
-  } finally {
-    isLoading.value = false
-  }
+  const result = await execute(() =>
+    adminService.createClient({
+      appName:      appName.value,
+      description:  description.value,
+      appType:      appType.value,
+      logoUrl:      logoUrl.value,
+      homepageUrl:  homepageUrl.value,
+      authMethod:   authMethod.value,
+      redirectUris: redirectUris.value.filter(Boolean),
+      scopes:       selectedScopes.value,
+    }),
+  )
+  if (result) await router.push('/admin/clients')
 }
 </script>
 
 <template>
-  <div class="max-w-2xl space-y-8">
+  <div class="p-6 max-w-2xl space-y-8 font-sans">
     <!-- ── Header ── -->
     <div>
       <RouterLink to="/admin/clients">
@@ -87,12 +79,12 @@ const handleSubmit = async () => {
         </Button>
       </RouterLink>
       <h1 class="text-2xl font-bold text-foreground tracking-tight">New client</h1>
-      <p class="text-sm text-muted-foreground mt-1">Register an OAuth2 application.</p>
+      <p class="text-sm font-medium text-muted-foreground mt-1">Register an OAuth2 application.</p>
     </div>
 
     <!-- ── CARD 1: Basic information ── -->
     <div class="bg-card border border-border rounded-xl shadow-sm p-6">
-      <h2 class="text-sm font-semibold text-foreground">Basic information</h2>
+      <h2 class="text-base font-bold text-foreground">Basic information</h2>
       <div class="h-px bg-border my-4" />
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -175,7 +167,7 @@ const handleSubmit = async () => {
 
     <!-- ── CARD 2: Authorization ── -->
     <div class="bg-card border border-border rounded-xl shadow-sm p-6">
-      <h2 class="text-sm font-semibold text-foreground">Authorization</h2>
+      <h2 class="text-base font-bold text-foreground">Authorization</h2>
       <div class="h-px bg-border my-4" />
 
       <div class="space-y-5">
@@ -242,7 +234,7 @@ const handleSubmit = async () => {
 
     <!-- ── CARD 3: Scopes ── -->
     <div class="bg-card border border-border rounded-xl shadow-sm p-6">
-      <h2 class="text-sm font-semibold text-foreground">Scopes & permissions</h2>
+      <h2 class="text-base font-bold text-foreground">Scopes & permissions</h2>
       <div class="h-px bg-border my-4" />
 
       <p class="text-sm text-muted-foreground mb-4">

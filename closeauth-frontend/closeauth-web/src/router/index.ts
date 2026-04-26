@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -7,21 +8,17 @@ const router = createRouter({
       path: '/',
       component: () => import('@/views/public/HomeView.vue'),
     },
-    {
-      path: '/admin/login',
-      component: () => import('@/views/admin/LoginView.vue'),
-    },
-    {
-      path: '/admin/register',
-      component: () => import('@/views/admin/RegisterView.vue'),
-    },
-    {
-      path: '/admin/forgot-password',
-      component: () => import('@/views/admin/ForgotPasswordView.vue'),
-    },
+
+    // ── Admin Auth (each view self-wraps in AuthLayout) ──────────────────────
+    { path: '/admin/login',           component: () => import('@/views/admin/LoginView.vue') },
+    { path: '/admin/register',        component: () => import('@/views/admin/RegisterView.vue') },
+    { path: '/admin/forgot-password', component: () => import('@/views/admin/ForgotPasswordView.vue') },
+
+    // ── Admin Portal (AdminLayout, requires auth) ──────────────────────────────
     {
       path: '/admin',
       component: () => import('@/layouts/AdminLayout.vue'),
+      meta: { requiresAuth: true },
       children: [
         {
           path: 'dashboard',
@@ -53,6 +50,11 @@ const router = createRouter({
         },
       ],
     },
+
+    // ── Catch-all: redirect unknown paths to home ─────────────────────────────
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+
+    // ── OAuth Flow (OAuthLayout) ───────────────────────────────────────────────
     {
       path: '/oauth',
       component: () => import('@/layouts/OAuthLayout.vue'),
@@ -72,6 +74,16 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+// ── Navigation guard ──────────────────────────────────────────────────────────
+router.beforeEach((to) => {
+  if (to.meta.requiresAuth) {
+    const authStore = useAuthStore()
+    if (!authStore.isAuthenticated) {
+      return { path: '/admin/login', query: { redirect: to.fullPath } }
+    }
+  }
 })
 
 export default router

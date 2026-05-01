@@ -8,10 +8,6 @@ import com.anterka.closeauthbackend.common.dto.ResponseStatusEnum;
 import com.anterka.closeauthbackend.auth.dto.response.ResendOtpResponse;
 import com.anterka.closeauthbackend.auth.dto.response.UserLoginResponse;
 import com.anterka.closeauthbackend.auth.dto.response.UserRegistrationResponse;
-import com.anterka.closeauthbackend.common.exception.InvalidTokenException;
-import com.anterka.closeauthbackend.common.exception.PasswordMismatchedException;
-import com.anterka.closeauthbackend.common.exception.PasswordReusedException;
-import com.anterka.closeauthbackend.common.exception.WeakPasswordException;
 import com.anterka.closeauthbackend.auth.service.AuthenticationService;
 import com.anterka.closeauthbackend.user.service.UserPasswordResetService;
 import com.anterka.closeauthbackend.cache.service.RateLimiterService;
@@ -38,7 +34,6 @@ public class AuthController {
     private final AuthenticationService authenticationService;
     private final RateLimiterService rateLimiter;
     private final UserPasswordResetService passwordResetService;
-    // Protected endpoint for user login (requires OAuth2 access token with 'client.create' scope)
 
     @PostMapping(value = ApiPaths.LOGIN, consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
@@ -47,37 +42,22 @@ public class AuthController {
             Authentication authentication) {
         log.info("Received authenticated user login request for email: {}", userLoginDto.email());
 
-        // Extract client ID from the JWT token
         String clientId = extractClientIdFromAuthentication(authentication);
-
-        if (clientId != null) {
-            log.debug("Client ID extracted from bearer token: {}", clientId);
-        }
 
         return ResponseEntity.ok(authenticationService.loginUser(userLoginDto, clientId));
     }
 
-    /**
-     * Extracts the client ID from the JWT token in the Authentication object.
-     * The client ID is in the 'sub' claim of the JWT.
-     *
-     * @param authentication The Spring Security Authentication object
-     * @return The client ID or null if not found
-     */
     private String extractClientIdFromAuthentication(Authentication authentication) {
         if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
-            // The 'sub' claim contains the client ID
-            String subject = jwt.getSubject();
-            log.debug("Extracted subject (client ID) from JWT: {}", subject);
-            return subject;
+            return jwt.getSubject();
         }
-        log.warn("Could not extract client ID from authentication - not a JWT token");
         return null;
     }
+
     @PostMapping(value = ApiPaths.REGISTER, consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<UserRegistrationResponse> registerUser(@RequestBody UserRegistrationDto userRegistrationDto) {
-        log.info("Received authenticated user creation request for username: {}", userRegistrationDto.username());
+        log.info("Received user creation request for username: {}", userRegistrationDto.username());
         return ResponseEntity.status(HttpStatus.CREATED).body(authenticationService.registerUser(userRegistrationDto));
     }
 
@@ -93,8 +73,9 @@ public class AuthController {
     }
 
     @PostMapping(value = ApiPaths.FORGOT_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
-    public ResponseEntity<CustomApiResponse<Void>> forgotPassword(@Valid @RequestBody UserForgotPasswordDto userForgotPasswordRequest, HttpServletRequest servletRequest) {
-        log.info("Received forgot password request for email: " + userForgotPasswordRequest.email());
+    public ResponseEntity<CustomApiResponse<Void>> forgotPassword(
+            @Valid @RequestBody UserForgotPasswordDto userForgotPasswordRequest,
+            HttpServletRequest servletRequest) {
 
         String clientIp = getClientIp(servletRequest);
         if (rateLimiter.isLimited("forgot_password", clientIp)) {
@@ -105,28 +86,22 @@ public class AuthController {
                             .timestamp(LocalDateTime.now())
                             .build());
         }
-        try {
-            passwordResetService.processForgotPassword(userForgotPasswordRequest);
-            return ResponseEntity.ok()
-                    .body(CustomApiResponse.<Void>builder()
-                            .message("If your email is registered, you will receive a password reset link shortly")
-                            .status(ResponseStatusEnum.SUCCESS)
-                            .timestamp(LocalDateTime.now())
-                            .build());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(CustomApiResponse.<Void>builder()
-                            .message("If your email is registered, you will receive a password reset link shortly")
-                            .status(ResponseStatusEnum.FAILED)
-                            .timestamp(LocalDateTime.now())
-                            .build());
-        }
+
+        passwordResetService.processForgotPassword(userForgotPasswordRequest);
+
+        // Always return same message to prevent email enumeration
+        return ResponseEntity.ok(CustomApiResponse.<Void>builder()
+                .message("If your email is registered, you will receive a password reset link shortly")
+                .status(ResponseStatusEnum.SUCCESS)
+                .timestamp(LocalDateTime.now())
+                .build());
     }
 
     @PostMapping(value = ApiPaths.RESET_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
-    public ResponseEntity<CustomApiResponse<Void>> resetPassword(@RequestBody UserResetPasswordDto request,
-                                                           HttpServletRequest servletRequest) {
-        // Rate limiting for reset password attempts
+    public ResponseEntity<CustomApiResponse<Void>> resetPassword(
+            @RequestBody UserResetPasswordDto request,
+            HttpServletRequest servletRequest) {
+
         String clientIp = getClientIp(servletRequest);
         if (rateLimiter.isLimited("reset_password", clientIp)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
@@ -136,30 +111,14 @@ public class AuthController {
                             .timestamp(LocalDateTime.now())
                             .build());
         }
-        try {
-            passwordResetService.resetPassword(request);
-            return ResponseEntity.ok()
-                    .body(CustomApiResponse.<Void>builder()
-                            .message("Password reset successful")
-                            .status(ResponseStatusEnum.SUCCESS)
-                            .timestamp(LocalDateTime.now())
-                            .build());
-        } catch (InvalidTokenException | PasswordMismatchedException |
-                 WeakPasswordException | PasswordReusedException e) {
-            return ResponseEntity.badRequest()
-                    .body(CustomApiResponse.<Void>builder()
-                            .message("Exception occurred while resetting password : " + e.getMessage())
-                            .status(ResponseStatusEnum.FAILED)
-                            .timestamp(LocalDateTime.now())
-                            .build());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(CustomApiResponse.<Void>builder()
-                            .message("An unexpected error occurred. Please try again.")
-                            .status(ResponseStatusEnum.FAILED)
-                            .timestamp(LocalDateTime.now())
-                            .build());
-        }
+
+        passwordResetService.resetPassword(request);
+
+        return ResponseEntity.ok(CustomApiResponse.<Void>builder()
+                .message("Password reset successful")
+                .status(ResponseStatusEnum.SUCCESS)
+                .timestamp(LocalDateTime.now())
+                .build());
     }
 
     private String getClientIp(HttpServletRequest request) {

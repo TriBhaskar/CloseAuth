@@ -1,9 +1,9 @@
 package com.anterka.closeauthbackend.auth.strategy;
 
 import com.anterka.closeauthbackend.auth.dto.request.UserRegistrationDto;
+import com.anterka.closeauthbackend.common.exception.UserRegistrationException;
 import com.anterka.closeauthbackend.user.entity.Users;
 import com.anterka.closeauthbackend.user.enums.GlobalRoleEnum;
-import com.anterka.closeauthbackend.common.exception.UserRegistrationException;
 import com.anterka.closeauthbackend.user.repository.GlobalRolesRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;

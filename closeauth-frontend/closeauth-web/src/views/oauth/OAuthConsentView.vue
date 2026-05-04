@@ -14,22 +14,20 @@ import {
   User,
 } from 'lucide-vue-next'
 import { useOAuthTheme } from '@/composables/useOAuthTheme'
-import { useAsyncState } from '@/composables/useAsyncState'
-import { oauthService } from '@/api/services'
-import { adminService } from '@/api/services'
+import { getCsrfToken } from '@/api/client'
 
 const route = useRoute()
 
 // ── Composables ────────────────────────────────────────────────────────────────
 const { clientId, clientName, clientLogoUrl, loadTheme } = useOAuthTheme()
-const { isLoading, execute } = useAsyncState()
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const username = ref('')
 const userEmail = ref('')
 const scopes = ref<string[]>([])
 const state = ref('')
-const redirectUri = ref('')
+const csrfToken = ref('')
+const isLoading = ref(true)
 
 // ── Scope metadata ─────────────────────────────────────────────────────────────
 type ScopeInfo = { label: string; description: string; icon: typeof Shield }
@@ -50,48 +48,40 @@ const scopeInfo = computed(() =>
   })),
 )
 
-// ── On mount ───────────────────────────────────────────────────────────────────
+// ── On mount: fetch consent data from Go API ──────────────────────────────────
 onMounted(async () => {
-  state.value       = (route.query.state        as string) ?? ''
-  redirectUri.value = (route.query.redirect_uri as string) ?? ''
-  const rawScope    = (route.query.scope        as string) ?? ''
-  scopes.value      = rawScope ? rawScope.split(' ').filter(Boolean) : []
+  // Build query string from route params
+  const queryParams = new URLSearchParams()
+  if (route.query.client_id) queryParams.set('client_id', route.query.client_id as string)
+  if (route.query.scope) queryParams.set('scope', route.query.scope as string)
+  if (route.query.state) queryParams.set('state', route.query.state as string)
 
   await loadTheme()
 
-  // Fetch current user
   try {
-    const user = await adminService.getMe()
-    username.value  = user.username
-    userEmail.value = user.email
-  } catch { /* silently fail — consent still works without user display */ }
+    const resp = await fetch(`/api/oauth/consent-data?${queryParams.toString()}`, {
+      credentials: 'include',
+    })
+    if (resp.ok) {
+      const data = await resp.json()
+      if (data.client_name) clientName.value = data.client_name
+      username.value = data.username ?? ''
+      userEmail.value = data.username ?? '' // username as email fallback
+      scopes.value = data.scopes ?? []
+      state.value = data.state ?? ''
+      csrfToken.value = data.csrf_token ?? getCsrfToken() ?? ''
+      if (data.client_id) clientId.value = data.client_id
+    }
+  } catch {
+    // Fall back to query params
+    state.value = (route.query.state as string) ?? ''
+    const rawScope = (route.query.scope as string) ?? ''
+    scopes.value = rawScope ? rawScope.split(' ').filter(Boolean) : []
+    csrfToken.value = getCsrfToken() ?? ''
+  } finally {
+    isLoading.value = false
+  }
 })
-
-// ── Handlers ───────────────────────────────────────────────────────────────────
-const handleAllow = async () => {
-  const result = await execute(() =>
-    oauthService.submitConsent({
-      action: 'approve',
-      client_id: clientId.value,
-      state: state.value,
-      redirect_uri: redirectUri.value,
-      scopes: scopes.value,
-    }),
-  )
-  if (result?.redirect_url) window.location.href = result.redirect_url
-}
-
-const handleDeny = async () => {
-  const result = await execute(() =>
-    oauthService.submitConsent({
-      action: 'deny',
-      client_id: clientId.value,
-      state: state.value,
-      redirect_uri: redirectUri.value,
-    }),
-  )
-  if (result?.redirect_url) window.location.href = result.redirect_url
-}
 </script>
 
 <template>
@@ -189,23 +179,32 @@ const handleDeny = async () => {
       </p>
     </div>
 
-    <!-- 7. Action buttons -->
-    <div class="space-y-2">
+    <!-- 7. Action buttons — native form POST to Go (Go handles external redirect) -->
+    <form action="/closeauth/oauth2/consent" method="POST" class="space-y-2">
+      <!-- Hidden fields for Go handler -->
+      <input type="hidden" name="client_id" :value="clientId" />
+      <input type="hidden" name="state" :value="state" />
+      <input type="hidden" name="csrf_token" :value="csrfToken" />
+      <input v-for="s in scopes" :key="s" type="hidden" name="scope" :value="s" />
+
+      <!-- Allow button submits consent=approve -->
       <button
-        type="button"
+        type="submit"
+        name="consent"
+        value="approve"
         class="w-full h-10 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-semibold active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         :disabled="isLoading"
-        @click="handleAllow"
       >
-        <Loader2 v-if="isLoading" class="h-4 w-4 animate-spin" />
-        {{ isLoading ? 'Authorizing…' : 'Allow access' }}
+        Allow access
       </button>
 
+      <!-- Deny button submits consent=deny -->
       <button
-        type="button"
+        type="submit"
+        name="consent"
+        value="deny"
         class="w-full h-10 rounded-md bg-card border border-border text-foreground text-sm hover:bg-muted transition-colors active:scale-[0.98]"
         :disabled="isLoading"
-        @click="handleDeny"
       >
         Deny
       </button>
@@ -213,6 +212,6 @@ const handleDeny = async () => {
       <p class="text-xs text-muted-foreground text-center pt-1">
         By allowing, you agree to share the listed information.
       </p>
-    </div>
+    </form>
   </div>
 </template>

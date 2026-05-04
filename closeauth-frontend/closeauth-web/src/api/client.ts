@@ -4,6 +4,26 @@
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
+// ── CSRF Token Manager ────────────────────────────────────────────────────────
+
+let csrfToken: string | null = null
+
+export async function fetchCsrfToken(): Promise<void> {
+  try {
+    const resp = await fetch(`${BASE_URL}/csrf`, { credentials: 'include' })
+    if (resp.ok) {
+      const data = await resp.json()
+      csrfToken = data.token
+    }
+  } catch {
+    // Silently fail — CSRF will be retried on next request
+  }
+}
+
+export function getCsrfToken(): string | null {
+  return csrfToken
+}
+
 // ── Typed error ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -26,9 +46,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(init.headers ?? {}),
   }
 
+  // Inject CSRF token on mutating requests
+  const method = (init.method ?? 'GET').toUpperCase()
+  if (csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    ;(headers as Record<string, string>)['X-CSRF-Token'] = csrfToken
+  }
+
   let response: Response
   try {
-    response = await fetch(url, { ...init, headers })
+    response = await fetch(url, { ...init, headers, credentials: 'include' })
   } catch (networkErr) {
     // Backend is down / ECONNREFUSED — treat as 503
     throw new ApiError(503, 'Backend unavailable')

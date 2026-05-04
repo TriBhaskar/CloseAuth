@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   Activity,
@@ -24,10 +24,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 // TODO(api): replace mock with adminService.getClients()
 import { clientsMock } from '@/api/mocks/clientsMocks'
+import { useAdminStore } from '@/stores/admin'
 import type { ClientStatus, ClientType } from '@/api/models'
 
-// ── Data from mock ─────────────────────────────────────────────────────────────
-const { clients, stats: metricStats } = clientsMock
+const adminStore = useAdminStore()
+
+onMounted(async () => {
+  await adminStore.fetchClients()
+})
+
+// Use API data if available, else mock
+const data = computed(() => adminStore.clientsData ?? clientsMock)
+const clients = computed(() => data.value.clients)
+const metricStats = computed(() => data.value.stats)
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const search       = ref('')
@@ -35,7 +44,7 @@ const activeFilter = ref<'All' | ClientStatus>('All')
 
 const filteredClients = computed(() => {
   const q = search.value.toLowerCase()
-  return clients.filter((c) => {
+  return clients.value.filter((c) => {
     const matchesSearch = !q || c.name.toLowerCase().includes(q) || c.clientId.toLowerCase().includes(q)
     const matchesFilter = activeFilter.value === 'All' || c.status === activeFilter.value
     return matchesSearch && matchesFilter

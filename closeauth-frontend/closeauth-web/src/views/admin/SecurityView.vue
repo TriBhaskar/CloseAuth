@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   AlertCircle,
   CheckCircle,
@@ -16,12 +16,18 @@ import {
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-// TODO(api): replace mock with adminService.getSecurityData()
 import { securityMock } from '@/api/mocks/securityMocks'
+import { useAdminStore } from '@/stores/admin'
 import type { Severity } from '@/api/models'
 
-// ── Data from mock ─────────────────────────────────────────────────────────────
-const { events } = securityMock
+const adminStore = useAdminStore()
+
+onMounted(async () => {
+  await adminStore.fetchSecurity()
+})
+
+const data = computed(() => adminStore.securityData ?? securityMock)
+const events = computed(() => data.value.events)
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const activeTab = ref<'Security Events' | 'Audit Logs' | 'IP Access'>('Security Events')
@@ -30,8 +36,8 @@ const tabs      = ['Security Events', 'Audit Logs', 'IP Access'] as const
 
 const filteredEvents = computed(() => {
   const q = search.value.toLowerCase()
-  if (!q) return events
-  return events.filter(
+  if (!q) return events.value
+  return events.value.filter(
     (e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q),
   )
 })
@@ -60,12 +66,12 @@ const statCardClass = [
   'bg-card border-border/70',
 ]
 const statIconClass = ['text-red-400', 'text-amber-400', 'text-green-400', 'text-muted-foreground']
-const stats = securityMock.stats.map((s, i) => ({
+const stats = computed(() => data.value.stats.map((s, i) => ({
   ...s,
   icon:      statIconMap[i],
   iconClass: statIconClass[i],
   cardClass: statCardClass[i],
-}))
+})))
 </script>
 
 <template>

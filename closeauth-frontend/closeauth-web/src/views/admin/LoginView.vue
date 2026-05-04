@@ -25,18 +25,7 @@ onMounted(() => {
   if (route.query.oauth !== undefined) oauthFlow.value = true
 })
 
-// ── Dev mock credentials ───────────────────────────────────────────────────────
-// Remove this block once the real backend login endpoint is wired up.
-const MOCK_USER     = 'admin@closeauth.dev'
-const MOCK_PASSWORD = 'admin'
-
 const handleSubmit = async () => {
-  // DEV BYPASS: accept mock credentials without hitting the API
-  if (username.value === MOCK_USER && password.value === MOCK_PASSWORD) {
-    authStore.setUser(MOCK_USER, 'admin', 'Admin')
-    await router.push('/admin/dashboard')
-    return
-  }
 
   const result = await execute(() =>
     adminService.login({ username: username.value, password: password.value }),

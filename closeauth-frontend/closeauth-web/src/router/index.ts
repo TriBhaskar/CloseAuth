@@ -51,14 +51,15 @@ const router = createRouter({
       ],
     },
 
-    // ── Catch-all: redirect unknown paths to home ─────────────────────────────
-    { path: '/:pathMatch(.*)*', redirect: '/' },
-
     // ── OAuth Flow (OAuthLayout) ───────────────────────────────────────────────
     {
       path: '/oauth',
       component: () => import('@/layouts/OAuthLayout.vue'),
       children: [
+        {
+          path: '',
+          redirect: '/',
+        },
         {
           path: 'login',
           component: () => import('@/views/oauth/OAuthLoginView.vue'),
@@ -73,6 +74,9 @@ const router = createRouter({
         },
       ],
     },
+
+    // ── Catch-all: redirect unknown paths to home ─────────────────────────────
+    { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
 

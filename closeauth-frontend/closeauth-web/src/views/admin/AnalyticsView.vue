@@ -1,22 +1,31 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import { Activity, AlertTriangle, CalendarDays, ChevronDown, Key, Timer } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-// TODO(api): replace mock with adminService.getAnalytics()
 import { analyticsMock } from '@/api/mocks/analyticsMocks'
+import { useAdminStore } from '@/stores/admin'
 
-// ── Data from mock ─────────────────────────────────────────────────────────────
-const { errorBreakdown: errors, tokenDistribution, grantTypes: grants } = analyticsMock
+const adminStore = useAdminStore()
+
+onMounted(async () => {
+  await adminStore.fetchAnalytics()
+})
+
+const data = computed(() => adminStore.analyticsData ?? analyticsMock)
+const errors = computed(() => data.value.errorBreakdown)
+const tokenDistribution = computed(() => data.value.tokenDistribution)
+const grants = computed(() => data.value.grantTypes)
 
 // ── Stat cards — augmented with icons (UI-only) ───────────────────────────────
 const statIcons = [Activity, Key, Timer, AlertTriangle]
-const stats = analyticsMock.stats.map((s, i) => ({ ...s, icon: statIcons[i] }))
+const stats = computed(() => data.value.stats.map((s, i) => ({ ...s, icon: statIcons[i] })))
 
 // ── Token distribution display items ──────────────────────────────────────────
-const tokens = [
-  { label: 'Active',  count: `${tokenDistribution.active}%`,  dotClass: 'bg-foreground'       },
-  { label: 'Expired', count: `${tokenDistribution.expired}%`, dotClass: 'bg-muted-foreground'  },
-  { label: 'Revoked', count: `${tokenDistribution.revoked}%`, dotClass: 'bg-border'            },
-]
+const tokens = computed(() => [
+  { label: 'Active',  count: `${tokenDistribution.value.active}%`,  dotClass: 'bg-foreground'       },
+  { label: 'Expired', count: `${tokenDistribution.value.expired}%`, dotClass: 'bg-muted-foreground'  },
+  { label: 'Revoked', count: `${tokenDistribution.value.revoked}%`, dotClass: 'bg-border'            },
+])
 
 // ── SVG chart data (y: 0=top, 200=bottom; lower y = higher value) ──────────────
 // viewBox "0 0 600 200"  —  7 days × 100px apart

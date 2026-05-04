@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { MoreHorizontal, Plus, Search, Shield, TrendingUp, UserCheck, Users } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,25 +10,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-// TODO(api): replace mock with adminService.getUsers()
 import { usersMock } from '@/api/mocks/usersMocks'
+import { useAdminStore } from '@/stores/admin'
 import type { UserRole, UserStatus } from '@/api/models'
 
-// ── Data from mock ───────��─────────────────────────────────────────────────────
-const { users } = usersMock
+const adminStore = useAdminStore()
+
+onMounted(async () => {
+  await adminStore.fetchUsers()
+})
+
+// Use API data if available, else mock
+const data = computed(() => adminStore.usersData ?? usersMock)
+const users = computed(() => data.value.users)
 
 // ── Stat cards — augmented with icons (UI-only) ───────────────────────────────
 const statIcons = [Users, UserCheck, Shield, TrendingUp]
 const statTrends = ['+324 this month', '87% active', 'Secure access', '+12% growth']
-const stats = usersMock.stats.map((s, i) => ({ ...s, icon: statIcons[i], trendUp: true, trend: statTrends[i] }))
+const stats = computed(() => data.value.stats.map((s, i) => ({ ...s, icon: statIcons[i], trendUp: true, trend: statTrends[i] })))
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const search = ref('')
 
 const filteredUsers = computed(() => {
   const q = search.value.toLowerCase()
-  if (!q) return users
-  return users.filter((u) =>
+  if (!q) return users.value
+  return users.value.filter((u) =>
     `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
   )
 })

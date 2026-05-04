@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   Activity,
@@ -11,12 +11,25 @@ import {
   Users,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-// TODO(api): replace mock with adminService.getDashboard()
 import { dashboardMock } from '@/api/mocks/dashboardMocks'
+import { useAdminStore } from '@/stores/admin'
 import type { ActivityType, Severity } from '@/api/models'
 
-// ── Data from mock ─────────────────────────────────────────────────────────────
-const { chartBars, topClients, recentActivity, alerts } = dashboardMock
+const adminStore = useAdminStore()
+
+// Fetch real data on mount — fall back to mock if API not ready
+onMounted(async () => {
+  await adminStore.fetchDashboard()
+})
+
+// Use API data if available, else mock
+const data = computed(() => adminStore.dashboardData ?? dashboardMock)
+
+// ── Data ────────────────────────────────────────────────────────────────────────
+const chartBars = computed(() => data.value.chartBars)
+const topClients = computed(() => data.value.topClients)
+const recentActivity = computed(() => data.value.recentActivity)
+const alerts = computed(() => data.value.alerts)
 
 // ── Stat cards — augmented with icons (icon is UI-only, not from API) ──────────
 const statIcons = [LayoutGrid, Users, Activity, CheckCircle, Radio, AlertCircle]
@@ -28,11 +41,11 @@ const statIconClasses = [
   'text-muted-foreground',
   'text-red-400',
 ]
-const stats = dashboardMock.stats.map((s, i) => ({
+const stats = computed(() => data.value.stats.map((s, i) => ({
   ...s,
   icon: statIcons[i],
   iconClass: statIconClasses[i],
-}))
+})))
 
 // ── Refresh ────────────────────────────────────────────────────────────────────
 const isRefreshing = ref(false)

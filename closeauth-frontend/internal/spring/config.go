@@ -122,6 +122,84 @@ func (c *Config) AdminPasswordResetURL() string {
 	return c.baseURL() + "/api/v1/admin/auth/reset-password"
 }
 
+// --- OAuth2 User Registration Endpoints ---
+
+func (c *Config) OAuth2RegisterUserURL(clientID string) string {
+	return c.baseURL() + "/oauth2/register/" + clientID
+}
+
+func (c *Config) OAuth2VerifyEmailURL() string {
+	return c.baseURL() + "/oauth2/register/verify-email"
+}
+
+func (c *Config) OAuth2VerifyPhoneURL() string {
+	return c.baseURL() + "/oauth2/register/verify-phone"
+}
+
+func (c *Config) OAuth2ResendEmailOtpURL() string {
+	return c.baseURL() + "/oauth2/register/resend-email-otp"
+}
+
+func (c *Config) OAuth2ResendPhoneOtpURL() string {
+	return c.baseURL() + "/oauth2/register/resend-phone-otp"
+}
+
+// --- Admin Approval Endpoints ---
+
+func (c *Config) PendingRegistrationsURL(clientID string) string {
+	return c.baseURL() + "/api/v1/admin/clients/" + clientID + "/pending-registrations"
+}
+
+func (c *Config) PendingRegistrationsCountURL(clientID string) string {
+	return c.PendingRegistrationsURL(clientID) + "/count"
+}
+
+func (c *Config) ApproveRegistrationURL(clientID, email string) string {
+	return c.PendingRegistrationsURL(clientID) + "/" + email + "/approve"
+}
+
+func (c *Config) RejectRegistrationURL(clientID, email string) string {
+	return c.PendingRegistrationsURL(clientID) + "/" + email + "/reject"
+}
+
+// --- Client Configuration Endpoints ---
+
+func (c *Config) ClientRolesURL(clientID string) string {
+	return c.baseURL() + "/api/v1/clients/" + clientID + "/roles"
+}
+
+func (c *Config) ClientRoleURL(clientID string, roleID string) string {
+	return c.ClientRolesURL(clientID) + "/" + roleID
+}
+
+func (c *Config) ClientRegConfigURL(clientID string) string {
+	return c.baseURL() + "/api/v1/clients/" + clientID + "/registration-config"
+}
+
+func (c *Config) ClientThemesURL(clientID string) string {
+	return c.baseURL() + "/api/v1/clients/" + clientID + "/themes"
+}
+
+func (c *Config) ClientThemeURL(clientID string, themeID string) string {
+	return c.ClientThemesURL(clientID) + "/" + themeID
+}
+
+func (c *Config) ClientActiveThemeURL(clientID string) string {
+	return c.ClientThemesURL(clientID) + "/active"
+}
+
+func (c *Config) ClientThemeActivateURL(clientID string, themeID string) string {
+	return c.ClientThemeURL(clientID, themeID) + "/activate"
+}
+
+func (c *Config) ClientThemeConfigsURL(clientID string, themeID string) string {
+	return c.ClientThemeURL(clientID, themeID) + "/configurations"
+}
+
+func (c *Config) ClientThemeConfigURL(clientID string, themeID string, configID string) string {
+	return c.ClientThemeConfigsURL(clientID, themeID) + "/" + configID
+}
+
 // --- Helper ---
 
 func getEnv(key, defaultValue string) string {

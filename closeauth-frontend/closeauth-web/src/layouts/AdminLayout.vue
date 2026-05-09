@@ -72,10 +72,10 @@ const initials = computed(() =>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem as-child>
-              <a href="/api/admin/logout" class="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive">
+              <button @click="authStore.logout()" class="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive w-full">
                 <LogOut class="h-4 w-4" />
                 <span>Log out</span>
-              </a>
+              </button>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

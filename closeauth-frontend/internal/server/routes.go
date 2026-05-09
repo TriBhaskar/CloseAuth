@@ -79,15 +79,48 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.NoCacheMiddleware)
 
+			// Session management
 			r.Get("/admin/me", s.handleAdminMe)
 			r.Post("/admin/logout", s.handleAdminLogout)
-			r.Get("/admin/dashboard", s.handleAdminDashboard)
-			r.Get("/admin/users", s.handleAdminUsers)
-			r.Get("/admin/clients", s.handleAdminClients)
+
+			// OIDC Dynamic Client Registration (via BFF)
 			r.Post("/admin/clients", s.handleAdminCreateClient)
-			r.Get("/admin/analytics", s.handleAdminAnalytics)
-			r.Get("/admin/security", s.handleAdminSecurity)
-			r.Put("/admin/settings", s.handleAdminSettings)
+
+			// Client Configuration — all proxied to Spring with X-User-Token
+			r.Route("/admin/clients/{clientId}", func(r chi.Router) {
+				// Application Roles
+				r.Post("/roles", s.handleCreateRole)
+				r.Get("/roles", s.handleGetRoles)
+				r.Get("/roles/{roleId}", s.handleGetRole)
+				r.Put("/roles/{roleId}", s.handleUpdateRole)
+				r.Delete("/roles/{roleId}", s.handleDeleteRole)
+
+				// Registration Config
+				r.Get("/registration-config", s.handleGetRegistrationConfig)
+				r.Put("/registration-config", s.handleUpdateRegistrationConfig)
+
+				// Themes
+				r.Post("/themes", s.handleCreateTheme)
+				r.Get("/themes", s.handleGetThemes)
+				r.Get("/themes/active", s.handleGetActiveTheme)
+				r.Get("/themes/{themeId}", s.handleGetTheme)
+				r.Put("/themes/{themeId}", s.handleUpdateTheme)
+				r.Delete("/themes/{themeId}", s.handleDeleteTheme)
+				r.Patch("/themes/{themeId}/activate", s.handleActivateTheme)
+
+				// Theme Configurations
+				r.Post("/themes/{themeId}/configurations", s.handleCreateThemeConfig)
+				r.Get("/themes/{themeId}/configurations", s.handleGetThemeConfigs)
+				r.Get("/themes/{themeId}/configurations/{configId}", s.handleGetThemeConfig)
+				r.Put("/themes/{themeId}/configurations/{configId}", s.handleUpdateThemeConfig)
+				r.Delete("/themes/{themeId}/configurations/{configId}", s.handleDeleteThemeConfig)
+
+				// Admin Approval (Pending Registrations)
+				r.Get("/pending-registrations", s.handleGetPendingRegistrations)
+				r.Get("/pending-registrations/count", s.handleGetPendingRegistrationsCount)
+				r.Post("/pending-registrations/{email}/approve", s.handleApproveRegistration)
+				r.Post("/pending-registrations/{email}/reject", s.handleRejectRegistration)
+			})
 		})
 	})
 
@@ -177,7 +210,7 @@ func (s *Server) handleOAuthConsentData(w http.ResponseWriter, r *http.Request) 
 	s.handleOAuthConsentDataImpl(w, r)
 }
 
-// --- Protected Admin (data endpoints — TODO: proxy to Spring admin APIs) ---
+// --- Protected Admin (data endpoints) ---
 
 func (s *Server) handleAdminMe(w http.ResponseWriter, r *http.Request) {
 	session, err := middleware.GetSession(r)
@@ -195,29 +228,19 @@ func (s *Server) handleAdminMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	// CLear all BFF cookies to fully terminate the session.
+	// The user JWT is stateless and cannot be revoked, so clearing the cookie is the only way to log out.
+	// without registering them in Spring's OauthAuthorizationService, so
+	// server-side revocation via /oauth2/revoke is not possible. Cookie cleanup
+	// is the primary logout mechainsm;
 	middleware.ClearSession(w)
+	middleware.ClearOAuthContext(w)
+	middleware.ClearCSRFToken(w)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-func (s *Server) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
-	// TODO: Proxy to Spring admin dashboard API when available
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Dashboard data endpoint pending Spring API"})
-}
-
-func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Users endpoint pending Spring API"})
-}
-
-func (s *Server) handleAdminClients(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Clients endpoint pending Spring API"})
-}
-
 func (s *Server) handleAdminCreateClient(w http.ResponseWriter, r *http.Request) {
-	// TODO: Use s.springClient.GetAccessToken + RegisterClient
 	logger := s.logger.With("handler", "admin_create_client")
 
 	var formReq spring.ClientFormRequest
@@ -254,21 +277,6 @@ func (s *Server) handleAdminCreateClient(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(regResp)
-}
-
-func (s *Server) handleAdminAnalytics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Analytics endpoint pending Spring API"})
-}
-
-func (s *Server) handleAdminSecurity(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Security endpoint pending Spring API"})
-}
-
-func (s *Server) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Settings endpoint pending"})
 }
 
 // --- Health Check ---

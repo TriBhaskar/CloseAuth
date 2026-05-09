@@ -118,6 +118,17 @@ func HandleCSRFToken(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": cookie.Value})
 }
 
+// ClearCSRFToken removes the CSRF cookie(used during logout).
+func ClearCSRFToken(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     CSRFCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+}
+
 // generateCSRFToken generates a cryptographically secure random token.
 func generateCSRFToken() (string, error) {
 	bytes := make([]byte, CSRFTokenLength)

@@ -326,23 +326,24 @@ func (c *SpringClient) GetAccessToken(ctx context.Context) (string, error) {
 
 // --- Admin Auth Proxy ---
 
-// ProxyAdminAuth proxies a request to a Spring admin auth endpoint and returns the raw response.
-// Bear token injection (BFF acts as a Oauth2 client). Retries once on 401
-func (c *SpringClient) ProxyAdminAuth(ctx context.Context, method, fullURL string, jsonBody []byte) (*ProxyResult, error) {
+// ProxyAdminAuth proxies a request to a Spring admin/API endpoint and returns the raw response.
+// Bearer token injection (BFF acts as an OAuth2 client). Retries once on 401.
+// If userToken is non-empty it is sent as X-User-Token for dual-layer authentication.
+func (c *SpringClient) ProxyAdminAuth(ctx context.Context, method, fullURL string, jsonBody []byte, userToken string) (*ProxyResult, error) {
 	token, err := c.tokenManager.GetValidToken(ctx)
 	if err != nil {
 		c.logger.Error("failed to get access token for admin auth", "error", err, "url", fullURL)
 		return nil, fmt.Errorf("get access token for admin auth: %w", err)
 	}
 
-	result, err := c.doAdminAuthRequest(ctx, method, fullURL, jsonBody, token)
+	result, err := c.doAdminAuthRequest(ctx, method, fullURL, jsonBody, token, userToken)
 	if err != nil {
 		return nil, err
 	}
 
 	// Retry on 401 - token may have expired between check and use
 	if result.StatusCode == http.StatusUnauthorized {
-		c.logger.Warn("received 401 from admin auth retry, invalidation token and retrying", "url", fullURL)
+		c.logger.Warn("received 401 from admin auth, invalidating token and retrying", "url", fullURL)
 		c.tokenManager.InvalidateToken()
 
 		token, err = c.tokenManager.GetValidToken(ctx)
@@ -350,16 +351,15 @@ func (c *SpringClient) ProxyAdminAuth(ctx context.Context, method, fullURL strin
 			return nil, fmt.Errorf("get fresh token after 2nd 401: %w", err)
 		}
 
-		// assign to the outer `result` (do not shadow) so the refreshed
-		// response is returned to the caller
-		result, err = c.doAdminAuthRequest(ctx, method, fullURL, jsonBody, token)
+		result, err = c.doAdminAuthRequest(ctx, method, fullURL, jsonBody, token, userToken)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return result, nil
 }
-func (c *SpringClient) doAdminAuthRequest(ctx context.Context, method, fullURL string, jsonBody []byte, token string) (*ProxyResult, error) {
+
+func (c *SpringClient) doAdminAuthRequest(ctx context.Context, method, fullURL string, jsonBody []byte, token, userToken string) (*ProxyResult, error) {
 	var bodyReader io.Reader
 	if jsonBody != nil {
 		bodyReader = bytes.NewReader(jsonBody)
@@ -371,6 +371,9 @@ func (c *SpringClient) doAdminAuthRequest(ctx context.Context, method, fullURL s
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
+	if userToken != "" {
+		req.Header.Set("X-User-Token", userToken)
+	}
 	if jsonBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -387,6 +390,46 @@ func (c *SpringClient) doAdminAuthRequest(ctx context.Context, method, fullURL s
 	return &ProxyResult{
 		StatusCode: resp.StatusCode,
 		Body:       body,
+		Cookies:    extractCookies(resp),
+	}, nil
+}
+
+// --- Raw Proxy (passthrough without BFF token injection) ---
+
+// ProxyRaw forwards a request to Spring without injecting the BFF's bearer token.
+// Used for endpoints where the calling client supplies its own credentials
+// (e.g. /oauth2/token with client_secret_basic or client_secret_post).
+func (c *SpringClient) ProxyRaw(ctx context.Context, method, fullURL string, body []byte, originalHeaders http.Header) (*ProxyResult, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("create raw proxy request: %w", err)
+	}
+
+	// Forward specific headers from the original request
+	if auth := originalHeaders.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	if ct := originalHeaders.Get("Content-Type"); ct != "" {
+		req.Header.Set("Content-Type", ct)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute raw proxy request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	return &ProxyResult{
+		StatusCode: resp.StatusCode,
+		Body:       respBody,
 		Cookies:    extractCookies(resp),
 	}, nil
 }

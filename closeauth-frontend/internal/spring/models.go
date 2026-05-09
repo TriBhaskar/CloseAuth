@@ -1,6 +1,10 @@
 package spring
 
-// --- Token Endpoints ---
+import "encoding/json"
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Token Endpoints
+// ──────────────────────────────────────────────────────────────────────────────
 
 // AccessTokenResponse represents the OAuth2 token response from Spring.
 type AccessTokenResponse struct {
@@ -10,7 +14,9 @@ type AccessTokenResponse struct {
 	Scope       string `json:"scope,omitempty"`
 }
 
-// --- Client Registration ---
+// ──────────────────────────────────────────────────────────────────────────────
+// OIDC Client Registration (Spring /connect/register)
+// ──────────────────────────────────────────────────────────────────────────────
 
 // ClientFormRequest represents the form input for client registration from the Vue UI.
 type ClientFormRequest struct {
@@ -54,6 +60,10 @@ type ClientRegistrationError struct {
 	ErrorDescription string `json:"error_description,omitempty"`
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Client Info (/oauth2/client-info)
+// ──────────────────────────────────────────────────────────────────────────────
+
 // ClientInfoResponse represents client metadata fetched from Spring.
 type ClientInfoResponse struct {
 	ClientID   string   `json:"clientId"`
@@ -62,64 +72,66 @@ type ClientInfoResponse struct {
 	Scopes     []string `json:"scopes"`
 }
 
-// --- Admin Auth ---
+// ──────────────────────────────────────────────────────────────────────────────
+// Admin Auth – matches Spring's UserLoginResponse / UserRegistrationResponse
+// ──────────────────────────────────────────────────────────────────────────────
 
 // LoginResponse represents the response from Spring's admin login endpoint.
+// Maps to: com.anterka.closeauthbackend.auth.dto.response.UserLoginResponse
 type LoginResponse struct {
-	UserID         int    `json:"userId,omitempty"`
-	Email          string `json:"email,omitempty"`
-	FirstName      string `json:"firstName,omitempty"`
-	LastName       string `json:"lastName,omitempty"`
-	AccessToken    string `json:"accessToken,omitempty"`
-	RefreshToken   string `json:"refreshToken,omitempty"`
-	TokenExpiresAt string `json:"tokenExpiresAt,omitempty"`
-	TokenType      string `json:"token_type,omitempty"`
-	ExpiresIn      int    `json:"expires_in,omitempty"`
-	Message        string `json:"message,omitempty"`
-	Error          string `json:"error,omitempty"`
+	UserID         int    `json:"userId"`
+	Email          string `json:"email"`
+	FirstName      string `json:"firstName"`
+	LastName       string `json:"lastName"`
+	AccessToken    string `json:"accessToken"`
+	TokenExpiresAt string `json:"tokenExpiresAt"`
 }
 
 // RegisterResponse represents the response from admin registration.
+// Maps to: com.anterka.closeauthbackend.auth.dto.response.UserRegistrationResponse
 type RegisterResponse struct {
-	UserID             string `json:"userId,omitempty"`
+	UserID             int64  `json:"userId,omitempty"`
 	Email              string `json:"email,omitempty"`
 	FirstName          string `json:"firstName,omitempty"`
 	LastName           string `json:"lastName,omitempty"`
 	Message            string `json:"message,omitempty"`
-	OTPValiditySeconds int    `json:"otpValiditySeconds,omitempty"`
+	OTPValiditySeconds int64  `json:"otpValiditySeconds,omitempty"`
 	Timestamp          string `json:"timestamp,omitempty"`
-	Error              string `json:"error,omitempty"`
-}
-
-// VerifyEmailRequest represents the email verification request payload.
-type VerifyEmailRequest struct {
-	Email            string `json:"email"`
-	VerificationCode string `json:"verificationCode"`
-}
-
-// VerifyEmailResponse represents the response from verify-email endpoint.
-type VerifyEmailResponse struct {
-	Status    string `json:"status,omitempty"`
-	Message   string `json:"message,omitempty"`
-	Timestamp string `json:"timestamp,omitempty"`
-	Error     string `json:"error,omitempty"`
-}
-
-// ResendOTPRequest represents the resend OTP request payload.
-type ResendOTPRequest struct {
-	Email string `json:"email"`
 }
 
 // ResendOTPResponse represents the response from resend-otp endpoint.
+// Maps to: com.anterka.closeauthbackend.auth.dto.response.ResendOtpResponse
 type ResendOTPResponse struct {
 	Message            string `json:"message,omitempty"`
-	OTPValiditySeconds int    `json:"otpValiditySeconds,omitempty"`
+	OTPValiditySeconds int64  `json:"otpValiditySeconds,omitempty"`
 	Email              string `json:"email,omitempty"`
 	Timestamp          string `json:"timestamp,omitempty"`
-	Error              string `json:"error,omitempty"`
 }
 
-// --- Proxy Results ---
+// ──────────────────────────────────────────────────────────────────────────────
+// Generic Spring API response wrapper
+// Maps to: com.anterka.closeauthbackend.common.dto.CustomApiResponse<T>
+// ──────────────────────────────────────────────────────────────────────────────
+
+// CustomApiResponse is a generic wrapper matching Spring's CustomApiResponse<T>.
+type CustomApiResponse struct {
+	Message   string          `json:"message,omitempty"`
+	Status    string          `json:"status,omitempty"` // "SUCCESS" or "FAILED"
+	Timestamp string          `json:"timestamp,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
+}
+
+// ApiErrorResponse represents a Spring error response body.
+type ApiErrorResponse struct {
+	Error            string `json:"error,omitempty"`
+	ErrorDescription string `json:"error_description,omitempty"`
+	Message          string `json:"message,omitempty"`
+	Status           string `json:"status,omitempty"`
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Proxy Results (internal to the BFF – not mapped to Spring DTOs)
+// ──────────────────────────────────────────────────────────────────────────────
 
 // ProxyResult holds the result of proxying a request to Spring.
 type ProxyResult struct {

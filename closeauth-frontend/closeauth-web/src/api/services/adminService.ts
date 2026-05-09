@@ -38,7 +38,7 @@ export const adminService = {
   },
 
   logout(): Promise<void> {
-    return apiClient.get('/admin/logout')
+    return apiClient.post('/admin/logout',{})
   },
 
   // ── Clients ─────────────────────────────────────────────────────────────────

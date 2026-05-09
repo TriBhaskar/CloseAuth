@@ -79,6 +79,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const json = await response.json().catch(() => null)
 
   if (!response.ok) {
+    //Auto-logout on 401 - session/JWT expired (1 hr TTL)
+    if(response.status === 401 && !path.includes('/admin/login')) {
+      const STORAGE_KEY = 'closeauth_user'
+      localStorage.removeItem(STORAGE_KEY)
+      //REDIRECT to home only if not already there
+      if(globalThis.location.pathname !== '/') {
+        globalThis.location.href = '/'
+      }
+    }
     const message: string =
       (json as { error?: string })?.error ??
       `Request failed with status ${response.status}`

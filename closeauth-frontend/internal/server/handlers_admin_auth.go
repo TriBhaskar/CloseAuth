@@ -39,11 +39,30 @@ func (s *Server) handleAdminLoginImpl(w http.ResponseWriter, r *http.Request) {
 		"password": req.Password,
 	})
 
-	logger.Info("attempting admin login:", s.springConfig.AdminLoginURL())
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminLoginURL(), jsonBody)
+	logger.Info("attempting admin login", "url", s.springConfig.AdminLoginURL())
+	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminLoginURL(), jsonBody, "")
 	if err != nil {
 		logger.Error("admin login proxy failed", "error", err)
 		jsonError(w, "Authentication service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Handle non-200 responses — try to extract error message from body
+	if result.StatusCode != http.StatusOK {
+		errorMsg := "Authentication failed"
+		var errResp spring.ApiErrorResponse
+		if json.Unmarshal(result.Body, &errResp) == nil {
+			if errResp.Error != "" {
+				errorMsg = errResp.Error
+			} else if errResp.Message != "" {
+				errorMsg = errResp.Message
+			}
+		}
+		status := result.StatusCode
+		if status == http.StatusForbidden {
+			status = http.StatusUnauthorized
+		}
+		jsonError(w, errorMsg, status)
 		return
 	}
 
@@ -55,33 +74,14 @@ func (s *Server) handleAdminLoginImpl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle failure
-	if result.StatusCode == http.StatusUnauthorized || result.StatusCode == http.StatusForbidden {
-		errorMsg := "Invalid username or password"
-		if loginResp.Error != "" {
-			errorMsg = loginResp.Error
-		} else if loginResp.Message != "" {
-			errorMsg = loginResp.Message
-		}
-		jsonError(w, errorMsg, http.StatusUnauthorized)
-		return
-	}
-
-	if result.StatusCode != http.StatusOK {
-		logger.Error("unexpected admin login response", "status", result.StatusCode, "msg", result.Body)
-		jsonError(w, "Authentication failed", http.StatusNotFound)
-		return
-	}
-
 	// Login successful — set encrypted session cookie
 	session := &middleware.Session{
-		UserID:       fmt.Sprintf("%d", loginResp.UserID),
-		Email:        loginResp.Email,
-		Username:     req.Username,
-		Role:         "Admin",
-		AccessToken:  loginResp.AccessToken,
-		RefreshToken: loginResp.RefreshToken,
-		ExpiresAt:    time.Now().Add(24 * time.Hour).Unix(),
+		UserID:      fmt.Sprintf("%d", loginResp.UserID),
+		Email:       loginResp.Email,
+		Username:    req.Username,
+		Role:        "Admin",
+		AccessToken: loginResp.AccessToken,
+		ExpiresAt:   time.Now().Add(24 * time.Hour).Unix(),
 	}
 
 	if err := middleware.SetSession(w, session, s.springConfig.IsProduction()); err != nil {
@@ -106,141 +106,74 @@ func (s *Server) handleAdminLoginImpl(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminRegisterImpl proxies registration to Spring.
 func (s *Server) handleAdminRegisterImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminRegisterURL(), body)
-	if err != nil {
-		jsonError(w, "Registration service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminRegisterURL(), "")
 }
 
 // handleAdminVerifyOTPImpl proxies OTP verification to Spring.
 func (s *Server) handleAdminVerifyOTPImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminVerifyEmailURL(), body)
-	if err != nil {
-		jsonError(w, "Verification service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminVerifyEmailURL(), "")
 }
 
 // handleAdminResendOTPImpl proxies OTP resend to Spring.
 func (s *Server) handleAdminResendOTPImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminResendOTPURL(), body)
-	if err != nil {
-		jsonError(w, "OTP service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminResendOTPURL(), "")
 }
 
 // handleForgotPasswordRequestImpl initiates password reset.
 func (s *Server) handleForgotPasswordRequestImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminForgotPasswordURL(), body)
-	if err != nil {
-		jsonError(w, "Password reset service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminForgotPasswordURL(), "")
 }
 
-// handleForgotPasswordVerifyOTPImpl verifies password reset OTP.
+// handleForgotPasswordVerifyOTPImpl verifies password reset token.
 func (s *Server) handleForgotPasswordVerifyOTPImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	// Use verify-email endpoint for OTP verification (same mechanism)
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminVerifyEmailURL(), body)
-	if err != nil {
-		jsonError(w, "Verification service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminPasswordResetURL(), "")
 }
 
 // handleForgotPasswordResendImpl resends password reset OTP.
 func (s *Server) handleForgotPasswordResendImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminResendOTPURL(), body)
-	if err != nil {
-		jsonError(w, "OTP service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminResendOTPURL(), "")
 }
 
 // handleForgotPasswordResetImpl submits new password.
 func (s *Server) handleForgotPasswordResetImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminPasswordResetURL(), body)
-	if err != nil {
-		jsonError(w, "Password reset service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminPasswordResetURL(), "")
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared Helpers
 // ──────────────────────────────────────────────────────────────────────────────
+
+// proxyToSpring reads the request body, proxies it to the given Spring URL via
+// ProxyAdminAuth (with BFF bearer token + optional X-User-Token), and writes
+// the Spring response back to the client.
+func (s *Server) proxyToSpring(w http.ResponseWriter, r *http.Request, method, targetURL, userToken string) {
+	body, err := readBody(r)
+	if err != nil {
+		jsonError(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.springClient.ProxyAdminAuth(r.Context(), method, targetURL, body, userToken)
+	if err != nil {
+		s.logger.Error("proxy to Spring failed", "url", targetURL, "error", err)
+		jsonError(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(result.StatusCode)
+	w.Write(result.Body)
+}
+
+// getUserToken extracts the user's access token from the session cookie.
+// Returns "" if no session is present (public endpoints).
+func getUserToken(r *http.Request) string {
+	session, err := middleware.GetSession(r)
+	if err != nil {
+		return ""
+	}
+	return session.AccessToken
+}
 
 func jsonError(w http.ResponseWriter, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
@@ -251,6 +184,3 @@ func jsonError(w http.ResponseWriter, message string, status int) {
 func readBody(r *http.Request) ([]byte, error) {
 	return io.ReadAll(r.Body)
 }
-
-// Ensure spring package import is used (referenced in LoginResponse type)
-var _ spring.LoginResponse

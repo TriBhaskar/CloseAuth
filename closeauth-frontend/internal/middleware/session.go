@@ -12,14 +12,13 @@ const SessionCookieName = "bff_session"
 
 // Session represents the authenticated user's session data stored in an encrypted cookie.
 type Session struct {
-	UserID       string `json:"user_id,omitempty"`
-	Email        string `json:"email"`
-	Username     string `json:"username,omitempty"`
-	Role         string `json:"role,omitempty"`
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	ExpiresAt    int64  `json:"expires_at"` // Unix timestamp
-	CreatedAt    int64  `json:"created_at"` // Unix timestamp
+	UserID      string `json:"user_id,omitempty"`
+	Email       string `json:"email"`
+	Username    string `json:"username,omitempty"`
+	Role        string `json:"role,omitempty"`
+	AccessToken string `json:"access_token"` // User JWT for X-User-Token forwarding
+	ExpiresAt   int64  `json:"expires_at"`   // Unix timestamp
+	CreatedAt   int64  `json:"created_at"`   // Unix timestamp
 }
 
 // IsExpired returns true if the session has expired.

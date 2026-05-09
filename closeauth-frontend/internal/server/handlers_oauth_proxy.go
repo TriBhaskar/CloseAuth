@@ -151,6 +151,8 @@ func (s *Server) handleUnauthenticatedRedirect(w http.ResponseWriter, r *http.Re
 }
 
 // handleTokenImpl proxies OAuth2 token requests to Spring.
+// Uses ProxyRaw to forward the client's own credentials (Authorization header / POST body)
+// without injecting the BFF's bearer token.
 func (s *Server) handleTokenImpl(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -168,7 +170,7 @@ func (s *Server) handleTokenImpl(w http.ResponseWriter, r *http.Request) {
 		targetURL += "?" + r.URL.RawQuery
 	}
 
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, targetURL, body)
+	result, err := s.springClient.ProxyRaw(r.Context(), http.MethodPost, targetURL, body, r.Header)
 	if err != nil {
 		s.logger.Error("token proxy failed", "error", err)
 		http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)

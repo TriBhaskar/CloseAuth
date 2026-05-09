@@ -243,16 +243,32 @@ func (s *Server) handleOAuthConsentDataImpl(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// handleOAuthRegisterImpl proxies OAuth registration to Spring.
+// handleOAuthRegisterImpl proxies OAuth registration to the correct Spring OAuth2 registration endpoint.
 func (s *Server) handleOAuthRegisterImpl(w http.ResponseWriter, r *http.Request) {
-	// Read JSON body and proxy to Spring admin register endpoint
 	body, err := readBody(r)
 	if err != nil {
 		jsonError(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminRegisterURL(), body)
+	// Extract clientId from the request body or OAuth context
+	var payload struct {
+		ClientID string `json:"clientId"`
+	}
+	_ = json.Unmarshal(body, &payload)
+
+	clientID := payload.ClientID
+	if clientID == "" {
+		if oauthCtx, err := middleware.GetOAuthContext(r); err == nil {
+			clientID = oauthCtx.ClientID
+		}
+	}
+	if clientID == "" {
+		jsonError(w, "client_id is required for registration", http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.OAuth2RegisterUserURL(clientID), body, "")
 	if err != nil {
 		jsonError(w, "Registration service unavailable", http.StatusServiceUnavailable)
 		return
@@ -263,42 +279,14 @@ func (s *Server) handleOAuthRegisterImpl(w http.ResponseWriter, r *http.Request)
 	w.Write(result.Body)
 }
 
-// handleOAuthVerifyOTPImpl proxies OTP verification to Spring.
+// handleOAuthVerifyOTPImpl proxies OTP verification to the OAuth2 verify-email endpoint.
 func (s *Server) handleOAuthVerifyOTPImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminVerifyEmailURL(), body)
-	if err != nil {
-		jsonError(w, "Verification service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.OAuth2VerifyEmailURL(), "")
 }
 
-// handleOAuthResendOTPImpl proxies OTP resend to Spring.
+// handleOAuthResendOTPImpl proxies OTP resend to the OAuth2 resend-email-otp endpoint.
 func (s *Server) handleOAuthResendOTPImpl(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		jsonError(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminResendOTPURL(), body)
-	if err != nil {
-		jsonError(w, "OTP service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.OAuth2ResendEmailOtpURL(), "")
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

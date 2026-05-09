@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
-	"time"
 
 	"closeauth-frontend/internal/config"
 	"closeauth-frontend/internal/database"
@@ -27,10 +25,8 @@ type Server struct {
 }
 
 func NewServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
-	if port == 0 {
-		port = 8080
-	}
+	// Load server config from environment
+	serverCfg := config.LoadServerConfig()
 
 	logger := slog.Default()
 
@@ -59,7 +55,7 @@ func NewServer() *http.Server {
 	}
 
 	s := &Server{
-		port:         port,
+		port:         serverCfg.Port,
 		db:           db,
 		themeRepo:    themeRepo,
 		springClient: springClient,
@@ -76,7 +72,7 @@ func NewServer() *http.Server {
 	logger.Info("╔══════════════════════════════════════════════════════╗")
 	logger.Info("║              CloseAuth Frontend Server              ║")
 	logger.Info("╚══════════════════════════════════════════════════════╝")
-	logger.Info(fmt.Sprintf("  → Port          : %d", port))
+	logger.Info(fmt.Sprintf("  → Port          : %d", serverCfg.Port))
 	logger.Info(fmt.Sprintf("  → Environment   : %s", env))
 	logger.Info(fmt.Sprintf("  → Spring Server : %s", springCfg.OAuth2ServerURL))
 
@@ -86,18 +82,18 @@ func NewServer() *http.Server {
 		logger.Warn("  → Database      : disconnected (theme features disabled)")
 	}
 
-	logger.Info(fmt.Sprintf("  → SPA (embed)   : serving Vue dist/ on http://localhost:%d", port))
-	logger.Info(fmt.Sprintf("  → API routes    : http://localhost:%d/api/*", port))
-	logger.Info(fmt.Sprintf("  → OAuth proxy   : http://localhost:%d/closeauth/oauth2/*", port))
+	logger.Info(fmt.Sprintf("  → SPA (embed)   : serving Vue dist/ on http://localhost:%d", serverCfg.Port))
+	logger.Info(fmt.Sprintf("  → API routes    : http://localhost:%d/api/*", serverCfg.Port))
+	logger.Info(fmt.Sprintf("  → OAuth proxy   : http://localhost:%d/closeauth/oauth2/*", serverCfg.Port))
 	logger.Info("──────────────────────────────────────────────────────")
-	logger.Info(fmt.Sprintf("Server starting on http://localhost:%d", port))
+	logger.Info(fmt.Sprintf("Server starting on http://localhost:%d", serverCfg.Port))
 
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.port),
+		Addr:         fmt.Sprintf(":%d", serverCfg.Port),
 		Handler:      s.RegisterRoutes(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  serverCfg.IdleTimeout,
+		ReadTimeout:  serverCfg.ReadTimeout,
+		WriteTimeout: serverCfg.WriteTimeout,
 	}
 
 	return server

@@ -2,7 +2,9 @@ package spring
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 )
 
 // Config holds all Spring Authorization Server endpoint configuration.
@@ -48,7 +50,12 @@ func (c *Config) IsProduction() bool {
 
 // baseURL returns the full base URL including context path.
 func (c *Config) baseURL() string {
-	return fmt.Sprintf("%s%s", c.OAuth2ServerURL, c.ContextPath)
+	base := strings.TrimRight(strings.TrimSpace(c.OAuth2ServerURL), "/")
+	contextPath := normalizeContextPath(c.ContextPath)
+	if contextPath == "" {
+		return base
+	}
+	return fmt.Sprintf("%s%s", base, contextPath)
 }
 
 // --- OAuth2 Endpoint URLs ---
@@ -122,4 +129,31 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func normalizeContextPath(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+
+	if strings.Contains(value, "://") {
+		if parsed, err := url.Parse(value); err == nil && parsed.Path != "" {
+			value = parsed.Path
+		}
+	} else if strings.HasPrefix(value, "http//") || strings.HasPrefix(value, "https//") {
+		if idx := strings.Index(value, "/"); idx >= 0 {
+			value = value[idx:]
+		} else {
+			value = ""
+		}
+	}
+
+	if value == "" {
+		return ""
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	return strings.TrimRight(value, "/")
 }

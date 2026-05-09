@@ -1,7 +1,9 @@
 package server
 
 import (
+	"closeauth-frontend/internal/spring"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -75,6 +77,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// Protected admin routes (require session)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Use(middleware.NoCacheMiddleware)
 
 			r.Get("/admin/me", s.handleAdminMe)
 			r.Post("/admin/logout", s.handleAdminLogout)
@@ -215,8 +218,42 @@ func (s *Server) handleAdminClients(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminCreateClient(w http.ResponseWriter, r *http.Request) {
 	// TODO: Use s.springClient.GetAccessToken + RegisterClient
+	logger := s.logger.With("handler", "admin_create_client")
+
+	var formReq spring.ClientFormRequest
+	if err := json.NewDecoder(r.Body).Decode(&formReq); err != nil {
+		jsonError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if formReq.ClientName == "" {
+		jsonError(w, "Client name is required", http.StatusBadRequest)
+		return
+	}
+	if len(formReq.RedirectURIs) == 0 {
+		jsonError(w, "At least one redirect_uri is required", http.StatusBadRequest)
+		return
+	}
+
+	token, err := s.springClient.GetAccessToken(r.Context())
+	if err != nil {
+		logger.Error("failed to get access token for client registration", "error", err)
+		jsonError(w, "Authorization service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	regResp, err := s.springClient.RegisterClient(r.Context(), token, &formReq)
+	if err != nil {
+		logger.Error("client registration failed", "error", err)
+		jsonError(w, fmt.Sprintf("Client registration failed: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	logger.Info("client registered successfully", "client_id", regResp.ClientID, "client_name", regResp.ClientName)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "message": "Client creation pending"})
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(regResp)
 }
 
 func (s *Server) handleAdminAnalytics(w http.ResponseWriter, r *http.Request) {

@@ -316,10 +316,50 @@ func (c *SpringClient) SubmitConsent(ctx context.Context, clientID, state string
 	}, nil
 }
 
+// Public Token Access
+
+// GetAccessToken returns a valid access token for the BFF's client_credentails grant.
+// Convenience method for handleer that need to pass a token to other SpringClient methods.
+func (c *SpringClient) GetAccessToken(ctx context.Context) (string, error) {
+	return c.tokenManager.GetValidToken(ctx)
+}
+
 // --- Admin Auth Proxy ---
 
 // ProxyAdminAuth proxies a request to a Spring admin auth endpoint and returns the raw response.
+// Bear token injection (BFF acts as a Oauth2 client). Retries once on 401
 func (c *SpringClient) ProxyAdminAuth(ctx context.Context, method, fullURL string, jsonBody []byte) (*ProxyResult, error) {
+	token, err := c.tokenManager.GetValidToken(ctx)
+	if err != nil {
+		c.logger.Error("failed to get access token for admin auth", "error", err, "url", fullURL)
+		return nil, fmt.Errorf("get access token for admin auth: %w", err)
+	}
+
+	result, err := c.doAdminAuthRequest(ctx, method, fullURL, jsonBody, token)
+	if err != nil {
+		return nil, err
+	}
+
+	// Retry on 401 - token may have expired between check and use
+	if result.StatusCode == http.StatusUnauthorized {
+		c.logger.Warn("received 401 from admin auth retry, invalidation token and retrying", "url", fullURL)
+		c.tokenManager.InvalidateToken()
+
+		token, err = c.tokenManager.GetValidToken(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("get fresh token after 2nd 401: %w", err)
+		}
+
+		// assign to the outer `result` (do not shadow) so the refreshed
+		// response is returned to the caller
+		result, err = c.doAdminAuthRequest(ctx, method, fullURL, jsonBody, token)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+func (c *SpringClient) doAdminAuthRequest(ctx context.Context, method, fullURL string, jsonBody []byte, token string) (*ProxyResult, error) {
 	var bodyReader io.Reader
 	if jsonBody != nil {
 		bodyReader = bytes.NewReader(jsonBody)
@@ -330,6 +370,7 @@ func (c *SpringClient) ProxyAdminAuth(ctx context.Context, method, fullURL strin
 		return nil, fmt.Errorf("create admin auth request: %w", err)
 	}
 
+	req.Header.Set("Authorization", "Bearer "+token)
 	if jsonBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

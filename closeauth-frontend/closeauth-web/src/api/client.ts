@@ -7,21 +7,34 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 // ── CSRF Token Manager ────────────────────────────────────────────────────────
 
 let csrfToken: string | null = null
+let csrfTokenPromise: Promise<string | null> | null = null
 
-export async function fetchCsrfToken(): Promise<void> {
+export async function fetchCsrfToken(): Promise<string | null> {
   try {
     const resp = await fetch(`${BASE_URL}/csrf`, { credentials: 'include' })
     if (resp.ok) {
       const data = await resp.json()
-      csrfToken = data.token
+      csrfToken = data.token ?? null
     }
   } catch {
     // Silently fail — CSRF will be retried on next request
   }
+
+  return csrfToken
 }
 
 export function getCsrfToken(): string | null {
   return csrfToken
+}
+
+async function ensureCsrfToken(): Promise<void> {
+  if (csrfToken) return
+
+  csrfTokenPromise ??= fetchCsrfToken().finally(() => {
+    csrfTokenPromise = null
+  })
+
+  await csrfTokenPromise
 }
 
 // ── Typed error ───────────────────────────────────────────────────────────────
@@ -41,21 +54,23 @@ export class ApiError extends Error {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path}`
 
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(init.headers ?? {}),
-  }
+  const headers = new Headers(init.headers)
+  headers.set('Content-Type', 'application/json')
 
   // Inject CSRF token on mutating requests
   const method = (init.method ?? 'GET').toUpperCase()
-  if (csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-    ;(headers as Record<string, string>)['X-CSRF-Token'] = csrfToken
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    await ensureCsrfToken()
+
+    if (csrfToken) {
+      headers.set('X-CSRF-Token', csrfToken)
+    }
   }
 
   let response: Response
   try {
     response = await fetch(url, { ...init, headers, credentials: 'include' })
-  } catch (networkErr) {
+  } catch {
     // Backend is down / ECONNREFUSED — treat as 503
     throw new ApiError(503, 'Backend unavailable')
   }

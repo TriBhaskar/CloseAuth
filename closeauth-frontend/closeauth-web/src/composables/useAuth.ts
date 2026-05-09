@@ -1,5 +1,4 @@
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAsyncState } from '@/composables/useAsyncState'
 import { adminService } from '@/api/services'
@@ -11,7 +10,6 @@ import { adminService } from '@/api/services'
  */
 export function useAuth() {
   const authStore = useAuthStore()
-  const router = useRouter()
   const { isLoading, errorMessage, execute } = useAsyncState()
 
   const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -57,48 +55,6 @@ export function useAuth() {
     await authStore.logout()
   }
 
-  async function forgotPasswordRequest(email: string): Promise<boolean> {
-    const result = await execute(async () => {
-      const resp = await fetch('/api/admin/forgot-password/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email }),
-      })
-      if (!resp.ok) throw new Error('Failed to send reset email')
-      return resp.json()
-    })
-    return result !== null
-  }
-
-  async function forgotPasswordVerifyOtp(email: string, otp: string): Promise<boolean> {
-    const result = await execute(async () => {
-      const resp = await fetch('/api/admin/forgot-password/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, verificationCode: otp }),
-      })
-      if (!resp.ok) throw new Error('Invalid or expired code')
-      return resp.json()
-    })
-    return result !== null
-  }
-
-  async function resetPassword(email: string, otp: string, newPassword: string): Promise<boolean> {
-    const result = await execute(async () => {
-      const resp = await fetch('/api/admin/forgot-password/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, verificationCode: otp, newPassword }),
-      })
-      if (!resp.ok) throw new Error('Failed to reset password')
-      return resp.json()
-    })
-    return result !== null
-  }
-
   return {
     isAuthenticated,
     user,
@@ -109,9 +65,6 @@ export function useAuth() {
     verifyOtp,
     resendOtp,
     logout,
-    forgotPasswordRequest,
-    forgotPasswordVerifyOtp,
-    resetPassword,
   }
 }
 

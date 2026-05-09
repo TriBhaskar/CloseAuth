@@ -1,10 +1,12 @@
 package main
 
 import (
+	"closeauth-frontend/internal/logger"
 	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -37,7 +39,8 @@ func gracefulShutdown(apiServer *http.Server, done chan bool) {
 }
 
 func main() {
-
+	// Initialize structured logger before anything else
+	logger.Init(os.Getenv("LOG_LEVEL"), os.Getenv("LOG_FORMAT"))
 	server := server.NewServer()
 
 	// Create a done channel to signal when the shutdown is complete

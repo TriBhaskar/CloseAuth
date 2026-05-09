@@ -35,10 +35,11 @@ func (s *Server) handleAdminLoginImpl(w http.ResponseWriter, r *http.Request) {
 
 	// Proxy to Spring admin login endpoint
 	jsonBody, _ := json.Marshal(map[string]string{
-		"username": req.Username,
+		"email":    req.Username,
 		"password": req.Password,
 	})
 
+	logger.Info("attempting admin login:", s.springConfig.AdminLoginURL())
 	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodPost, s.springConfig.AdminLoginURL(), jsonBody)
 	if err != nil {
 		logger.Error("admin login proxy failed", "error", err)
@@ -67,8 +68,8 @@ func (s *Server) handleAdminLoginImpl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.StatusCode != http.StatusOK {
-		logger.Error("unexpected admin login response", "status", result.StatusCode)
-		jsonError(w, "Authentication failed", http.StatusInternalServerError)
+		logger.Error("unexpected admin login response", "status", result.StatusCode, "msg", result.Body)
+		jsonError(w, "Authentication failed", http.StatusNotFound)
 		return
 	}
 

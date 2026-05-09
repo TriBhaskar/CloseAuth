@@ -50,7 +50,7 @@ func SetSession(w http.ResponseWriter, session *Session, isProduction bool) erro
 		MaxAge:   86400, // 24 hours
 		HttpOnly: true,
 		Secure:   isProduction,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	})
 
 	return nil

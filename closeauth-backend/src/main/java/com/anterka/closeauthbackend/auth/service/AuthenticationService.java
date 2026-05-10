@@ -81,9 +81,9 @@ public class AuthenticationService {
         if (userRepository.existsByEmail(userRegistrationDto.email())) {
             throw new DataAlreadyExistsException("Registration failed. Please check your details.");
         }
-        if (userRepository.existsByPhone(userRegistrationDto.phone())) {
-            throw new DataAlreadyExistsException("Registration failed. Please check your details.");
-        }
+//        if (userRepository.existsByPhone(userRegistrationDto.phone())) {
+//            throw new DataAlreadyExistsException("Registration failed. Please check your details.");
+//        }
     }
 
     @Transactional

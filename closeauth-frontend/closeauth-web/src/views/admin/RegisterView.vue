@@ -70,7 +70,7 @@ const handleSubmit = async () => {
 
 const handleVerifyOtp = async () => {
   const result = await execute(() =>
-    adminService.verifyOtp({ email: email.value, otp: otpDigits.value.join('') }),
+    adminService.verifyOtp({ email: email.value, verificationCode: otpDigits.value.join('') }),
   )
   if (result) await router.push('/admin/login')
 }

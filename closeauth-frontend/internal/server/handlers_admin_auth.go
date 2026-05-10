@@ -186,6 +186,7 @@ func (s *Server) handleForgotPasswordResetImpl(w http.ResponseWriter, r *http.Re
 // the Spring response back to the client.
 func (s *Server) proxyToSpring(w http.ResponseWriter, r *http.Request, method, targetURL, userToken string) {
 	body, err := readBody(r)
+	s.logger.Info("Body :", string(body))
 	if err != nil {
 		jsonError(w, "Invalid request", http.StatusBadRequest)
 		return

@@ -41,7 +41,7 @@ export function useAuth() {
 
   async function verifyOtp(email: string, verificationCode: string): Promise<boolean> {
     const result = await execute(() =>
-      adminService.verifyOtp({ email, otp: verificationCode }),
+      adminService.verifyOtp({ email, verificationCode: verificationCode }),
     )
     return result !== null
   }

@@ -24,7 +24,7 @@ export interface AdminRegisterResponse {
 
 export interface OtpVerifyRequest {
   email: string
-  otp: string
+  verificationCode: string
 }
 
 export interface OtpVerifyResponse {

@@ -2,6 +2,7 @@ package com.anterka.closeauthbackend.auth.controller;
 
 
 import com.anterka.closeauthbackend.auth.dto.request.*;
+import com.anterka.closeauthbackend.auth.dto.response.UserTokenValidationResponse;
 import com.anterka.closeauthbackend.common.constants.ApiPaths;
 import com.anterka.closeauthbackend.common.dto.CustomApiResponse;
 import com.anterka.closeauthbackend.common.dto.ResponseStatusEnum;
@@ -119,6 +120,18 @@ public class AuthController {
                 .status(ResponseStatusEnum.SUCCESS)
                 .timestamp(LocalDateTime.now())
                 .build());
+    }
+
+    @GetMapping(ApiPaths.VALIDATE_RESET_TOKEN)
+    public ResponseEntity<UserTokenValidationResponse> validateResetToken(
+            @RequestParam String token
+    ){
+        log.info("Received reset token request for token: {}", token);
+        UserTokenValidationResponse response = passwordResetService.validateToken(token);
+        if(response.valid()){
+            return ResponseEntity.ok(response);
+        }
+        return ResponseEntity.badRequest().body(response);
     }
 
     private String getClientIp(HttpServletRequest request) {

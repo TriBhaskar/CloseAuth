@@ -10,6 +10,7 @@ watchEffect(() => {
 
 export function useColorScheme() {
   const toggle = () => { isDark.value = !isDark.value }
-  return { isDark, toggle }
+  const resetToLight = () => {isDark.value = false}
+  return { isDark, toggle, resetToLight }
 }
 

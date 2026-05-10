@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminService } from '@/api/services'
+import {clearCsrfToken} from "@/api/client.ts";
+import {useColorScheme} from "@/composables/useColorScheme.ts";
 
 const STORAGE_KEY = 'closeauth_user'
 
@@ -74,6 +76,13 @@ export const useAuthStore = defineStore('auth', () => {
     role.value            = ''
     isAuthenticated.value = false
     localStorage.removeItem(STORAGE_KEY)
+
+    // Reset cached CSRF token - the cookie was cleared server-side
+    clearCsrfToken()
+
+    // Reset dark mode back to light so home/login pages aren't dark
+    const { resetToLight } = useColorScheme()
+    resetToLight()
   }
 
   return { email, username, role, isAuthenticated, setUser, fetchMe, logout, clear }

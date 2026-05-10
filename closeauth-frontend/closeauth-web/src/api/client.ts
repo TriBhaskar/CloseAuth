@@ -9,6 +9,11 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 let csrfToken: string | null = null
 let csrfTokenPromise: Promise<string | null> | null = null
 
+// Clear the cached CSRF token (call on logout so the next POST re-fetches)
+export function clearCsrfToken(): void {
+  csrfToken = null
+  csrfTokenPromise = null
+}
 export async function fetchCsrfToken(): Promise<string | null> {
   try {
     const resp = await fetch(`${BASE_URL}/csrf`, { credentials: 'include' })

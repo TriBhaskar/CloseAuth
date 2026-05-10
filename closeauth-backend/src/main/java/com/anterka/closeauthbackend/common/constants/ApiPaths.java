@@ -19,7 +19,7 @@ public class ApiPaths {
     public static final String RESEND_OTP = AUTH_BASE + "/resend-otp";
     public static final String FORGOT_PASSWORD = AUTH_BASE + "/forgot-password";
     public static final String RESET_PASSWORD = AUTH_BASE + "/reset-password";
-
+    public static final String VALIDATE_RESET_TOKEN = AUTH_BASE + "/validate-reset-token";
     // OAUTH2 PATHS
     public static final String OAUTH2_BASE = "/oauth2";
     public static final String CLIENT_REGISTER_URL = "/connect/register";

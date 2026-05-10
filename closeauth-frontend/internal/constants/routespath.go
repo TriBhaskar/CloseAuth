@@ -15,14 +15,13 @@ const (
 
 // Admin auth API routes (public — no session required)
 const (
-	RouteAPIAdminLogin              = "/api/admin/login"
-	RouteAPIAdminRegister           = "/api/admin/register"
-	RouteAPIAdminRegisterVerifyOTP  = "/api/admin/register/verify-otp"
-	RouteAPIAdminRegisterResendOTP  = "/api/admin/register/resend-otp"
-	RouteAPIForgotPasswordRequest   = "/api/admin/forgot-password/request"
-	RouteAPIForgotPasswordVerifyOTP = "/api/admin/forgot-password/verify-otp"
-	RouteAPIForgotPasswordResend    = "/api/admin/forgot-password/resend"
-	RouteAPIForgotPasswordReset     = "/api/admin/forgot-password/reset"
+	RouteAPIAdminLogin                  = "/api/admin/login"
+	RouteAPIAdminRegister               = "/api/admin/register"
+	RouteAPIAdminRegisterVerifyOTP      = "/api/admin/register/verify-otp"
+	RouteAPIAdminRegisterResendOTP      = "/api/admin/register/resend-otp"
+	RouteAPIForgotPasswordRequest       = "/api/admin/forgot-password/request"
+	RouteAPIForgotPasswordValidateToken = "/api/admin/forgot-password/validate-token"
+	RouteAPIForgotPasswordReset         = "/api/admin/forgot-password/reset"
 )
 
 // OAuth client API routes (public — theme, login, register, consent-data)

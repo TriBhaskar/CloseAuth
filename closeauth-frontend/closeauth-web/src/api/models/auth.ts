@@ -50,3 +50,31 @@ export interface AdminUser {
   createdAt: string
 }
 
+// ── Forgot / Reset Password ─────────────────────────────────────────────────
+
+export interface ForgotPasswordRequest {
+  email: string
+  forgotPasswordLink: string
+}
+
+export interface ForgotPasswordResponse {
+  message: string
+  status: string
+}
+
+export interface ResetPasswordRequest {
+  token: string
+  newPassword: string
+  confirmPassword: string
+}
+
+export interface ResetPasswordResponse {
+  message: string
+  status: string
+}
+
+export interface ValidateTokenResponse {
+  valid: boolean
+  message: string
+}
+

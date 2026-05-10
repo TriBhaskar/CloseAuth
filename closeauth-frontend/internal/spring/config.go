@@ -122,6 +122,10 @@ func (c *Config) AdminPasswordResetURL() string {
 	return c.baseURL() + "/api/v1/admin/auth/reset-password"
 }
 
+func (c *Config) AdminValidateResetTokenURL() string {
+	return c.baseURL() + "/api/v1/admin/auth/validate-reset-token"
+}
+
 // --- OAuth2 User Registration Endpoints ---
 
 func (c *Config) OAuth2RegisterUserURL(clientID string) string {

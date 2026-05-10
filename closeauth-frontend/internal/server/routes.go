@@ -62,8 +62,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Post("/admin/register/verify-otp", s.handleAdminVerifyOTP)
 		r.Post("/admin/register/resend-otp", s.handleAdminResendOTP)
 		r.Post("/admin/forgot-password/request", s.handleForgotPasswordRequest)
-		r.Post("/admin/forgot-password/verify-otp", s.handleForgotPasswordVerifyOTP)
-		r.Post("/admin/forgot-password/resend", s.handleForgotPasswordResend)
+		r.Get("/admin/forgot-password/validate-token", s.handleValidateResetToken)
 		r.Post("/admin/forgot-password/reset", s.handleForgotPasswordReset)
 
 		// OAuth client pages (public — theme, login, register, consent-data)
@@ -172,12 +171,8 @@ func (s *Server) handleForgotPasswordRequest(w http.ResponseWriter, r *http.Requ
 	s.handleForgotPasswordRequestImpl(w, r)
 }
 
-func (s *Server) handleForgotPasswordVerifyOTP(w http.ResponseWriter, r *http.Request) {
-	s.handleForgotPasswordVerifyOTPImpl(w, r)
-}
-
-func (s *Server) handleForgotPasswordResend(w http.ResponseWriter, r *http.Request) {
-	s.handleForgotPasswordResendImpl(w, r)
+func (s *Server) handleValidateResetToken(w http.ResponseWriter, r *http.Request) {
+	s.handleValidateResetTokenImpl(w, r)
 }
 
 func (s *Server) handleForgotPasswordReset(w http.ResponseWriter, r *http.Request) {
@@ -228,14 +223,17 @@ func (s *Server) handleAdminMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
-	// CLear all BFF cookies to fully terminate the session.
-	// The user JWT is stateless and cannot be revoked, so clearing the cookie is the only way to log out.
-	// without registering them in Spring's OauthAuthorizationService, so
+	// Clear all BFF cookies to fully terminate the session.
+	// The user JWT is stateless (JwtTokenService generates self-contained tokens
+	// without registering them in Spring's OAuth2AuthorizationService), so
 	// server-side revocation via /oauth2/revoke is not possible. Cookie cleanup
-	// is the primary logout mechainsm;
+	// is the primary logout mechanism; the JWT expires naturally (1h TTL).
 	middleware.ClearSession(w)
 	middleware.ClearOAuthContext(w)
 	middleware.ClearCSRFToken(w)
+
+	s.logger.Info("admin logout successful")
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

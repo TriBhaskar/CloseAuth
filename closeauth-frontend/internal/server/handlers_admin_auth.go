@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"closeauth-frontend/internal/middleware"
@@ -124,14 +125,37 @@ func (s *Server) handleForgotPasswordRequestImpl(w http.ResponseWriter, r *http.
 	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminForgotPasswordURL(), "")
 }
 
-// handleForgotPasswordVerifyOTPImpl verifies password reset token.
-func (s *Server) handleForgotPasswordVerifyOTPImpl(w http.ResponseWriter, r *http.Request) {
-	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminPasswordResetURL(), "")
-}
+// handleValidateResetTokenImpl validates a password reset token.
+func (s *Server) handleValidateResetTokenImpl(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		jsonError(w, "Token is required", http.StatusBadRequest)
+		return
+	}
 
-// handleForgotPasswordResendImpl resends password reset OTP.
-func (s *Server) handleForgotPasswordResendImpl(w http.ResponseWriter, r *http.Request) {
-	s.proxyToSpring(w, r, http.MethodPost, s.springConfig.AdminResendOTPURL(), "")
+	targetURL := s.springConfig.AdminValidateResetTokenURL() + "?token=" + url.QueryEscape(token)
+	result, err := s.springClient.ProxyAdminAuth(r.Context(), http.MethodGet, targetURL, nil, "")
+	if err != nil {
+		s.logger.Error("proxy to Spring failed", "url", targetURL, "error", err)
+		jsonError(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Gaurd against non-JSON responses (e.g Spring redirect to login page)
+	if result.StatusCode >= 300 && result.StatusCode < 400 {
+		s.logger.Error("unexpected redirect from Spring validate-token", "status", result.StatusCode, "location", string(result.Body))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"valid": false,
+			"error": "Passed reset service temporarily unavailable",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(result.StatusCode)
+	w.Write(result.Body)
 }
 
 // handleForgotPasswordResetImpl submits new password.

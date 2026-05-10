@@ -7,11 +7,16 @@ import type {
   AdminUser,
   CreateClientRequest,
   CreateClientResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
   OtpResendRequest,
   OtpResendResponse,
   OtpVerifyRequest,
   OtpVerifyResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
   SettingsPayload,
+  ValidateTokenResponse,
 } from '@/api/models'
 
 export const adminService = {
@@ -38,7 +43,21 @@ export const adminService = {
   },
 
   logout(): Promise<void> {
-    return apiClient.post('/admin/logout',{})
+    return apiClient.post('/admin/logout', {})
+  },
+
+  // ── Forgot / Reset Password ─────────────────────────────────────────────────
+
+  forgotPassword(payload: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
+    return apiClient.post('/admin/forgot-password/request', payload)
+  },
+
+  validateResetToken(token: string): Promise<ValidateTokenResponse> {
+    return apiClient.get(`/admin/forgot-password/validate-token?token=${encodeURIComponent(token)}`)
+  },
+
+  resetPassword(payload: ResetPasswordRequest): Promise<ResetPasswordResponse> {
+    return apiClient.post('/admin/forgot-password/reset', payload)
   },
 
   // ── Clients ─────────────────────────────────────────────────────────────────

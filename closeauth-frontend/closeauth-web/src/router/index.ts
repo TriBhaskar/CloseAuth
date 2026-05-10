@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/admin/login',           component: () => import('@/views/admin/LoginView.vue') },
     { path: '/admin/register',        component: () => import('@/views/admin/RegisterView.vue') },
     { path: '/admin/forgot-password', component: () => import('@/views/admin/ForgotPasswordView.vue') },
+    { path: '/admin/reset-password',  component: () => import('@/views/admin/ResetPasswordView.vue') },
 
     // ── Admin Portal (AdminLayout, requires auth) ──────────────────────────────
     {

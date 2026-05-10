@@ -50,6 +50,7 @@ public class ApiPaths {
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
             ADMIN_BASE + RESET_PASSWORD,
+            ADMIN_BASE + VALIDATE_RESET_TOKEN,
             CLIENT_INFO_URL,
             USER_REGISTER_URL + "/**"
     };

@@ -143,7 +143,7 @@ func (s *Server) handleValidateResetTokenImpl(w http.ResponseWriter, r *http.Req
 
 	// Gaurd against non-JSON responses (e.g Spring redirect to login page)
 	if result.StatusCode >= 300 && result.StatusCode < 400 {
-		s.logger.Error("unexpected redirect from Spring validate-token", "status", result.StatusCode, "location", string(result.Body))
+		s.logger.Error("unexpected redirect from Spring validate-token", "status", result.StatusCode)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -153,9 +153,23 @@ func (s *Server) handleValidateResetTokenImpl(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if result.StatusCode >= 200 && result.StatusCode < 300 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(result.StatusCode)
+		w.Write(result.Body)
+		return
+	}
+
+	errorMsg := extractSpringErrorMessage(result.Body)
+	if errorMsg == "" {
+		errorMsg = "Invalid or expired reset token"
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	w.WriteHeader(http.StatusBadRequest)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"valid": false,
+		"error": errorMsg,
+	})
 }
 
 // handleForgotPasswordResetImpl submits new password.
@@ -184,9 +198,54 @@ func (s *Server) proxyToSpring(w http.ResponseWriter, r *http.Request, method, t
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(result.StatusCode)
-	w.Write(result.Body)
+	if result.StatusCode >= 300 && result.StatusCode < 400 {
+		s.logger.Error("unexpected redirect from Spring", "url", targetURL, "status", result.StatusCode)
+		jsonError(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	if result.StatusCode >= 200 && result.StatusCode < 300 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(result.StatusCode)
+		w.Write(result.Body)
+		return
+	}
+
+	errorMsg := extractSpringErrorMessage(result.Body)
+	if errorMsg == "" {
+		errorMsg = fmt.Sprintf("Request failed with status %d", result.StatusCode)
+	}
+	jsonError(w, errorMsg, result.StatusCode)
+}
+
+// From Spring's  various JSON error response format
+// CustomApiResponse
+// ApiErrorResponse
+// Spring Security
+// Validation Errors
+// Token Validation
+func extractSpringErrorMessage(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	fmt.Println("unexpected response from Spring:", string(body))
+
+	var parsed struct {
+		// CustomApiResponse / generic
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	}
+
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+
+	if parsed.Message != "" {
+		return parsed.Message
+	}
+
+	return ""
 }
 
 // getUserToken extracts the user's access token from the session cookie.

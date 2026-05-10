@@ -94,6 +94,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       }
     }
     const message: string =
+      (json as { error?: string; message?: string })?.error ??
       (json as { error?: string })?.error ??
       `Request failed with status ${response.status}`
     throw new ApiError(response.status, message)

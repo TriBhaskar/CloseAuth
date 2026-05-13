@@ -1,11 +1,11 @@
 package com.anterka.closeauthbackend.client.service;
 
-import com.anterka.closeauthbackend.client.entity.Client;
-import com.anterka.closeauthbackend.client.repository.ClientRepository;
-import com.anterka.closeauthbackend.client.entity.ClientOwnerShip;
 import com.anterka.closeauthbackend.audit.service.AuditLogService;
-import com.anterka.closeauthbackend.user.entity.Users;
+import com.anterka.closeauthbackend.client.entity.Client;
+import com.anterka.closeauthbackend.client.entity.ClientOwnerShip;
 import com.anterka.closeauthbackend.client.repository.ClientOwnershipRepository;
+import com.anterka.closeauthbackend.client.repository.ClientRepository;
+import com.anterka.closeauthbackend.user.entity.Users;
 import com.anterka.closeauthbackend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

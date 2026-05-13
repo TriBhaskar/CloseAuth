@@ -36,6 +36,7 @@ public class ClientRegistrationService {
     private final VerificationStrategyFactory verificationStrategyFactory;
     private final RegistrationCacheService registrationCacheService;
     private final RegistrationCompletionService registrationCompletionService;
+    private final OtpService otpService;
 
     /**
      * Registers a user for a specific client application.
@@ -107,7 +108,7 @@ public class ClientRegistrationService {
         strategy.initiate(registrationData);
 
         // Build response based on verification mode
-        return buildRegistrationResponse(request, verificationMode, OtpService.OTP_VALIDITY_SECONDS);
+        return buildRegistrationResponse(request, verificationMode, otpService.getOtpValiditySeconds());
     }
 
     /**

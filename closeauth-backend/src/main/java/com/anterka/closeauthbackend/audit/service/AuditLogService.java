@@ -1,10 +1,11 @@
 package com.anterka.closeauthbackend.audit.service;
 
+import com.anterka.closeauthbackend.audit.entity.AuditLogs;
+import com.anterka.closeauthbackend.audit.event.CloseAuthAuditEvent;
+import com.anterka.closeauthbackend.audit.repository.AuditLogRepository;
 import com.anterka.closeauthbackend.client.entity.Client;
 import com.anterka.closeauthbackend.client.repository.ClientRepository;
-import com.anterka.closeauthbackend.audit.entity.AuditLogs;
 import com.anterka.closeauthbackend.user.entity.Users;
-import com.anterka.closeauthbackend.audit.repository.AuditLogRepository;
 import com.anterka.closeauthbackend.user.repository.UserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,12 +13,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.Map;
 
 /**
  * Service for logging audit events for compliance and debugging.
- * Logs all configuration changes with client, user, and metadata.
+ * Supports both direct calls and event-driven audit via CloseAuthAuditEvent.
  */
 @Service
 @RequiredArgsConstructor
@@ -28,6 +31,25 @@ public class AuditLogService {
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+
+    /**
+     * Event-driven audit handler.
+     * Listens for CloseAuthAuditEvent after transaction commit.
+     * Services publish events via ApplicationEventPublisher — decoupled from audit persistence.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleAuditEvent(CloseAuthAuditEvent event) {
+        logAction(
+                event.clientId(),
+                event.userId(),
+                event.action(),
+                event.ipAddress(),
+                event.userAgent(),
+                event.metadata(),
+                event.success(),
+                event.errorMessage()
+        );
+    }
 
     /**
      * Log an action with full audit trail
@@ -105,4 +127,3 @@ public class AuditLogService {
         logAction(clientId, userId, action, ipAddress, userAgent, null, true, null);
     }
 }
-

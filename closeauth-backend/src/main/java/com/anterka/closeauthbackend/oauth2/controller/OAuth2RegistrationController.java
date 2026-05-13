@@ -1,10 +1,6 @@
 package com.anterka.closeauthbackend.oauth2.controller;
 
-import com.anterka.closeauthbackend.auth.dto.request.ClientUserRegistrationDto;
-import com.anterka.closeauthbackend.auth.dto.request.PhoneVerificationDto;
-import com.anterka.closeauthbackend.auth.dto.request.ResendPhoneOtpDto;
-import com.anterka.closeauthbackend.auth.dto.request.UserEmailVerificationDto;
-import com.anterka.closeauthbackend.auth.dto.request.UserResendOtpDto;
+import com.anterka.closeauthbackend.auth.dto.request.*;
 import com.anterka.closeauthbackend.auth.dto.response.ResendOtpResponse;
 import com.anterka.closeauthbackend.auth.dto.response.UserRegistrationResponse;
 import com.anterka.closeauthbackend.auth.enums.VerificationType;

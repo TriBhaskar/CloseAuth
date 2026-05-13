@@ -1,20 +1,12 @@
 package com.anterka.closeauthbackend.client.service;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
+import com.anterka.closeauthbackend.client.dto.CreateClientDto;
 import com.anterka.closeauthbackend.client.entity.Client;
 import com.anterka.closeauthbackend.client.repository.ClientRepository;
-import com.anterka.closeauthbackend.client.dto.CreateClientDto;
 import com.anterka.closeauthbackend.user.security.UserJwtAuthenticationToken;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,6 +22,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 @Slf4j

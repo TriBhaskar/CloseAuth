@@ -1,10 +1,10 @@
 package com.anterka.closeauthbackend.user.service;
 
-import com.anterka.closeauthbackend.cache.repository.PasswordResetTokenRepository;
-import com.anterka.closeauthbackend.common.exception.*;
 import com.anterka.closeauthbackend.auth.dto.request.UserForgotPasswordDto;
 import com.anterka.closeauthbackend.auth.dto.request.UserResetPasswordDto;
 import com.anterka.closeauthbackend.auth.dto.response.UserTokenValidationResponse;
+import com.anterka.closeauthbackend.cache.repository.PasswordResetTokenRepository;
+import com.anterka.closeauthbackend.common.exception.*;
 import com.anterka.closeauthbackend.notification.service.EmailService;
 import com.anterka.closeauthbackend.user.entity.Users;
 import com.anterka.closeauthbackend.user.repository.UserRepository;

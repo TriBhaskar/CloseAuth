@@ -1,10 +1,10 @@
 package com.anterka.closeauthbackend.client.controller;
 
+import com.anterka.closeauthbackend.client.dto.request.*;
 import com.anterka.closeauthbackend.client.dto.response.ApplicationRoleResponse;
 import com.anterka.closeauthbackend.client.dto.response.RegistrationConfigResponse;
 import com.anterka.closeauthbackend.client.dto.response.ThemeConfigResponse;
 import com.anterka.closeauthbackend.client.dto.response.ThemeResponse;
-import com.anterka.closeauthbackend.client.dto.request.*;
 import com.anterka.closeauthbackend.client.service.ApplicationRegistrationConfigService;
 import com.anterka.closeauthbackend.client.service.ApplicationRoleService;
 import com.anterka.closeauthbackend.client.service.ClientThemeService;

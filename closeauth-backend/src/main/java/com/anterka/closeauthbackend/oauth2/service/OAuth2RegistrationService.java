@@ -119,7 +119,7 @@ public class OAuth2RegistrationService {
         strategy.initiate(registrationData);
 
         // Build response based on verification mode
-        return buildRegistrationResponse(request, verificationMode, OtpService.OTP_VALIDITY_SECONDS);
+        return buildRegistrationResponse(request, verificationMode, otpService.getOtpValiditySeconds());
     }
 
     /**
@@ -148,7 +148,7 @@ public class OAuth2RegistrationService {
 
         return new ResendOtpResponse(
                 "OTP resent successfully. Please verify your email.",
-                OtpService.OTP_VALIDITY_SECONDS,
+                otpService.getOtpValiditySeconds(),
                 request.email(),
                 LocalDateTime.now()
         );
@@ -180,7 +180,7 @@ public class OAuth2RegistrationService {
 
         return new ResendOtpResponse(
                 "OTP resent successfully. Please verify your phone number.",
-                OtpService.OTP_VALIDITY_SECONDS,
+                otpService.getOtpValiditySeconds(),
                 request.email(),
                 LocalDateTime.now()
         );

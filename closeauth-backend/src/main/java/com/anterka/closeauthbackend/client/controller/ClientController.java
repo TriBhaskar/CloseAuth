@@ -1,7 +1,7 @@
 package com.anterka.closeauthbackend.client.controller;
 
-import com.anterka.closeauthbackend.client.service.ClientService;
 import com.anterka.closeauthbackend.client.dto.CreateClientDto;
+import com.anterka.closeauthbackend.client.service.ClientService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;

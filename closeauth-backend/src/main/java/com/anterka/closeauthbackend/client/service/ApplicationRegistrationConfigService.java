@@ -1,16 +1,13 @@
 package com.anterka.closeauthbackend.client.service;
 
+import com.anterka.closeauthbackend.audit.service.AuditLogService;
 import com.anterka.closeauthbackend.auth.enums.VerificationMode;
-import com.anterka.closeauthbackend.client.entity.Client;
-import com.anterka.closeauthbackend.client.repository.ClientRepository;
 import com.anterka.closeauthbackend.client.dto.request.UpdateApplicationRegistrationConfigDto;
 import com.anterka.closeauthbackend.client.dto.response.RegistrationConfigResponse;
 import com.anterka.closeauthbackend.client.entity.ApplicationRegistrationConfig;
-import com.anterka.closeauthbackend.common.exception.ClientOwnershipException;
+import com.anterka.closeauthbackend.client.entity.Client;
 import com.anterka.closeauthbackend.client.repository.ApplicationRegistrationConfigRepository;
-import com.anterka.closeauthbackend.client.repository.ClientOwnershipRepository;
-import com.anterka.closeauthbackend.audit.service.AuditLogService;
-import com.anterka.closeauthbackend.user.security.UserContextHelper;
+import com.anterka.closeauthbackend.client.repository.ClientRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -27,34 +24,17 @@ import java.util.Map;
 public class ApplicationRegistrationConfigService {
 
     private final ApplicationRegistrationConfigRepository configRepository;
-    private final ClientOwnershipRepository clientOwnershipRepository;
+    private final ClientOwnershipVerifier ownershipVerifier;
     private final ClientRepository clientRepository;
     private final AuditLogService auditLogService;
 
-    /**
-     * Extract user ID from request attributes (set by TwoLayerAuthenticationFilter)
-     */
-    private Integer getCurrentUserId(HttpServletRequest request) {
-        return UserContextHelper.getUserId(request);
-    }
-
-    /**
-     * Verify that the current user owns the client
-     */
-    private void verifyClientOwnership(String clientId, HttpServletRequest request) {
-        Integer userId = getCurrentUserId(request);
-        if (!clientOwnershipRepository.existsByClient_IdAndUser_Id(clientId, userId)) {
-            log.warn("User {} attempted to access client {} without ownership", userId, clientId);
-            throw new ClientOwnershipException("You do not have permission to modify this client");
-        }
-    }
 
     /**
      * Get registration config for a client
      */
     @Transactional(readOnly = true)
     public RegistrationConfigResponse getConfig(String clientId, HttpServletRequest request) {
-        verifyClientOwnership(clientId, request);
+        ownershipVerifier.verify(clientId, request);
 
         ApplicationRegistrationConfig config = configRepository.findByClient_ClientId(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Registration config not found for client"));
@@ -69,7 +49,7 @@ public class ApplicationRegistrationConfigService {
     public RegistrationConfigResponse updateConfig(String clientId,
                                                    UpdateApplicationRegistrationConfigDto dto,
                                                    String ipAddress, String userAgent, HttpServletRequest request) {
-        verifyClientOwnership(clientId, request);
+        ownershipVerifier.verify(clientId, request);
 
         ApplicationRegistrationConfig config = configRepository.findByClient_ClientId(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Registration config not found for client"));
@@ -141,7 +121,7 @@ public class ApplicationRegistrationConfigService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("before", beforeState);
         metadata.put("after", captureState(updated));
-        auditLogService.logAction(clientId, getCurrentUserId(request), "REGISTRATION_CONFIG_UPDATED",
+        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "REGISTRATION_CONFIG_UPDATED",
                 ipAddress, userAgent, metadata);
 
         log.info("Updated registration config for client: {}", clientId);

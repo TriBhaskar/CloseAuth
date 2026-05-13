@@ -92,7 +92,6 @@ func CSRFMiddleware(config CSRFConfig) func(http.Handler) http.Handler {
 				}
 			}
 
-			// Validate token
 			if !validateCSRFToken(expectedToken, actualToken) {
 				http.Error(w, "CSRF token mismatch", http.StatusForbidden)
 				return

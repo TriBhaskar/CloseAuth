@@ -47,7 +47,7 @@ public class TwoLayerAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
-        log.info("Validating X-User-Token for request: {} {}", request.getMethod(), request.getRequestURI());
+        log.debug("Validating X-User-Token for request: {} {}", request.getMethod(), request.getRequestURI());
 
         // Extract token from X-User-Token header
         String token = request.getHeader(USER_TOKEN_HEADER);
@@ -66,7 +66,7 @@ public class TwoLayerAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // Token is valid, user info stored in request attributes, continue
-        log.info("X-User-Token validated successfully for user: {}", request.getAttribute(UserContextHelper.ATTR_USERNAME));
+        log.debug("X-User-Token validated successfully for user: {}", request.getAttribute(UserContextHelper.ATTR_USERNAME));
         filterChain.doFilter(request, response);
     }
 
@@ -114,7 +114,7 @@ public class TwoLayerAuthenticationFilter extends OncePerRequestFilter {
             request.setAttribute(UserContextHelper.ATTR_USERNAME, username);
             request.setAttribute(UserContextHelper.ATTR_USER_ROLES, roles);
 
-            log.info("User info stored in request: username={}, userId={}, roles={}", username, userId, roles);
+            log.debug("User info stored in request: username={}, userId={}, roles={}", username, userId, roles);
             return true;
 
         } catch (JwtException e) {
@@ -135,7 +135,7 @@ public class TwoLayerAuthenticationFilter extends OncePerRequestFilter {
                     .toList();
         }
 
-        log.info("No roles found in X-User-Token for user: {}", jwt.getSubject());
+        log.debug("No roles found in X-User-Token for user: {}", jwt.getSubject());
         return List.of();
     }
 }

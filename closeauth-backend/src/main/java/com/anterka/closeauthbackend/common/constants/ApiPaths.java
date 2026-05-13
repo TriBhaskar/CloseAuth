@@ -19,6 +19,7 @@ public class ApiPaths {
     public static final String RESEND_OTP = AUTH_BASE + "/resend-otp";
     public static final String FORGOT_PASSWORD = AUTH_BASE + "/forgot-password";
     public static final String RESET_PASSWORD = AUTH_BASE + "/reset-password";
+    public static final String VALIDATE_RESET_TOKEN = AUTH_BASE + "/validate-reset-token";
 
     // OAUTH2 PATHS
     public static final String OAUTH2_BASE = "/oauth2";
@@ -31,6 +32,9 @@ public class ApiPaths {
     public static final String INTROSPECTION_URL = OAUTH2_BASE + "/introspect";
     public static final String CLIENT_INFO_URL = OAUTH2_BASE + "/client-info";
     public static final String USER_REGISTER_URL = OAUTH2_BASE + "/register";
+
+    // BFF Configuration Endpoint (public — no auth required)
+    public static final String BFF_CONFIG_ENDPOINT = "/bff/config";
 
     // Client Configuration Management
     public static final String CLIENT_CONFIG_BASE = API_V1_BASE + "/clients";
@@ -50,6 +54,7 @@ public class ApiPaths {
             ADMIN_BASE + RESEND_OTP,
             ADMIN_BASE + FORGOT_PASSWORD,
             ADMIN_BASE + RESET_PASSWORD,
+            ADMIN_BASE + VALIDATE_RESET_TOKEN,
             CLIENT_INFO_URL,
             USER_REGISTER_URL + "/**"
     };

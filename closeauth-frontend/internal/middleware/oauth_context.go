@@ -10,6 +10,18 @@ import (
 
 const OAuthContextCookieName = "oauth_context"
 
+// oauthContextTTL is the TTL for the oauth_context cookie in seconds.
+// Default: 600 (10 minutes). Updated at startup from Spring's BFF config.
+var oauthContextTTL int64 = 600
+
+// SetOAuthContextTTL updates the oauth_context cookie TTL.
+// Called at startup after fetching config from Spring.
+func SetOAuthContextTTL(ttlSeconds int) {
+	if ttlSeconds > 0 {
+		oauthContextTTL = int64(ttlSeconds)
+	}
+}
+
 // OAuthContext stores OAuth2 authorization request parameters in an encrypted cookie.
 // This preserves the OAuth flow state across the login/consent pages.
 type OAuthContext struct {
@@ -23,7 +35,8 @@ type OAuthContext struct {
 	Username        string `json:"username,omitempty"`          // Set after login
 }
 
-// SaveOAuthContext encrypts and stores the OAuth context in a cookie (600s TTL).
+// SaveOAuthContext encrypts and stores the OAuth context in a cookie.
+// TTL is determined by the oauthContextTTL package variable (synced from Spring).
 func SaveOAuthContext(w http.ResponseWriter, ctx *OAuthContext, isProduction bool) error {
 	ctx.Timestamp = time.Now().Unix()
 
@@ -43,7 +56,7 @@ func SaveOAuthContext(w http.ResponseWriter, ctx *OAuthContext, isProduction boo
 		Name:     OAuthContextCookieName,
 		Value:    encoded,
 		Path:     "/",
-		MaxAge:   600, // 10 minutes
+		MaxAge:   int(oauthContextTTL),
 		HttpOnly: true,
 		Secure:   isProduction,
 		SameSite: http.SameSiteLaxMode,
@@ -74,8 +87,8 @@ func GetOAuthContext(r *http.Request) (*OAuthContext, error) {
 		return nil, fmt.Errorf("unmarshal oauth context: %w", err)
 	}
 
-	// Check expiration (10 minutes)
-	if time.Now().Unix()-ctx.Timestamp > 600 {
+	// Check expiration using the configurable TTL
+	if time.Now().Unix()-ctx.Timestamp > oauthContextTTL {
 		return nil, fmt.Errorf("oauth context expired")
 	}
 

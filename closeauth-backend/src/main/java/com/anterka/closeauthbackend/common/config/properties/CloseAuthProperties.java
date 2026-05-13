@@ -69,8 +69,25 @@ public class CloseAuthProperties {
     @Getter
     @Setter
     public static class Bff {
+        /**
+         * Base URL of the BFF server (e.g., http://localhost:8080).
+         * login-page and consent-page are derived from this in application.properties.
+         */
+        private String baseUrl = "http://localhost:8080";
         private String loginPage;
         private String consentPage;
+
+        /**
+         * Session timeout in seconds. Must match or exceed oauthContextTtlSeconds.
+         * BFF uses this to align its cookie TTLs with Spring's session timeout.
+         */
+        private int sessionTimeoutSeconds = 900;
+
+        /**
+         * OAuth context cookie TTL in seconds.
+         * This is the maximum time a user has to complete the login+consent flow.
+         */
+        private int oauthContextTtlSeconds = 600;
     }
 }
 

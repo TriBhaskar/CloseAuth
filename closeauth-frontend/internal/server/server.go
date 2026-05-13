@@ -1,14 +1,17 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"closeauth-frontend/internal/config"
 	"closeauth-frontend/internal/database"
 	"closeauth-frontend/internal/database/repository"
+	"closeauth-frontend/internal/middleware"
 	"closeauth-frontend/internal/spring"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -36,6 +39,30 @@ func NewServer() *http.Server {
 	// Initialize token manager and Spring client
 	tokenManager := spring.NewTokenManager(logger)
 	springClient := spring.NewSpringClient(springCfg, tokenManager, logger)
+
+	// ── Server Discovery ────────────────────────────────────────────────────
+	// Fetch configuration from Spring at startup so BFF stays in sync.
+	// Uses a 10-second timeout — if Spring is not ready, we use defaults.
+	discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer discoveryCancel()
+
+	discovered := springClient.FetchServerConfig(discoveryCtx)
+	springCfg.ApplyDiscoveredConfig(discovered)
+
+	// Apply discovered TTL to oauth_context cookie middleware
+	if discovered.Available {
+		middleware.SetOAuthContextTTL(springCfg.OAuthContextTTLSeconds())
+	}
+
+	if discovered.Available {
+		logger.Info("  ✓ Spring config synced",
+			"server_version", discovered.BffConfig.Version.Server,
+			"session_timeout", discovered.BffConfig.Session.TimeoutSeconds,
+			"oauth_context_ttl", discovered.BffConfig.Session.OAuthContextTTLSeconds,
+		)
+	} else {
+		logger.Warn("  ⚠ Spring discovery incomplete — using env-var defaults")
+	}
 
 	// Initialize database (optional — graceful degradation if DB not available)
 	dbCfg, dbCfgErr := config.LoadDatabaseConfig()
@@ -74,7 +101,14 @@ func NewServer() *http.Server {
 	logger.Info("╚══════════════════════════════════════════════════════╝")
 	logger.Info(fmt.Sprintf("  → Port          : %d", serverCfg.Port))
 	logger.Info(fmt.Sprintf("  → Environment   : %s", env))
-	logger.Info(fmt.Sprintf("  → Spring Server : %s", springCfg.OAuth2ServerURL))
+	logger.Info(fmt.Sprintf("  → Spring Server : %s (version: %s)", springCfg.OAuth2ServerURL, springCfg.ServerVersion()))
+
+	if discovered.Available {
+		logger.Info(fmt.Sprintf("  → Config Sync   : ✓ synced (session=%ds, oauth_ctx=%ds)",
+			springCfg.SessionTimeoutSeconds(), springCfg.OAuthContextTTLSeconds()))
+	} else {
+		logger.Warn("  → Config Sync   : ⚠ using defaults (Spring unreachable at startup)")
+	}
 
 	if db != nil {
 		logger.Info("  → Database      : connected ✓")

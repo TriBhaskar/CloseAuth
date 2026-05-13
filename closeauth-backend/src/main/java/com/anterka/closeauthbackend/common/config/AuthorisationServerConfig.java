@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.common.config;
 
+import com.anterka.closeauthbackend.common.config.handler.OAuthLoginFailureHandler;
+import com.anterka.closeauthbackend.common.config.handler.OAuthLoginSuccessHandler;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.constants.ApiPaths;
 import com.anterka.closeauthbackend.common.filter.TwoLayerAuthenticationFilter;
@@ -141,18 +143,35 @@ public class AuthorisationServerConfig {
 
     /**
      * Filter Chain 4: Default security chain for any remaining endpoints.
+     *
+     * Handles the OAuth2 Authorization Code flow's user authentication step:
+     * - When Spring detects an unauthenticated user on /oauth2/authorize,
+     *   it redirects to the BFF's login page (loginPage property).
+     * - The BFF collects credentials and POSTs them server-to-server
+     *   to the loginProcessingUrl ("/login").
+     *
+     * Custom handlers ensure deterministic responses for the BFF:
+     * - OAuthLoginSuccessHandler → 200 OK + JSON (instead of default 302)
+     * - OAuthLoginFailureHandler → 401 + JSON (instead of default 302 to /login?error)
+     *
+     * CSRF is disabled because the BFF is the sole consumer of this endpoint
+     * and manages its own CSRF protection. Browsers never POST directly to
+     * Spring's /login — only the BFF does server-to-server.
      */
     @Bean
     @Order(4)
     public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(ApiPaths.BFF_CONFIG_ENDPOINT).permitAll()
                         .anyRequest().authenticated())
                 .formLogin(form -> form
                         .loginPage(properties.getBff().getLoginPage())
                         .loginProcessingUrl("/login")
+                        .successHandler(new OAuthLoginSuccessHandler())
+                        .failureHandler(new OAuthLoginFailureHandler())
                         .permitAll())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .csrf(csrf -> csrf.disable());
+                .csrf(csrf -> csrf.disable()); // Safe: BFF is sole consumer, handles its own CSRF
 
         return http.build();
     }

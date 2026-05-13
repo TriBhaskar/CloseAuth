@@ -14,7 +14,8 @@ import {
   User,
 } from 'lucide-vue-next'
 import { useOAuthTheme } from '@/composables/useOAuthTheme'
-import { getCsrfToken } from '@/api/client'
+import {apiClient, getCsrfToken} from '@/api/client'
+import {oauthService} from "@/api/services";
 
 const route = useRoute()
 
@@ -51,27 +52,28 @@ const scopeInfo = computed(() =>
 // ── On mount: fetch consent data from Go API ──────────────────────────────────
 onMounted(async () => {
   // Build query string from route params
-  const queryParams = new URLSearchParams()
-  if (route.query.client_id) queryParams.set('client_id', route.query.client_id as string)
-  if (route.query.scope) queryParams.set('scope', route.query.scope as string)
-  if (route.query.state) queryParams.set('state', route.query.state as string)
+  // const queryParams = new URLSearchParams()
+  // if (route.query.client_id) queryParams.set('client_id', route.query.client_id as string)
+  // if (route.query.scope) queryParams.set('scope', route.query.scope as string)
+  // if (route.query.state) queryParams.set('state', route.query.state as string)
 
   await loadTheme()
 
   try {
-    const resp = await fetch(`/api/oauth/consent-data?${queryParams.toString()}`, {
-      credentials: 'include',
+
+    const data = await oauthService.fetchConsentData({
+      client_id: route.query.client_id as string | undefined,
+      scope: route.query.scope as string | undefined,
+      state: route.query.state as string | undefined,
     })
-    if (resp.ok) {
-      const data = await resp.json()
-      if (data.client_name) clientName.value = data.client_name
-      username.value = data.username ?? ''
-      userEmail.value = data.username ?? '' // username as email fallback
-      scopes.value = data.scopes ?? []
-      state.value = data.state ?? ''
-      csrfToken.value = data.csrf_token ?? getCsrfToken() ?? ''
-      if (data.client_id) clientId.value = data.client_id
-    }
+
+    if (data.client_name) clientName.value = data.client_name
+    username.value = data.username ?? ''
+    userEmail.value = data.username ?? ''
+    scopes.value = data.scopes ?? []
+    state.value = data.state ?? ''
+    csrfToken.value = data.csrf_token ?? getCsrfToken() ?? ''
+    if (data.client_id) clientId.value = data.client_id
   } catch {
     // Fall back to query params
     state.value = (route.query.state as string) ?? ''

@@ -33,6 +33,8 @@ func (s *Server) handleOAuthLoginImpl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Debug("[OAuthLogin] incoming login request", "body", req)
+
 	// Get OAuth context for JSESSIONID
 	oauthCtx, err := middleware.GetOAuthContext(r)
 	if err != nil {
@@ -41,6 +43,15 @@ func (s *Server) handleOAuthLoginImpl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Debug("[OAuthLogin] OAuth context loaded from cookie",
+		"client_id", oauthCtx.ClientID,
+		"response_type", oauthCtx.ResponseType,
+		"redirect_uri", oauthCtx.RedirectURI,
+		"scope", oauthCtx.Scope,
+		"state", oauthCtx.State,
+		"has_spring_session_id", oauthCtx.SpringSessionID != "",
+		)
+
 	// Submit credentials to Spring's login endpoint
 	result, err := s.springClient.SubmitLogin(r.Context(), req.Username, req.Password, oauthCtx.SpringSessionID)
 	if err != nil {
@@ -48,6 +59,14 @@ func (s *Server) handleOAuthLoginImpl(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "Authentication service unavailable", http.StatusServiceUnavailable)
 		return
 	}
+
+	logger.Debug("[OAuthLogin] Spring login response",
+		"status_code", result.StatusCode,
+		"location", result.Location,
+		"body_length", len(result.Body),
+		"body_preview", string(result.Body[:min(200, len(result.Body))]),
+		"cookies_count", len(result.Cookies),
+		)
 
 	// Forward Spring cookies to browser
 	forwardSpringCookies(w, result.Cookies, s.springConfig.IsProduction())

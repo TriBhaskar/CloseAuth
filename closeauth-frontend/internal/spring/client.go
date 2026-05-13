@@ -221,6 +221,10 @@ func (c *SpringClient) GetClientInfo(ctx context.Context, clientID string) (*Cli
 func (c *SpringClient) ProxyAuthorize(ctx context.Context, queryParams string, jsessionID string) (*ProxyResult, error) {
 	targetURL := c.config.AuthorizeURL() + "?" + queryParams
 
+	c.logger.Debug("[Spring:ProxyAuthorize] >>> outgoing request",
+		"method","GET",
+		"url", targetURL,
+		"has_jsessionid",jsessionID != "",)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create authorize proxy request: %w", err)
@@ -232,6 +236,7 @@ func (c *SpringClient) ProxyAuthorize(ctx context.Context, queryParams string, j
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("[Spring:ProxyAuthorize] <<< request failed", "error", err, "url", targetURL)
 		return nil, fmt.Errorf("execute authorize proxy request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -245,6 +250,13 @@ func (c *SpringClient) ProxyAuthorize(ctx context.Context, queryParams string, j
 	if !isRedirect(resp.StatusCode) {
 		result.Body, _ = io.ReadAll(resp.Body)
 	}
+
+	c.logger.Debug("[Spring:ProxyAuthorize] <<< response received",
+		"status_code", resp.StatusCode,
+		"location", result.Location,
+		"body_length", len(result.Body),
+		"body_preview", string(result.Body[:min(200, len(result.Body))]),
+		"cookies_count", len(result.Cookies),)
 
 	return result, nil
 }
@@ -290,7 +302,17 @@ func (c *SpringClient) SubmitConsent(ctx context.Context, clientID, state string
 		formData.Add("scope", scope)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.ConsentURL(), strings.NewReader(formData.Encode()))
+	authorizeURL := c.config.AuthorizeURL()
+
+	c.logger.Debug("[Spring:SubmitConsent] >>> outgoing request",
+		"method", "POST",
+		"url", authorizeURL,
+		"client_id", clientID,
+		"state", state,
+		"scopes",scopes,
+		"has_jessionid", jsessionID != "",)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, authorizeURL, strings.NewReader(formData.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("create consent request: %w", err)
 	}
@@ -302,6 +324,7 @@ func (c *SpringClient) SubmitConsent(ctx context.Context, clientID, state string
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("[Spring:SubmitConsent] <<< request failed", "error", err, "url", authorizeURL)
 		return nil, fmt.Errorf("execute consent request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -452,3 +475,105 @@ func extractCookies(resp *http.Response) []*Cookie {
 func isRedirect(statusCode int) bool {
 	return statusCode >= 300 && statusCode < 400
 }
+
+// --- Server Discovery (called at startup) ---
+
+// FetchServerConfig fetches configuration from Spring at startup:
+//  1. OIDC Discovery (/.well-known/openid-configuration) — standard OAuth2 endpoint URLs
+//  2. BFF Config (/closeauth/bff/config) — CloseAuth-specific settings
+//
+// Returns a DiscoveredConfig. If either call fails, Available is false
+// and the BFF operates with env-var defaults (graceful degradation).
+func (c *SpringClient) FetchServerConfig(ctx context.Context) *DiscoveredConfig {
+	discovered := &DiscoveredConfig{}
+
+	// 1. Fetch OIDC Discovery
+	oidc, err := c.fetchOIDCDiscovery(ctx)
+	if err != nil {
+		c.logger.Warn("OIDC discovery failed, using defaults", "error", err)
+	} else {
+		discovered.OIDC = oidc
+		c.logger.Info("OIDC discovery successful", "issuer", oidc.Issuer)
+	}
+
+	// 2. Fetch BFF Config
+	bffCfg, err := c.fetchBffConfig(ctx)
+	if err != nil {
+		c.logger.Warn("BFF config discovery failed, using defaults", "error", err)
+	} else {
+		discovered.BffConfig = bffCfg
+		c.logger.Info("BFF config discovery successful",
+			"server_version", bffCfg.Version.Server,
+			"session_timeout", bffCfg.Session.TimeoutSeconds,
+			"oauth_context_ttl", bffCfg.Session.OAuthContextTTLSeconds,
+		)
+	}
+
+	// Mark as available only if both succeeded
+	discovered.Available = discovered.OIDC != nil && discovered.BffConfig != nil
+
+	if discovered.Available {
+		c.logger.Info("server discovery complete — all config synced")
+	} else {
+		c.logger.Warn("server discovery incomplete — operating with defaults")
+	}
+
+	return discovered
+}
+
+func (c *SpringClient) fetchOIDCDiscovery(ctx context.Context) (*OIDCDiscovery, error) {
+	discoveryURL := c.config.OAuth2ServerURL + "/.well-known/openid-configuration"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create OIDC discovery request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute OIDC discovery request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("OIDC discovery returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var discovery OIDCDiscovery
+	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
+		return nil, fmt.Errorf("decode OIDC discovery response: %w", err)
+	}
+
+	return &discovery, nil
+}
+
+func (c *SpringClient) fetchBffConfig(ctx context.Context) (*BffConfigResponse, error) {
+	configURL := c.config.OAuth2ServerURL + "/closeauth/bff/config"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create BFF config request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute BFF config request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("BFF config returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var bffCfg BffConfigResponse
+	if err := json.NewDecoder(resp.Body).Decode(&bffCfg); err != nil {
+		return nil, fmt.Errorf("decode BFF config response: %w", err)
+	}
+
+	return &bffCfg, nil
+}
+

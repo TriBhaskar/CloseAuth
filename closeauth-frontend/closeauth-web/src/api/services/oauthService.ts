@@ -1,5 +1,6 @@
 import { apiClient } from '@/api/client'
 import type {
+  ConsentDataResponse,
   ConsentRequest,
   ConsentResponse,
   OAuthLoginRequest,
@@ -41,6 +42,13 @@ export const oauthService = {
 
   // ── Consent ─────────────────────────────────────────────────────────────────
 
+  fetchConsentData(params: {client_id?: string; scope?: string; state?:string}): Promise<ConsentDataResponse> {
+    const query = new URLSearchParams()
+    if(params.client_id) query.set('client_id', params.client_id)
+    if(params.state) query.set('state', params.state)
+    if(params.scope) query.set('scope', params.scope)
+    return apiClient.get(`/oauth/consent-data?'${query.toString()}`)
+  },
   submitConsent(payload: ConsentRequest): Promise<ConsentResponse> {
     return apiClient.post('/oauth/consent', payload)
   },

@@ -9,10 +9,9 @@ export interface OAuthTheme {
 }
 
 export interface OAuthLoginRequest {
-  usernameOrEmail: string
+  username: string
   password: string
   rememberMe: boolean
-  client_id: string
 }
 
 export interface OAuthLoginResponse {
@@ -45,6 +44,16 @@ export interface OAuthOtpVerifyResponse {
 export interface OAuthOtpResendRequest {
   email: string
   client_id: string
+}
+
+export interface ConsentDataResponse {
+  client_id: string
+  client_name: string
+  logo_url?: string
+  username: string
+  scopes: string[]
+  state: string
+  csrf_token: string
 }
 
 export interface ConsentRequest {

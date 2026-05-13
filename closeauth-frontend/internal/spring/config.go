@@ -9,6 +9,7 @@ import (
 
 // Config holds all Spring Authorization Server endpoint configuration.
 // Loaded once at startup from environment variables.
+// Can be augmented at runtime by ApplyDiscoveredConfig().
 type Config struct {
 	// Base URL of the Spring Authorization Server (e.g., "http://localhost:9088")
 	OAuth2ServerURL string
@@ -27,6 +28,9 @@ type Config struct {
 
 	// Environment (controls cookie Secure flag)
 	Environment string
+
+	// Discovered config from Spring at startup (nil if discovery failed)
+	Discovered *DiscoveredConfig
 }
 
 // LoadConfig loads Spring configuration from environment variables.
@@ -239,3 +243,64 @@ func normalizeContextPath(raw string) string {
 	}
 	return strings.TrimRight(value, "/")
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Discovery-aware configuration
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ApplyDiscoveredConfig stores the discovered config from Spring.
+// Call this after FetchServerConfig() succeeds at startup.
+func (c *Config) ApplyDiscoveredConfig(d *DiscoveredConfig) {
+	c.Discovered = d
+}
+
+// OAuthContextTTLSeconds returns the recommended oauth_context cookie MaxAge.
+// Prefers the discovered value from Spring; falls back to 600 (10 minutes).
+func (c *Config) OAuthContextTTLSeconds() int {
+	if c.Discovered != nil && c.Discovered.BffConfig != nil && c.Discovered.BffConfig.Session.OAuthContextTTLSeconds > 0 {
+		return c.Discovered.BffConfig.Session.OAuthContextTTLSeconds
+	}
+	return 600
+}
+
+// SessionTimeoutSeconds returns the Spring session timeout.
+// Prefers the discovered value; falls back to 900 (15 minutes).
+func (c *Config) SessionTimeoutSeconds() int {
+	if c.Discovered != nil && c.Discovered.BffConfig != nil && c.Discovered.BffConfig.Session.TimeoutSeconds > 0 {
+		return c.Discovered.BffConfig.Session.TimeoutSeconds
+	}
+	return 900
+}
+
+// MaxLoginAttempts returns the max login attempts before lockout.
+func (c *Config) MaxLoginAttempts() int {
+	if c.Discovered != nil && c.Discovered.BffConfig != nil && c.Discovered.BffConfig.Security.MaxLoginAttempts > 0 {
+		return c.Discovered.BffConfig.Security.MaxLoginAttempts
+	}
+	return 5
+}
+
+// OTPValiditySeconds returns the OTP validity period.
+func (c *Config) OTPValiditySeconds() int64 {
+	if c.Discovered != nil && c.Discovered.BffConfig != nil && c.Discovered.BffConfig.OTP.ValiditySeconds > 0 {
+		return c.Discovered.BffConfig.OTP.ValiditySeconds
+	}
+	return 600
+}
+
+// OTPResendRateLimit returns the OTP resend rate limit.
+func (c *Config) OTPResendRateLimit() int {
+	if c.Discovered != nil && c.Discovered.BffConfig != nil && c.Discovered.BffConfig.OTP.ResendRateLimit > 0 {
+		return c.Discovered.BffConfig.OTP.ResendRateLimit
+	}
+	return 3
+}
+
+// ServerVersion returns the Spring server version string, or "unknown".
+func (c *Config) ServerVersion() string {
+	if c.Discovered != nil && c.Discovered.BffConfig != nil {
+		return c.Discovered.BffConfig.Version.Server
+	}
+	return "unknown"
+}
+

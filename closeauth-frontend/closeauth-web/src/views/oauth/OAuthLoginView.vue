@@ -26,10 +26,9 @@ onMounted(loadTheme)
 const handleSubmit = async () => {
   const result = await execute(() =>
     oauthService.login({
-      usernameOrEmail: usernameOrEmail.value,
+      username: usernameOrEmail.value,
       password: password.value,
       rememberMe: rememberMe.value,
-      client_id: clientId.value,
     }),
   )
   if (result?.redirect_url) {

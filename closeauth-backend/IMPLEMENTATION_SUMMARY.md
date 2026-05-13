@@ -23,10 +23,12 @@ Successfully refactored the Spring Authorization Server security configuration t
 
 #### **AuthorisationServerConfig** - 4-Filter Chain Architecture
 
-**Filter Chain 1 (`@Order(1)`)** - OAuth2 Public Endpoints
-- Matches: `/oauth2/**` (token, authorize, jwks, revoke, introspect, logout)
-- Security: `permitAll()` - no authentication required
-- Purpose: Standard OAuth2 server endpoints
+**Filter Chain 1 (`@Order(1)`)** - OAuth2 Authorization Server Endpoints
+- Matches: OAuth2 authorization code flow endpoints (via `OAuth2AuthorizationServerConfigurer`)
+- Handles: `/oauth2/authorize`, `/oauth2/token`, `/oauth2/jwks`, `/connect/register`, `/.well-known/**`
+- Security: Authenticated (redirects unauthenticated users to BFF login page)
+- Consent page configured via `closeauth.bff.consent-page` property
+- Also serves as OAuth2 Resource Server (JWT) for client registration endpoint
 
 **Filter Chain 2 (`@Order(2)`)** - Admin Authentication Endpoints  
 - Matches: `/api/v1/admin/auth/**` (register, login, verify-email, resend-otp, forgot-password, reset-password)
@@ -35,15 +37,20 @@ Successfully refactored the Spring Authorization Server security configuration t
 - Note: No X-User-Token required here (these endpoints CREATE the token)
 
 **Filter Chain 3 (`@Order(3)`)** - Dual Authentication Endpoints
-- Matches: `/api/v1/clients/**` and `/connect/register`
+- Matches: `/api/v1/clients/**`
 - Security: **BOTH** OAuth2 Bearer token (SCOPE_client.create) **AND** X-User-Token required
 - Filters: OAuth2 Resource Server → TwoLayerAuthenticationFilter
 - Purpose: Client configuration and management operations
 
-**Filter Chain 4 (`@Order(4)`)** - Authorization Server Endpoints
-- Matches: OAuth2 authorization code flow endpoints (via `OAuth2AuthorizationServerConfigurer`)
-- Security: Standard OAuth2 authorization flow
-- Purpose: End-user OAuth2 login flows (redirects to BFF login page)
+**Filter Chain 4 (`@Order(4)`)** - Default Security Chain (Form Login)
+- Matches: All remaining endpoints (catch-all)
+- Permits: `/closeauth/bff/config` (public BFF config sync endpoint)
+- Security: Spring form login with custom handlers:
+  - `OAuthLoginSuccessHandler` → returns HTTP 200 + JSON (not a redirect)
+  - `OAuthLoginFailureHandler` → returns HTTP 401 + JSON error
+  - `loginProcessingUrl("/login")` — the BFF POSTs credentials here
+- CSRF disabled: safe because BFF is the sole consumer (server-to-server)
+- Purpose: OAuth2 Authorization Code flow user authentication step
 
 ### 3. API Path Constants Reorganized
 

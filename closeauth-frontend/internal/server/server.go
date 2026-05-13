@@ -65,6 +65,7 @@ func NewServer() *http.Server {
 	}
 
 	// Initialize database (optional — graceful degradation if DB not available)
+
 	dbCfg, dbCfgErr := config.LoadDatabaseConfig()
 	var db *database.Database
 	var themeRepo *repository.ThemeRepository
@@ -97,7 +98,7 @@ func NewServer() *http.Server {
 	}
 
 	logger.Info("╔══════════════════════════════════════════════════════╗")
-	logger.Info("║              CloseAuth Frontend Server              ║")
+	logger.Info("║              CloseAuth Frontend Server               ║")
 	logger.Info("╚══════════════════════════════════════════════════════╝")
 	logger.Info(fmt.Sprintf("  → Port          : %d", serverCfg.Port))
 	logger.Info(fmt.Sprintf("  → Environment   : %s", env))

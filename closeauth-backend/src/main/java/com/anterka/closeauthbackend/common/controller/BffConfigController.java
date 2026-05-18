@@ -68,7 +68,7 @@ public class BffConfigController {
                 .endpoints(BffConfigResponse.EndpointsConfig.builder()
                         .loginProcessingUrl("/login")
                         .consentSubmitUrl(ApiPaths.AUTHORIZE_URL)
-                        .contextPath("")
+                        .contextPath(ApiPaths.API_CONTEXT_PATH)
                         .apiPrefix(ApiPaths.API_V1_BASE)
                         .clientInfoUrl(ApiPaths.CLIENT_INFO_URL)
                         .registerUserUrl(ApiPaths.USER_REGISTER_URL)

@@ -11,24 +11,15 @@
 	<groupId>com.anterka</groupId>
 	<artifactId>closeauth-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>closeauth-backend</name>
-	<description>Demo project for Spring Boot</description>
-	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
+	<name>CloseAuth-Backend</name>
+	<description>CloseAuth OAuth2 Authorization Server</description>
 	<properties>
 		<java.version>21</java.version>
         <jedis.version>6.0.0</jedis.version>
+
+		<docker.image.tag>${project.version}</docker.image.tag>
+		<docker-maven-plugin.version>0.46.0</docker-maven-plugin.version>
+		<exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -166,5 +157,79 @@
 			</plugin>
 		</plugins>
 	</build>
+	<profiles>
+		<profile>
+			<id>docker</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>io.fabric8</groupId>
+						<artifactId>docker-maven-plugin</artifactId>
+						<version>${docker-maven-plugin.version}</version>
+						<configuration>
+							<images>
+								<image>
+									<name>closeauth-backend:${docker.image.tag}</name>
+									<alias>closeauth-backend</alias>
+									<build>
+										<dockerFile>${project.basedir}/Dockerfile</dockerFile>
+										<contextDir>${project.basedir}</contextDir>
+										<nocache>true</nocache>
+										<cleanup>try</cleanup>
+										<args>
+											<JAR_FILE>target/${project.build.finalName}.jar</JAR_FILE>
+											<ENTRYPOINT_FILE>entrypoint.sh</ENTRYPOINT_FILE>
+										</args>
+									</build>
+<!--									<tags>-->
+<!--										<tag>latest</tag>-->
+<!--										<tag>${docker.image.tag}</tag>-->
+<!--									</tags>-->
+								</image>
+							</images>
+						</configuration>
+						<executions>
+							<execution>
+								<id>docker-build</id>
+								<phase>package</phase>
+								<goals>
+									<goal>build</goal>
+								</goals>
+							</execution>
+							<execution>
+								<id>docker-push</id>
+								<phase>deploy</phase>
+								<goals>
+									<goal>push</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.codehaus.mojo</groupId>
+						<artifactId>exec-maven-plugin</artifactId>
+						<version>${exec-maven-plugin.version}</version>
+						<executions>
+							<execution>
+								<id>docker-cleanup</id>
+								<phase>package</phase>
+								<goals>
+									<goal>exec</goal>
+								</goals>
+								<configuration>
+									<executable>docker</executable>
+									<arguments>
+										<argument>image</argument>
+										<argument>prune</argument>
+										<argument>-f</argument>
+									</arguments>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>

@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.anterka</groupId>
+        <artifactId>closeauth</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath> <!-- lookup parent from repository -->
+    </parent>
+
+    <artifactId>closeauth-frontend</artifactId>
+    <packaging>pom</packaging>
+
+    <name>CloseAuth Frontend</name>
+    <description>Go BFF + Vue 3 SPA Frontend for CloseAuth</description>
+
+    <properties>
+        <go.output.name>closeauth-frontend</go.output.name>
+        <go.main.path>cmd/api/main.go</go.main.path>
+
+        <frontend.dir>${project.basedir}/closeauth-web</frontend.dir>
+        <frontend.dist.dir>${project.basedir}/internal/static/dist</frontend.dist.dir>
+    </properties>
+
+    <build>
+        <plugins>
+<!--            Step 1: Install npm dependencies and build the Vue frontend-->
+<!--            prerequisite: Node.js and npm should be installed on the system-->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <executions>
+<!--                      npm ci (clean install)-->
+                    <execution>
+                        <id>npm-cli</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>npm</executable>
+                            <arguments>
+                                <argument>ci</argument>
+                            </arguments>
+                            <workingDirectory>${frontend.dir}</workingDirectory>
+                        </configuration>
+                    </execution>
+
+<!--                    npm run build(vue production build)-->
+
+                    <execution>
+                        <id>npm-build</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>npm</executable>
+                            <arguments>
+                                <argument>run</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <workingDirectory>${frontend.dir}</workingDirectory>
+                        </configuration>
+                    </execution>
+
+<!--                    Download go dependency-->
+                    <execution>
+                        <id>go-mod-download</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>mod</argument>
+                                <argument>download</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+
+<!--                    Compile go binary-->
+                    <execution>
+                        <id>go-build</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>build</argument>
+                                <argument>-o</argument>
+                                <argument>${project.build.directory}/${go.output.name}</argument>
+                                <argument>${go.main.path}</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+
+<!--                    Run go tests-->
+<!--                    <execution>-->
+<!--                        <id>go-test</id>-->
+<!--                        <phase>test</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>exec</goal>-->
+<!--                        </goals>-->
+<!--                        <configuration>-->
+<!--                            <executable>go</executable>-->
+<!--                            <arguments>-->
+<!--                                <argument>test</argument>-->
+<!--                                <argument>./...</argument>-->
+<!--                            </arguments>-->
+<!--                            <workingDirectory>${project.basedir}</workingDirectory>-->
+<!--                        </configuration>-->
+<!--                    </execution>-->
+                </executions>
+            </plugin>
+
+
+<!--            Step 2: Copy Vue dist outpit to Go embed location-->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-vue-dist</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${frontend.dist.dir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${frontend.dir}/dist</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>skip-tests</id>
+            <activation>
+                <property>
+                    <name>skipTests</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>go-test</id>
+                                <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+<!--        Docker image build profile: mvn package -Pdocker-->
+        <profile>
+            <id>docker</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.fabric8</groupId>
+                        <artifactId>docker-maven-plugin</artifactId>
+                        <version>${docker-maven-plugin.version}</version>
+                        <configuration>
+                            <images>
+                                <image>
+                                    <name>closeauth-frontend:${docker.image.tag}</name>
+                                    <alias>closeauth-frontend</alias>
+                                    <build>
+                                        <dockerFile>${project.basedir}/Dockerfile</dockerFile>
+                                        <contextDir>${project.basedir}</contextDir>
+                                        <nocache>true</nocache>
+                                        <cleanup>try</cleanup>
+                                    </build>
+                                </image>
+                            </images>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>docker-build</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>docker-push</id>
+                                <phase>deploy</phase>
+                                <goals>
+                                    <goal>push</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>${exec-maven-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>docker-cleanup</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>docker</executable>
+                                    <arguments>
+                                        <argument>image</argument>
+                                        <argument>prune</argument>
+                                        <argument>-f</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

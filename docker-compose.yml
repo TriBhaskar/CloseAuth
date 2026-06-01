@@ -66,15 +66,20 @@ services:
     ports:
       - "${FRONTEND_PORT:-8080}:8080"
     environment:
-       APP_ENV: production
        PORT: 8080
-       DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-closeauth}:${POSTGRES_PASSWORD:-change-me}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-closeauth}?sslmode=disable}
-       BACKEND_URL: http://closeauth-backend:${BACKEND_PORT:-9000}
+       ENVIRONMENT: production
+       DB_HOST: postgres
+       DB_PORT: ${POSTGRES_PORT:-5432}
+       DB_NAME: ${POSTGRES_DB:-closeauth}
+       DB_USER: ${POSTGRES_USER:-closeauth}
+       DB_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
+       DB_SSLMODE: disable
+       OAUTH2_SERVER_URL: http://closeauth-backend:${BACKEND_PORT:-9000}
     depends_on:
       postgres:
         condition: service_healthy
       closeauth-backend:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   postgres_data:

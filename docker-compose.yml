@@ -22,7 +22,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: closeauth-redis
     restart: unless-stopped
     ports:
@@ -75,6 +75,9 @@ services:
        DB_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
        DB_SSLMODE: disable
        OAUTH2_SERVER_URL: http://closeauth-backend:${BACKEND_PORT:-9000}
+       DEFAULT_CLIENT_ID: admin-client
+       DEFAULT_CLIENT_SECRET: admin-secret-for-creation
+       DEFAULT_SCOPE: client.create
     depends_on:
       postgres:
         condition: service_healthy

@@ -46,6 +46,21 @@ export interface User {
   createdAt: string
 }
 
+export interface CreateUserRequest {
+  firstName: string
+  lastName: string
+  email: string
+  username?: string
+  role: UserRole
+  password: string
+  sendInvite: boolean
+}
+
+export interface CreateUserResponse {
+  id: string
+  email: string
+}
+
 export interface SettingsPayload {
   issuerUrl: string
   defaultAudience: string
@@ -181,8 +196,36 @@ export interface ClientsStatCard {
   value: string
 }
 
+export interface ClientMetricCard {
+  label: string
+  value: string
+  sub: string
+  trend: 'up' | 'live' | null
+}
+
 export interface ClientsData {
   stats: ClientsStatCard[]
   clients: OAuthClient[]
+  metrics: ClientMetricCard[]
+}
+
+// ── Client Create ──────────────────────────────────────────────────────────────
+
+export interface AvailableScope {
+  key: string
+  label: string
+}
+
+export interface ClientCreateConfig {
+  availableScopes: AvailableScope[]
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────────
+
+export interface SettingsData {
+  issuerUrl: string
+  defaultAudience: string
+  timezone: string
+  language: string
 }
 

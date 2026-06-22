@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { useAsyncState } from '@/composables/useAsyncState'
 import { adminService } from '@/api/services'
+import { settingsMock } from '@/api/mocks/settingsMocks'
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const tabs = ['General', 'Security', 'Tokens', 'Notifications'] as const
@@ -22,10 +23,10 @@ const activeTab = ref<Tab>('General')
 const { isLoading: isSaving, execute } = useAsyncState()
 
 const settings = reactive({
-  issuerUrl:       'https://auth.company.com',
-  defaultAudience: 'https://api.company.com',
-  timezone:        'UTC',
-  language:        'English',
+  issuerUrl:       settingsMock.issuerUrl,
+  defaultAudience: settingsMock.defaultAudience,
+  timezone:        settingsMock.timezone,
+  language:        settingsMock.language,
 })
 
 // ── Save ───────────────────────────────────────────────────────────────────────
@@ -43,34 +44,37 @@ const placeholders: Record<Exclude<Tab, 'General'>, { icon: typeof Lock; label: 
 </script>
 
 <template>
-  <div class="p-6 space-y-10 font-sans max-w-3xl">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-8 font-sans max-w-3xl">
     <!-- ── Header ── -->
-    <div class="flex items-start justify-between">
+    <header class="flex items-start justify-between animate-fade-up">
       <div>
-        <h1 class="text-2xl font-bold text-foreground tracking-tight">Settings</h1>
-        <p class="text-sm font-medium text-muted-foreground mt-1">Configure your OAuth2 server.</p>
+        <h1 class="text-2xl font-semibold text-foreground tracking-tight">Settings</h1>
+        <p class="text-sm text-muted-foreground mt-1">Configure your OAuth2 server.</p>
       </div>
       <Button
         variant="default"
         size="sm"
         class="h-9 px-4 font-medium"
         :disabled="isSaving"
+        aria-label="Save settings"
         @click="handleSave"
       >
-        <Loader2 v-if="isSaving" class="h-4 w-4 mr-2 animate-spin" />
-        <Save v-else class="h-4 w-4 mr-2" />
+        <Loader2 v-if="isSaving" class="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+        <Save v-else class="h-4 w-4 mr-2" aria-hidden="true" />
         {{ isSaving ? 'Saving…' : 'Save changes' }}
       </Button>
-    </div>
+    </header>
 
     <!-- ── Tab Bar ── -->
-    <div class="flex border-b border-border">
+    <div class="flex border-b border-border" role="tablist" aria-label="Settings sections">
       <button
         v-for="tab in tabs"
         :key="tab"
-        class="px-1 py-3 mr-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
+        role="tab"
+        :aria-selected="activeTab === tab"
+        class="px-1 py-3 mr-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 rounded-sm"
         :class="activeTab === tab
-          ? 'border-foreground text-foreground font-medium'
+          ? 'border-primary text-foreground'
           : 'border-transparent text-muted-foreground hover:text-foreground'"
         @click="activeTab = tab"
       >
@@ -79,7 +83,7 @@ const placeholders: Record<Exclude<Tab, 'General'>, { icon: typeof Lock; label: 
     </div>
 
     <!-- ── General Tab ── -->
-    <div v-if="activeTab === 'General'" class="bg-card border border-border rounded-xl shadow-sm p-6">
+    <div v-if="activeTab === 'General'" class="bg-card border border-border rounded-xl shadow-sm p-6 card-elevated animate-fade-up" role="tabpanel" aria-label="General settings">
       <!-- Card header -->
       <div class="flex items-center gap-2 mb-1">
         <Globe class="h-4 w-4 text-muted-foreground" />
@@ -150,7 +154,7 @@ const placeholders: Record<Exclude<Tab, 'General'>, { icon: typeof Lock; label: 
 
     <!-- ── Other tabs: placeholder ── -->
     <template v-else>
-      <div class="bg-card border border-border rounded-xl shadow-sm p-6">
+      <div class="bg-card border border-border rounded-xl shadow-sm p-6 animate-fade-up" role="tabpanel" :aria-label="activeTab + ' settings'">
         <div class="flex items-center gap-2 mb-1">
           <component :is="placeholders[activeTab as Exclude<Tab, 'General'>].icon" class="h-4 w-4 text-muted-foreground" />
           <span class="text-sm font-semibold text-foreground">{{ activeTab }}</span>
@@ -171,3 +175,12 @@ const placeholders: Record<Exclude<Tab, 'General'>, { icon: typeof Lock; label: 
     </template>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-spin {
+    animation: none !important;
+  }
+}
+</style>

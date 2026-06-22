@@ -114,29 +114,29 @@ const handleResendOtp = async () => {
 
 <template>
   <!-- ── Register content (always rendered) ── -->
-  <div class="flex flex-col gap-5">
+  <div class="flex flex-col gap-4">
     <!-- 1. Logo block -->
     <div class="flex justify-center">
       <img
         v-if="clientLogoUrl"
         :src="clientLogoUrl"
         alt="App logo"
-        class="h-12 object-contain"
+        class="h-10 object-contain"
       />
       <div
         v-else
-        class="h-12 w-12 rounded-md flex items-center justify-center bg-primary"
+        class="h-10 w-10 rounded-md flex items-center justify-center bg-primary"
         style="background-color: var(--theme-button)"
       >
-        <span class="text-primary-foreground text-xl font-semibold">
+        <span class="text-primary-foreground text-lg font-semibold">
           {{ clientName.charAt(0).toUpperCase() }}
         </span>
       </div>
     </div>
 
     <!-- 2. Heading -->
-    <div class="text-center space-y-1">
-      <h1 class="text-xl font-semibold text-foreground">Create your account</h1>
+    <div class="text-center space-y-0.5">
+      <h1 class="text-lg font-semibold text-foreground">Create your account</h1>
       <p class="text-sm text-muted-foreground">
         Already have an account?
         <RouterLink
@@ -152,17 +152,19 @@ const handleResendOtp = async () => {
     <!-- 3. Error banner -->
     <div
       v-if="errorMessage && step === 'register'"
-      class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3.5 py-3"
+      class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5"
+      role="alert"
+      aria-live="polite"
     >
-      <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+      <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
       <p class="text-sm text-destructive">{{ errorMessage }}</p>
     </div>
 
     <!-- 4. Form -->
-    <form class="flex flex-col gap-5" @submit.prevent="handleSubmit">
+    <form class="flex flex-col gap-3" @submit.prevent="handleSubmit">
       <!-- First / Last name row -->
       <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-1.5">
           <Label for="firstName" class="text-sm font-medium text-foreground">First name</Label>
           <Input
             id="firstName"
@@ -170,10 +172,10 @@ const handleResendOtp = async () => {
             type="text"
             autocomplete="given-name"
             placeholder="Jane"
-            class="h-[36px]"
+            class="h-9"
           />
         </div>
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-1.5">
           <Label for="lastName" class="text-sm font-medium text-foreground">Last name</Label>
           <Input
             id="lastName"
@@ -181,40 +183,39 @@ const handleResendOtp = async () => {
             type="text"
             autocomplete="family-name"
             placeholder="Doe"
-            class="h-[36px]"
+            class="h-9"
           />
         </div>
       </div>
 
-      <!-- Email -->
-      <div class="flex flex-col gap-2">
-        <Label for="email" class="text-sm font-medium text-foreground">Email address</Label>
-        <Input
-          id="email"
-          v-model="email"
-          type="email"
-          autocomplete="email"
-          placeholder="m@example.com"
-          class="h-[36px]"
-        />
-      </div>
-
-      <!-- Username -->
-      <div class="flex flex-col gap-2">
-        <Label for="username" class="text-sm font-medium text-foreground">Username</Label>
-        <Input
-          id="username"
-          v-model="username"
-          type="text"
-          autocomplete="username"
-          placeholder="janedoe"
-          class="h-[36px]"
-        />
-        <p class="text-xs text-muted-foreground">Optional — used for login</p>
+      <!-- Email + Username row -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1.5">
+          <Label for="email" class="text-sm font-medium text-foreground">Email</Label>
+          <Input
+            id="email"
+            v-model="email"
+            type="email"
+            autocomplete="email"
+            placeholder="m@example.com"
+            class="h-9"
+          />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label for="username" class="text-sm font-medium text-foreground">Username</Label>
+          <Input
+            id="username"
+            v-model="username"
+            type="text"
+            autocomplete="username"
+            placeholder="janedoe"
+            class="h-9"
+          />
+        </div>
       </div>
 
       <!-- Password + strength -->
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-1.5">
         <Label for="password" class="text-sm font-medium text-foreground">Password</Label>
         <div class="relative">
           <Input
@@ -223,7 +224,7 @@ const handleResendOtp = async () => {
             :type="showPassword ? 'text' : 'password'"
             autocomplete="new-password"
             placeholder="••••••••"
-            class="h-[36px] pr-10"
+            class="h-9 pr-10"
           />
           <Button
             type="button"
@@ -238,7 +239,7 @@ const handleResendOtp = async () => {
           </Button>
         </div>
         <!-- Strength bar -->
-        <div v-if="password" class="flex gap-1">
+        <div v-if="password" class="flex gap-1 mt-1">
           <div
             v-for="i in 4"
             :key="i"
@@ -246,11 +247,11 @@ const handleResendOtp = async () => {
             :class="strengthSegmentColor(i - 1)"
           />
         </div>
-        <p v-if="password" class="text-xs text-muted-foreground">{{ strengthLabel }}</p>
+        <p v-if="password" class="text-[11px] text-muted-foreground">{{ strengthLabel }}</p>
       </div>
 
       <!-- Confirm password -->
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-1.5">
         <Label for="confirmPassword" class="text-sm font-medium text-foreground">
           Confirm password
         </Label>
@@ -261,7 +262,7 @@ const handleResendOtp = async () => {
             :type="showConfirm ? 'text' : 'password'"
             autocomplete="new-password"
             placeholder="••••••••"
-            class="h-[36px] pr-10"
+            class="h-9 pr-10"
           />
           <span
             v-if="passwordsMatch"
@@ -287,9 +288,10 @@ const handleResendOtp = async () => {
       <!-- 5. Submit -->
       <button
         type="submit"
-        class="w-full h-9 rounded-md font-medium text-sm bg-primary text-primary-foreground transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90 mt-1"
+        class="w-full h-9 rounded-md font-medium text-sm bg-primary text-primary-foreground transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90"
         style="background-color: var(--theme-button); color: var(--theme-button-foreground, var(--primary-foreground))"
         :disabled="isLoading"
+        :aria-busy="isLoading"
       >
         <span class="flex items-center justify-center gap-2">
           <Loader2 v-if="isLoading" class="h-4 w-4 animate-spin" />

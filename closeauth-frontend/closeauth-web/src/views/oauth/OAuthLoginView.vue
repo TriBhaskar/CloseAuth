@@ -38,51 +38,53 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
+  <div class="flex flex-col gap-4">
     <!-- 1. Logo block -->
     <div class="flex justify-center">
       <img
         v-if="clientLogoUrl"
         :src="clientLogoUrl"
         alt="App logo"
-        class="h-12 object-contain"
+        class="h-10 object-contain"
       />
       <div
         v-else
-        class="h-12 w-12 rounded-md flex items-center justify-center bg-primary"
+        class="h-10 w-10 rounded-md flex items-center justify-center bg-primary"
         style="background-color: var(--theme-button)"
       >
-        <span class="text-primary-foreground text-xl font-semibold">
+        <span class="text-primary-foreground text-lg font-semibold">
           {{ clientName.charAt(0).toUpperCase() }}
         </span>
       </div>
     </div>
 
     <!-- 2. Heading block -->
-    <div class="text-center space-y-1">
-      <h1 class="text-xl font-semibold text-foreground">Sign in to continue</h1>
+    <div class="text-center space-y-0.5">
+      <h1 class="text-lg font-semibold text-foreground">Sign in to continue</h1>
       <p class="text-sm text-muted-foreground">Sign in to access {{ clientName }}</p>
     </div>
 
     <!-- 3. OAuth notice banner -->
-    <div class="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-md px-3.5 py-3">
-      <Info class="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-      <p class="text-sm text-blue-700">Complete your authorization request by signing in.</p>
+    <div class="flex items-start gap-2 bg-blue-500/10 border border-blue-500/20 rounded-md px-3 py-2.5" role="status">
+      <Info class="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" aria-hidden="true" />
+      <p class="text-sm text-blue-700 dark:text-blue-300">Complete your authorization request by signing in.</p>
     </div>
 
     <!-- 4. Error banner -->
     <div
       v-if="errorMessage"
-      class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3.5 py-3"
+      class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5"
+      role="alert"
+      aria-live="polite"
     >
-      <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+      <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
       <p class="text-sm text-destructive">{{ errorMessage }}</p>
     </div>
 
     <!-- 5. Form -->
-    <form class="flex flex-col gap-5" @submit.prevent="handleSubmit">
+    <form class="flex flex-col gap-3.5" @submit.prevent="handleSubmit">
       <!-- Username or Email -->
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-1.5">
         <Label for="usernameOrEmail" class="text-sm font-medium text-foreground">
           Username or Email
         </Label>
@@ -92,12 +94,12 @@ const handleSubmit = async () => {
           type="text"
           autocomplete="username"
           placeholder="m@example.com"
-          class="h-[36px]"
+          class="h-9"
         />
       </div>
 
       <!-- Password -->
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-1.5">
         <Label for="password" class="text-sm font-medium text-foreground">Password</Label>
         <div class="relative">
           <Input
@@ -106,7 +108,7 @@ const handleSubmit = async () => {
             :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
             placeholder="••••••••"
-            class="h-[36px] pr-10"
+            class="h-9 pr-10"
           />
           <Button
             type="button"
@@ -146,9 +148,10 @@ const handleSubmit = async () => {
       <!-- 6. Submit button -->
       <button
         type="submit"
-        class="w-full h-9 rounded-md font-medium text-sm bg-primary text-primary-foreground transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90 mt-1"
+        class="w-full h-9 rounded-md font-medium text-sm bg-primary text-primary-foreground transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90"
         style="background-color: var(--theme-button); color: var(--theme-button-foreground, var(--primary-foreground))"
         :disabled="isLoading"
+        :aria-busy="isLoading"
       >
         <span class="flex items-center justify-center gap-2">
           <Loader2 v-if="isLoading" class="h-4 w-4 animate-spin" />

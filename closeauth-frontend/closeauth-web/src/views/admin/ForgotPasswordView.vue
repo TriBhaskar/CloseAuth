@@ -36,11 +36,11 @@ const handleSubmit = async () => {
   <AuthLayout>
     <!-- ── Link Sent — Success State ── -->
     <template v-if="linkSent">
-      <div class="flex flex-col items-center text-center space-y-4">
+      <div class="flex flex-col items-center text-center space-y-4" role="status" aria-live="polite">
         <div
           class="h-12 w-12 flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
         >
-          <CheckCircle2 class="h-6 w-6 text-green-600 dark:text-green-400" />
+          <CheckCircle2 class="h-6 w-6 text-green-600 dark:text-green-400" aria-hidden="true" />
         </div>
 
         <div class="space-y-1.5">
@@ -85,16 +85,16 @@ const handleSubmit = async () => {
         </p>
       </div>
 
-      <form class="space-y-5" @submit.prevent="handleSubmit">
-        <div class="space-y-2 py-2">
-          <Label for="email" class="text-sm font-medium leading-none py-2">Email</Label>
+      <form class="space-y-4" @submit.prevent="handleSubmit">
+        <div class="space-y-1.5">
+          <Label for="email" class="text-sm font-medium leading-none">Email</Label>
           <Input
             id="email"
             v-model="email"
             type="email"
             autocomplete="email"
             placeholder="m@example.com"
-            class="h-[36px]"
+            class="h-9"
           />
         </div>
 
@@ -102,18 +102,21 @@ const handleSubmit = async () => {
         <div
           v-if="errorMessage"
           class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3.5 py-3"
+          role="alert"
+          aria-live="polite"
         >
-          <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+          <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
           <p class="text-sm text-destructive">{{ errorMessage }}</p>
         </div>
 
         <Button
           type="submit"
           variant="default"
-          class="w-full h-[36px] transition-all active:scale-[0.98]"
+          class="w-full h-9 transition-all active:scale-[0.98]"
           :disabled="isLoading || !email"
+          :aria-busy="isLoading"
         >
-          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
           {{ isLoading ? 'Sending...' : 'Send reset link' }}
         </Button>
       </form>

@@ -1,4 +1,4 @@
-import type { ClientsData, OAuthClient } from '@/api/models'
+import type { ClientsData, OAuthClient, ClientMetricCard } from '@/api/models'
 
 const clients: OAuthClient[] = [
   {
@@ -61,5 +61,10 @@ export const clientsMock: ClientsData = {
     { label: 'Active Sessions',   value: '3,241' },
   ],
   clients,
+  metrics: [
+    { label: 'Auth Success Rate', value: '99.2%', sub: '+0.3% vs. yesterday', trend: 'up'   },
+    { label: 'Avg Latency',       value: '42ms',  sub: 'P95 · 98ms',          trend: null   },
+    { label: 'Active Sessions',   value: '3,241', sub: 'Live across all clients', trend: 'live' },
+  ],
 }
 

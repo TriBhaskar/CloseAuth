@@ -68,3 +68,13 @@ export interface ConsentResponse {
   redirect_url: string
 }
 
+// ── OAuth Scope Metadata ───────────────────────────────────────────────────────
+
+export interface OAuthScopeInfo {
+  key: string
+  label: string
+  description: string
+  iconName: string
+}
+
+

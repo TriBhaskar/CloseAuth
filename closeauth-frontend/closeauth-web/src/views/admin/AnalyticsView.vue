@@ -36,47 +36,48 @@ const authFill    = `${authPoints} 600,200 0,200`
 </script>
 
 <template>
-  <div class="p-6 space-y-10 font-sans">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-8 font-sans">
     <!-- ── Header ── -->
-    <div class="flex items-start justify-between">
+    <header class="flex items-start justify-between animate-fade-up">
       <div>
-        <h1 class="text-2xl font-bold text-foreground tracking-tight">Analytics</h1>
-        <p class="text-sm font-medium text-muted-foreground mt-1">Request volume, token activity, and error rates.</p>
+        <h1 class="text-2xl font-semibold text-foreground tracking-tight">Analytics</h1>
+        <p class="text-sm text-muted-foreground mt-1">Request volume, token activity, and error rates.</p>
       </div>
-      <Button variant="outline" size="sm" class="h-9 gap-1.5 font-medium">
-        <CalendarDays class="h-4 w-4" />
+      <Button variant="outline" size="sm" class="h-9 gap-1.5 font-medium" aria-label="Select date range">
+        <CalendarDays class="h-4 w-4" aria-hidden="true" />
         Last 7 days
-        <ChevronDown class="h-4 w-4" />
+        <ChevronDown class="h-4 w-4" aria-hidden="true" />
       </Button>
-    </div>
+    </header>
 
     <!-- ── Stat Cards ── -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-5 pb-5">
+    <section aria-label="Analytics summary" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div
-        v-for="card in stats"
+        v-for="(card, index) in stats"
         :key="card.label"
-        class="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col gap-3"
+        class="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col gap-3 hover-lift animate-fade-up"
+        :class="'stagger-' + (index + 1)"
       >
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-muted-foreground uppercase tracking-widest leading-tight">
+          <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
             {{ card.label }}
           </span>
-          <div class="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <component :is="card.icon" class="h-4 w-4 text-muted-foreground" />
+          <div class="h-8 w-8 rounded-lg bg-muted/60 flex items-center justify-center shrink-0">
+            <component :is="card.icon" class="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </div>
         </div>
-        <p class="text-3xl font-bold text-foreground" style="font-variant-numeric: tabular-nums">
+        <p class="text-2xl sm:text-3xl font-bold text-foreground tabular-nums">
           {{ card.value }}
         </p>
-        <p class="text-xs font-semibold text-green-600 mt-0.5">{{ card.trend }}</p>
+        <p class="text-xs font-semibold text-green-600 dark:text-green-400">{{ card.trend }}</p>
       </div>
-    </div>
+    </section>
 
     <!-- ── Request Trends ── -->
-    <div class="bg-card border border-border rounded-xl shadow-sm p-6">
+    <section aria-label="Request trends chart" class="bg-card border border-border rounded-xl shadow-sm p-6 animate-fade-up stagger-2">
       <div class="flex justify-between items-center mb-5">
         <div>
-          <h2 class="text-base font-bold text-foreground">Request Trends</h2>
+          <h2 class="text-base font-semibold text-foreground">Request Trends</h2>
           <p class="text-xs text-muted-foreground mt-0.5">Mon – Sun</p>
         </div>
         <span class="text-xs font-medium bg-muted text-muted-foreground px-3 py-1 rounded-full">Last 7 days</span>
@@ -125,14 +126,14 @@ const authFill    = `${authPoints} 600,200 0,200`
           Refresh
         </span>
       </div>
-    </div>
+    </section>
 
     <!-- ── Two-column: Error Breakdown + Token Distribution ── -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-5 pb-5">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Error Breakdown -->
       <div class="bg-card border border-border rounded-xl shadow-sm p-6">
         <div class="mb-5">
-          <h2 class="text-base font-bold text-foreground">Error Breakdown</h2>
+          <h2 class="text-base font-semibold text-foreground">Error Breakdown</h2>
           <p class="text-xs text-muted-foreground mt-0.5">Top error categories</p>
         </div>
         <div class="space-y-4">
@@ -153,7 +154,7 @@ const authFill    = `${authPoints} 600,200 0,200`
       <!-- Token Distribution -->
       <div class="bg-card border border-border rounded-xl shadow-sm p-6">
         <div class="mb-5">
-          <h2 class="text-base font-bold text-foreground">Token Distribution</h2>
+          <h2 class="text-base font-semibold text-foreground">Token Distribution</h2>
           <p class="text-xs text-muted-foreground mt-0.5">Active, expired & revoked</p>
         </div>
 
@@ -183,9 +184,9 @@ const authFill    = `${authPoints} 600,200 0,200`
     </div>
 
     <!-- ── Grant Type Usage ── -->
-    <div class="bg-card border border-border rounded-xl shadow-sm p-6">
+    <section aria-label="Grant type distribution" class="bg-card border border-border rounded-xl shadow-sm p-6 animate-fade-up stagger-4">
       <div class="mb-5">
-        <h2 class="text-base font-bold text-foreground">Grant Type Usage</h2>
+        <h2 class="text-base font-semibold text-foreground">Grant Type Usage</h2>
         <p class="text-xs text-muted-foreground mt-0.5">Distribution across OAuth2 flows</p>
       </div>
       <div class="space-y-4">
@@ -199,6 +200,14 @@ const authFill    = `${authPoints} 600,200 0,200`
           </div>
         </div>
       </div>
-    </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none !important;
+  }
+}
+</style>

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { useAsyncState } from '@/composables/useAsyncState'
 import { adminService } from '@/api/services'
+import { clientCreateConfigMock } from '@/api/mocks/settingsMocks'
 
 const router = useRouter()
 const { isLoading, execute } = useAsyncState()
@@ -30,14 +31,7 @@ const redirectUris   = ref<string[]>([''])
 const selectedScopes = ref<string[]>(['openid'])
 
 // ── Available scopes ───────────────────────────────────────────────────────────
-const availableScopes = [
-  { key: 'openid',         label: 'OpenID Connect'      },
-  { key: 'email',          label: 'Email Address'       },
-  { key: 'profile',        label: 'Profile Information' },
-  { key: 'offline_access', label: 'Offline Access'      },
-  { key: 'read:users',     label: 'Read Users'          },
-  { key: 'write:users',    label: 'Write Users'         },
-]
+const availableScopes = clientCreateConfigMock.availableScopes
 
 // ── URI helpers ────────────────────────────────────────────────────────────────
 const addUri    = () => redirectUris.value.push('')
@@ -69,22 +63,22 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="p-6 max-w-2xl space-y-8 font-sans">
+  <div class="p-4 sm:p-6 lg:p-8 max-w-2xl space-y-8 font-sans">
     <!-- ── Header ── -->
-    <div>
+    <header class="animate-fade-up">
       <RouterLink to="/admin/clients">
         <Button variant="ghost" size="sm" class="mb-4 -ml-2 text-muted-foreground hover:text-foreground">
-          <ArrowLeft class="h-4 w-4 mr-1" />
+          <ArrowLeft class="h-4 w-4 mr-1" aria-hidden="true" />
           Clients
         </Button>
       </RouterLink>
-      <h1 class="text-2xl font-bold text-foreground tracking-tight">New client</h1>
-      <p class="text-sm font-medium text-muted-foreground mt-1">Register an OAuth2 application.</p>
-    </div>
+      <h1 class="text-2xl font-semibold text-foreground tracking-tight">New client</h1>
+      <p class="text-sm text-muted-foreground mt-1">Register an OAuth2 application.</p>
+    </header>
 
     <!-- ── CARD 1: Basic information ── -->
-    <div class="bg-card border border-border rounded-xl shadow-sm p-6">
-      <h2 class="text-base font-bold text-foreground">Basic information</h2>
+    <section aria-labelledby="basic-info-heading" class="bg-card border border-border rounded-xl shadow-sm p-6 animate-fade-up stagger-1 transition-shadow hover:shadow-md">
+      <h2 id="basic-info-heading" class="text-base font-semibold text-foreground">Basic information</h2>
       <div class="h-px bg-border my-4" />
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -163,11 +157,11 @@ const handleSubmit = async () => {
           <p class="text-xs text-muted-foreground">Optional.</p>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- ── CARD 2: Authorization ── -->
-    <div class="bg-card border border-border rounded-xl shadow-sm p-6">
-      <h2 class="text-base font-bold text-foreground">Authorization</h2>
+    <section aria-labelledby="auth-heading" class="bg-card border border-border rounded-xl shadow-sm p-6 animate-fade-up stagger-2 transition-shadow hover:shadow-md">
+      <h2 id="auth-heading" class="text-base font-semibold text-foreground">Authorization</h2>
       <div class="h-px bg-border my-4" />
 
       <div class="space-y-5">
@@ -230,11 +224,11 @@ const handleSubmit = async () => {
           </Button>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- ── CARD 3: Scopes ── -->
-    <div class="bg-card border border-border rounded-xl shadow-sm p-6">
-      <h2 class="text-base font-bold text-foreground">Scopes & permissions</h2>
+    <section aria-labelledby="scopes-heading" class="bg-card border border-border rounded-xl shadow-sm p-6 animate-fade-up stagger-3 transition-shadow hover:shadow-md">
+      <h2 id="scopes-heading" class="text-base font-semibold text-foreground">Scopes & permissions</h2>
       <div class="h-px bg-border my-4" />
 
       <p class="text-sm text-muted-foreground mb-4">
@@ -247,7 +241,7 @@ const handleSubmit = async () => {
           :key="scope.key"
           class="border rounded-lg p-3 cursor-pointer transition-colors select-none"
           :class="selectedScopes.includes(scope.key)
-            ? 'border-foreground bg-muted/50'
+            ? 'border-primary/50 bg-primary/5 dark:bg-primary/10'
             : 'border-border hover:border-muted-foreground'"
           @click="toggleScope(scope.key)"
         >
@@ -263,15 +257,15 @@ const handleSubmit = async () => {
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- ── Submit ── -->
-    <div class="mt-2">
+    <div class="mt-2 animate-fade-up stagger-4">
       <Button
         type="button"
         variant="default"
         class="w-full h-10 font-medium"
-        :disabled="isLoading"
+        :disabled="isLoading || !appName.trim() || !appType"
         @click="handleSubmit"
       >
         <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
@@ -283,3 +277,11 @@ const handleSubmit = async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none !important;
+  }
+}
+</style>

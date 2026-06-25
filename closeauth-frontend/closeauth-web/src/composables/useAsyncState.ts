@@ -15,7 +15,7 @@ import { useToast } from '@/composables/useToast'
 export function useAsyncState() {
   const isLoading = ref(false)
   const errorMessage = ref('')
-  const { add: addToast } = useToast()
+  const { toast } = useToast()
 
   async function execute<T>(fn: () => Promise<T>): Promise<T | null> {
     isLoading.value = true
@@ -27,7 +27,7 @@ export function useAsyncState() {
       if (err instanceof ApiError) {
         if (err.status >= 500) {
           // Server error → toast + generic inline message
-          addToast('A server error occurred. Please try again later.', 'error')
+          toast({ title: 'A server error occurred. Please try again later.', type: 'error' })
           errorMessage.value = 'A server error occurred. Please try again later.'
         } else {
           // Client error (400, 401, 422…) → inline only
@@ -35,7 +35,7 @@ export function useAsyncState() {
         }
       } else {
         // Network/fetch error
-        addToast('Network error. Please check your connection.', 'error')
+        toast({ title: 'Network error. Please check your connection.', type: 'error' })
         errorMessage.value = 'Network error. Please check your connection.'
       }
       return null

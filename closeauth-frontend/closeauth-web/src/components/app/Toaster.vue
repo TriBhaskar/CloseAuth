@@ -54,11 +54,14 @@ const iconColorMap: Record<ToastType, string> = {
             class="h-4 w-4 shrink-0 mt-0.5"
             :class="iconColorMap[toast.type]"
           />
-          <p class="flex-1 leading-snug">{{ toast.message }}</p>
+          <div class="flex-1 leading-snug">
+            <p v-if="toast.title" class="font-medium">{{ toast.title }}</p>
+            <p v-if="toast.description" class="text-xs opacity-80">{{ toast.description }}</p>
+          </div>
           <button
             type="button"
             class="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-            :aria-label="`Dismiss: ${toast.message}`"
+            :aria-label="`Dismiss: ${toast.title ?? toast.description ?? 'notification'}`"
             @click="remove(toast.id)"
           >
             <X class="h-4 w-4" />

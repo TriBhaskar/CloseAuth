@@ -1,0 +1,89 @@
+#==================================================================
+#CloseAuth - Docker Compose
+#==================================================================
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: closeauth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-closeauth}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
+      POSTGRES_DB: ${POSTGRES_DB:-closeauth}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-closeauth} -d ${POSTGRES_DB:-closeauth}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    container_name: closeauth-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+#  ----------------------------------------------------------------------
+#  Application Services
+#  ----------------------------------------------------------------------
+  closeauth-backend:
+    image: closeauth-backend:0.0.1-SNAPSHOT
+    container_name: closeauth-backend
+    restart: unless-stopped
+    profiles: ["app"]
+    ports:
+      - "${BACKEND_PORT:-9000}:9000"
+    environment:
+       SPRING_PROFILES_ACTIVE: docker
+       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-closeauth}
+       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-closeauth}
+       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
+       SPRING_DATA_REDIS_HOST: redis
+       SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  closeauth-frontend:
+    image: closeauth-frontend:0.0.1-SNAPSHOT
+    container_name: closeauth-frontend
+    restart: unless-stopped
+    profiles: ["app"]
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    environment:
+       PORT: 8080
+       ENVIRONMENT: production
+       DB_HOST: postgres
+       DB_PORT: ${POSTGRES_PORT:-5432}
+       DB_NAME: ${POSTGRES_DB:-closeauth}
+       DB_USER: ${POSTGRES_USER:-closeauth}
+       DB_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
+       DB_SSLMODE: disable
+       OAUTH2_SERVER_URL: http://closeauth-backend:${BACKEND_PORT:-9000}
+       DEFAULT_CLIENT_ID: admin-client
+       DEFAULT_CLIENT_SECRET: admin-secret-for-creation
+       DEFAULT_SCOPE: client.create
+    depends_on:
+      postgres:
+        condition: service_healthy
+      closeauth-backend:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:

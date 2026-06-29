@@ -27,13 +27,14 @@ public class RedisConfig {
         poolConfig.setMinIdle(redisProperties.getPool().getMinIdle());
         poolConfig.setMaxIdle(redisProperties.getPool().getMaxIdle());
         poolConfig.setMaxTotal(redisProperties.getPool().getMaxActive());
-
+        String password =  redisProperties.getPassword();
+        String effectivePassword = (password == null || password.isBlank()) ? null : password;
         JedisPooled jedisClient = new JedisPooled(
                 poolConfig,
                 redisProperties.getHost(),
                 redisProperties.getPort(),
                 redisProperties.getTimeout(),
-                redisProperties.getPassword(),
+                effectivePassword,
                 redisProperties.isUseSsl()
         );
 

@@ -103,7 +103,7 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
     <!-- ── REGISTER STATE ── -->
     <template v-if="step === 'register'">
       <!-- Heading -->
-      <div class="space-y-1.5">
+      <div class="space-y-1">
         <h1 class="text-xl font-semibold tracking-tight text-center">Create an account</h1>
         <p class="text-sm text-muted-foreground text-center">
           Already have an account?
@@ -120,69 +120,70 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
       <div
         v-if="errorMessage"
         class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3.5 py-3"
+        role="alert"
+        aria-live="polite"
       >
-        <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+        <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
         <p class="text-sm text-destructive">{{ errorMessage }}</p>
       </div>
 
       <!-- Form -->
-      <form class="space-y-5" @submit.prevent="handleSubmit">
+      <form class="space-y-3" @submit.prevent="handleSubmit">
         <!-- First / Last name row -->
-        <div class="grid grid-cols-2 gap-3 py-2">
-          <div class="space-y-2">
-            <Label for="firstName" class="text-sm font-medium leading-none py-2">First name</Label>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <Label for="firstName" class="text-sm font-medium leading-none">First name</Label>
             <Input
               id="firstName"
               v-model="firstName"
               type="text"
               autocomplete="given-name"
               placeholder="Jane"
-              class="h-[36px]"
+              class="h-9"
             />
           </div>
-          <div class="space-y-2">
-            <Label for="lastName" class="text-sm font-medium leading-none py-2">Last name</Label>
+          <div class="space-y-1.5">
+            <Label for="lastName" class="text-sm font-medium leading-none">Last name</Label>
             <Input
               id="lastName"
               v-model="lastName"
               type="text"
               autocomplete="family-name"
               placeholder="Doe"
-              class="h-[36px]"
+              class="h-9"
             />
           </div>
         </div>
 
-        <!-- Email -->
-        <div class="space-y-2 py-2">
-          <Label for="email" class="text-sm font-medium leading-none py-2">Email</Label>
-          <Input
-            id="email"
-            v-model="email"
-            type="email"
-            autocomplete="email"
-            placeholder="m@example.com"
-            class="h-[36px]"
-          />
-        </div>
-
-        <!-- Username -->
-        <div class="space-y-2 py-2">
-          <Label for="username" class="text-sm font-medium leading-none py-2">Username</Label>
-          <Input
-            id="username"
-            v-model="username"
-            type="text"
-            autocomplete="username"
-            placeholder="janedoe"
-            class="h-[36px]"
-          />
-          <p class="text-xs text-muted-foreground mt-1">Optional — used for login</p>
+        <!-- Email + Username row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <Label for="email" class="text-sm font-medium leading-none">Email</Label>
+            <Input
+              id="email"
+              v-model="email"
+              type="email"
+              autocomplete="email"
+              placeholder="m@example.com"
+              class="h-9"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="username" class="text-sm font-medium leading-none">Username</Label>
+            <Input
+              id="username"
+              v-model="username"
+              type="text"
+              autocomplete="username"
+              placeholder="janedoe"
+              class="h-9"
+            />
+          </div>
         </div>
 
         <!-- Password + strength -->
-        <div class="space-y-2 py-2">
-          <Label for="password" class="text-sm font-medium leading-none py-2">Password</Label>
+        <div class="space-y-1.5">
+          <Label for="password" class="text-sm font-medium leading-none">Password</Label>
           <div class="relative">
             <Input
               id="password"
@@ -190,7 +191,7 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
               :type="showPassword ? 'text' : 'password'"
               autocomplete="new-password"
               placeholder="••••••••"
-              class="h-[36px] pr-10"
+              class="h-9 pr-10"
             />
             <Button
               type="button"
@@ -205,7 +206,7 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
             </Button>
           </div>
           <!-- Strength bar -->
-          <div v-if="password" class="flex gap-1 mt-2">
+          <div v-if="password" class="flex gap-1 mt-1.5">
             <div
               v-for="i in 4"
               :key="i"
@@ -213,12 +214,12 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
               :class="strengthSegmentColor(i - 1)"
             />
           </div>
-          <p v-if="password" class="text-xs text-muted-foreground">{{ strengthLabel }}</p>
+          <p v-if="password" class="text-[11px] text-muted-foreground">{{ strengthLabel }}</p>
         </div>
 
         <!-- Confirm password -->
-        <div class="space-y-2 pb-3">
-          <Label for="confirmPassword" class="text-sm font-medium leading-none py-2"
+        <div class="space-y-1.5">
+          <Label for="confirmPassword" class="text-sm font-medium leading-none"
             >Confirm password</Label
           >
           <div class="relative">
@@ -228,7 +229,7 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
               :type="showConfirm ? 'text' : 'password'"
               autocomplete="new-password"
               placeholder="••••••••"
-              class="h-[36px] pr-10"
+              class="h-9 pr-10"
             />
             <!-- Show check when matching, toggle when not -->
             <span
@@ -256,10 +257,11 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
         <Button
           type="submit"
           variant="default"
-          class="w-full h-[36px] transition-all active:scale-[0.98]"
+          class="w-full h-9 mt-1 transition-all active:scale-[0.98]"
           :disabled="isLoading"
+          :aria-busy="isLoading"
         >
-          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
           {{ isLoading ? 'Creating account...' : 'Create account' }}
         </Button>
       </form>
@@ -267,9 +269,9 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
 
     <!-- ── OTP STATE ── -->
     <template v-else>
-      <div class="flex flex-col items-center space-y-4 text-center">
+      <div class="flex flex-col items-center space-y-4 text-center" role="status" aria-live="polite">
         <!-- Icon -->
-        <Mail class="h-10 w-10 text-muted-foreground" />
+        <Mail class="h-10 w-10 text-muted-foreground" aria-hidden="true" />
 
         <!-- Heading -->
         <div class="space-y-1.5">
@@ -284,13 +286,15 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
         <div
           v-if="errorMessage"
           class="w-full flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3.5 py-3 text-left"
+          role="alert"
+          aria-live="polite"
         >
-          <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+          <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
           <p class="text-sm text-destructive">{{ errorMessage }}</p>
         </div>
 
         <!-- OTP inputs -->
-        <div class="flex gap-2 justify-center">
+        <div class="flex gap-2 justify-center" role="group" aria-label="Enter verification code">
           <input
             v-for="(_, i) in otpDigits"
             :key="i"
@@ -299,6 +303,7 @@ const onOtpKeydown = async (index: number, event: KeyboardEvent) => {
             type="text"
             inputmode="numeric"
             maxlength="1"
+            :aria-label="`Digit ${i + 1} of 6`"
             class="h-11 w-11 text-center text-lg font-medium border border-border rounded-md bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
             @input="onOtpInput(i, $event)"
             @keydown="onOtpKeydown(i, $event)"

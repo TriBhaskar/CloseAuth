@@ -74,7 +74,7 @@ CREATE TABLE global_roles (
 -- Client Theme Configurations
 -- =========================
 CREATE TABLE client_themes (
-    id              SERIAL PRIMARY KEY,
+    id              BIGSERIAL PRIMARY KEY,
     client_id       VARCHAR(100) NOT NULL,
     theme_name      VARCHAR(100) NOT NULL,        -- 'light', 'dark', 'custom'
     is_active       BOOLEAN DEFAULT TRUE,
@@ -129,8 +129,8 @@ CREATE INDEX idx_client_themes_default ON client_themes(client_id, is_default);
 -- =========================
 -- Use this ONLY for advanced/custom properties not in core schema
 CREATE TABLE theme_configurations (
-    id              SERIAL PRIMARY KEY,
-    theme_id        INTEGER NOT NULL,
+    id              BIGSERIAL PRIMARY KEY,
+    theme_id        BIGINT NOT NULL,
     config_key      VARCHAR(100) NOT NULL,        -- e.g. 'font_family', 'border_radius', 'custom_css'
     config_value    TEXT NOT NULL,
     config_type     VARCHAR(50) DEFAULT 'string', -- string, url, json, number, css
@@ -235,13 +235,15 @@ CREATE TABLE client_ownership (
 CREATE TABLE sessions (
     id              SERIAL PRIMARY KEY,
     user_id         INTEGER NOT NULL,
-    session_token   VARCHAR(255) UNIQUE NOT NULL,
+    client_id       VARCHAR(100) NOT NULL,
     ip_address      VARCHAR(100),
     user_agent      TEXT,
+    data            TEXT,
     expires_at      TIMESTAMP NOT NULL,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_accessed   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    last_accessed_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(client_id) REFERENCES oauth2_registered_client(id) ON DELETE CASCADE
 );
 
 -- =========================

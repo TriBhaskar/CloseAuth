@@ -1,0 +1,11 @@
+target/
+node_modules/
+closeauth-web/node_modules/
+closeauth-web/dist/
+internal/static/dist/
+main
+*.log
+.idea/
+.git/
+.env
+*.md

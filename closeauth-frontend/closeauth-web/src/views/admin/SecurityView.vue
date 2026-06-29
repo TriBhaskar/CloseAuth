@@ -51,16 +51,16 @@ const accentBar: Record<Severity, string> = {
 }
 
 const severityBadge: Record<Severity, string> = {
-  Critical: 'bg-red-50 text-red-700',
-  High:     'bg-amber-50 text-amber-700',
-  Medium:   'bg-blue-50 text-blue-700',
+  Critical: 'bg-red-500/10 text-red-700 dark:text-red-400',
+  High:     'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  Medium:   'bg-blue-500/10 text-blue-700 dark:text-blue-400',
   Low:      'bg-muted text-muted-foreground',
 }
 
 // ── Stat cards — augmented with icons (UI-only) ───────────────────────────────
 const statIconMap = [AlertCircle, ShieldAlert, CheckCircle, FileText]
 const statCardClass = [
-  'bg-red-50 border-red-100',
+  'bg-red-500/5 dark:bg-red-500/10 border-red-200 dark:border-red-500/20',
   'bg-card border-border/70',
   'bg-card border-border/70',
   'bg-card border-border/70',
@@ -75,45 +75,48 @@ const stats = computed(() => data.value.stats.map((s, i) => ({
 </script>
 
 <template>
-  <div class="p-6 space-y-10 font-sans">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-8 font-sans">
     <!-- ── Header ── -->
-    <div>
-      <h1 class="text-2xl font-bold text-foreground tracking-tight">Security</h1>
-      <p class="text-sm font-medium text-muted-foreground mt-1">
+    <header class="animate-fade-up">
+      <h1 class="text-2xl font-semibold text-foreground tracking-tight">Security</h1>
+      <p class="text-sm text-muted-foreground mt-1">
         Monitor security events, access patterns, and audit logs.
       </p>
-    </div>
+    </header>
 
     <!-- ── Stat Cards ── -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-5">
+    <section aria-label="Security overview" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div
-        v-for="card in stats"
+        v-for="(card, index) in stats"
         :key="card.label"
-        class="border rounded-xl p-5 shadow-sm flex flex-col gap-3"
-        :class="card.cardClass"
+        class="border rounded-xl p-5 shadow-sm flex flex-col gap-3 hover-lift animate-fade-up"
+        :class="[card.cardClass, 'stagger-' + (index + 1)]"
       >
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-muted-foreground uppercase tracking-widest leading-tight">
+          <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
             {{ card.label }}
           </span>
-          <div class="h-8 w-8 rounded-lg bg-white/60 flex items-center justify-center shrink-0">
-            <component :is="card.icon" class="h-4 w-4" :class="card.iconClass" />
+          <div class="h-8 w-8 rounded-lg bg-white/60 dark:bg-white/5 flex items-center justify-center shrink-0">
+            <component :is="card.icon" class="h-4 w-4" :class="card.iconClass" aria-hidden="true" />
           </div>
         </div>
-        <p class="text-3xl font-bold text-foreground" style="font-variant-numeric: tabular-nums">
+        <p class="text-2xl sm:text-3xl font-bold text-foreground tabular-nums">
           {{ card.value }}
         </p>
       </div>
-    </div>
+    </section>
 
     <!-- ── Tab Bar ── -->
-    <div class="flex border-b border-border pt-5">
+    <div class="flex border-b border-border" role="tablist" aria-label="Security sections">
       <button
         v-for="tab in tabs"
         :key="tab"
-        class="px-1 py-3 mr-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
+        role="tab"
+        :aria-selected="activeTab === tab"
+        :aria-controls="`panel-${tab.toLowerCase().replace(' ', '-')}`"
+        class="px-1 py-3 mr-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 rounded-sm"
         :class="activeTab === tab
-          ? 'border-foreground text-foreground'
+          ? 'border-primary text-foreground'
           : 'border-transparent text-muted-foreground hover:text-foreground'"
         @click="activeTab = tab"
       >
@@ -124,10 +127,10 @@ const stats = computed(() => data.value.stats.map((s, i) => ({
     <!-- ── Security Events tab ── -->
     <template v-if="activeTab === 'Security Events'">
       <!-- Toolbar -->
-      <div class="flex items-center gap-3 pt-3 pb-3">
+      <div class="flex items-center gap-3 pt-3 pb-3" role="tabpanel" aria-label="Security events panel">
         <div class="relative w-72">
-          <Search class="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
-          <Input v-model="search" class="pl-9 h-9 text-sm" placeholder="Search events…" />
+          <Search class="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" aria-hidden="true" />
+          <Input v-model="search" class="pl-9 h-9 text-sm" placeholder="Search events…" aria-label="Search security events" />
         </div>
         <Button variant="outline" size="sm" class="h-9 font-medium gap-0">
           <Filter class="h-4 w-4 mr-1.5" />
@@ -216,3 +219,11 @@ const stats = computed(() => data.value.stats.map((s, i) => ({
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none !important;
+  }
+}
+</style>

@@ -222,9 +222,9 @@ func (c *SpringClient) ProxyAuthorize(ctx context.Context, queryParams string, j
 	targetURL := c.config.AuthorizeURL() + "?" + queryParams
 
 	c.logger.Debug("[Spring:ProxyAuthorize] >>> outgoing request",
-		"method","GET",
+		"method", "GET",
 		"url", targetURL,
-		"has_jsessionid",jsessionID != "",)
+		"has_jsessionid", jsessionID != "")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create authorize proxy request: %w", err)
@@ -256,7 +256,7 @@ func (c *SpringClient) ProxyAuthorize(ctx context.Context, queryParams string, j
 		"location", result.Location,
 		"body_length", len(result.Body),
 		"body_preview", string(result.Body[:min(200, len(result.Body))]),
-		"cookies_count", len(result.Cookies),)
+		"cookies_count", len(result.Cookies))
 
 	return result, nil
 }
@@ -309,8 +309,8 @@ func (c *SpringClient) SubmitConsent(ctx context.Context, clientID, state string
 		"url", authorizeURL,
 		"client_id", clientID,
 		"state", state,
-		"scopes",scopes,
-		"has_jessionid", jsessionID != "",)
+		"scopes", scopes,
+		"has_jessionid", jsessionID != "")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, authorizeURL, strings.NewReader(formData.Encode()))
 	if err != nil {
@@ -522,7 +522,7 @@ func (c *SpringClient) FetchServerConfig(ctx context.Context) *DiscoveredConfig 
 }
 
 func (c *SpringClient) fetchOIDCDiscovery(ctx context.Context) (*OIDCDiscovery, error) {
-	discoveryURL := c.config.OAuth2ServerURL + "/.well-known/openid-configuration"
+	discoveryURL := c.config.OAuth2ServerURL + "/closeauth/.well-known/openid-configuration"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
 	if err != nil {
@@ -576,4 +576,3 @@ func (c *SpringClient) fetchBffConfig(ctx context.Context) (*BffConfigResponse, 
 
 	return &bffCfg, nil
 }
-

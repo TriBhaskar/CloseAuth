@@ -22,10 +22,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-// TODO(api): replace mock with adminService.getClients()
 import { clientsMock } from '@/api/mocks/clientsMocks'
 import { useAdminStore } from '@/stores/admin'
+import { useToast } from '@/composables/useToast'
 import type { ClientStatus, ClientType } from '@/api/models'
+
+const { toast } = useToast()
 
 const adminStore = useAdminStore()
 
@@ -37,6 +39,7 @@ onMounted(async () => {
 const data = computed(() => adminStore.clientsData ?? clientsMock)
 const clients = computed(() => data.value.clients)
 const metricStats = computed(() => data.value.stats)
+const isLoading = computed(() => adminStore.clientsLoading)
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const search       = ref('')
@@ -52,82 +55,90 @@ const filteredClients = computed(() => {
 })
 
 // ── Actions ────────────────────────────────────────────────────────────────────
-const copyId = (id: string) => navigator.clipboard.writeText(id).catch(() => {})
+const copyId = (id: string) => {
+  navigator.clipboard.writeText(id).then(() => {
+    toast({ title: 'Copied', description: 'Client ID copied to clipboard.' })
+  }).catch(() => {})
+}
 
 // ── Style maps ─────────────────────────────────────────────────────────────────
 const typeBadgeClass: Record<ClientType, string> = {
-  Confidential: 'bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-200',
-  Public:       'bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-200',
+  Confidential: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-inset ring-blue-500/20',
+  Public:       'bg-muted text-muted-foreground ring-1 ring-inset ring-border',
 }
 
 const statusConfig: Record<ClientStatus, { dot: string; pill: string }> = {
-  Active:   { dot: 'bg-emerald-500 shadow-[0_0_6px_1px_rgba(16,185,129,0.45)]', pill: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200' },
-  Inactive: { dot: 'bg-zinc-300',  pill: 'bg-zinc-100 text-zinc-400 ring-1 ring-inset ring-zinc-200' },
+  Active:   { dot: 'bg-emerald-500 shadow-[0_0_6px_1px_rgba(16,185,129,0.45)]', pill: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/20' },
+  Inactive: { dot: 'bg-zinc-300 dark:bg-zinc-600',  pill: 'bg-muted text-muted-foreground ring-1 ring-inset ring-border' },
 }
 
 // ── Metric cards data ──────────────────────────────────────────────────────────
-const metrics = [
-  {
-    label: 'Auth Success Rate',
-    value: '99.2%',
-    sub: '+0.3% vs. yesterday',
-    icon: CheckCircle2,
-    iconClass: 'text-emerald-600',
-    iconBg: 'bg-emerald-50',
-    accentBar: 'bg-emerald-500',
-    trend: 'up',
-  },
-  {
-    label: 'Avg Latency',
-    value: '42ms',
-    sub: 'P95 · 98ms',
-    icon: Timer,
-    iconClass: 'text-blue-600',
-    iconBg: 'bg-blue-50',
-    accentBar: 'bg-blue-500',
-    trend: null,
-  },
-  {
-    label: 'Active Sessions',
-    value: '3,241',
-    sub: 'Live across all clients',
-    icon: Radio,
-    iconClass: 'text-violet-600',
-    iconBg: 'bg-violet-50',
-    accentBar: 'bg-violet-500',
-    trend: 'live',
-  },
+const metricIcons  = [CheckCircle2, Timer, Radio]
+const metricStyles = [
+  { iconClass: 'text-emerald-600', iconBg: 'bg-emerald-50', accentBar: 'bg-emerald-500' },
+  { iconClass: 'text-blue-600',    iconBg: 'bg-blue-50',    accentBar: 'bg-blue-500'    },
+  { iconClass: 'text-violet-600',  iconBg: 'bg-violet-50',  accentBar: 'bg-violet-500'  },
 ]
+const metrics = computed(() =>
+  data.value.metrics.map((m, i) => ({
+    ...m,
+    icon: metricIcons[i],
+    ...metricStyles[i],
+  })),
+)
 </script>
 
 <template>
-  <div class="p-6 space-y-10 font-sans">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-8 font-sans">
 
     <!-- ── Page Header ── -->
-    <div class="flex items-center justify-between">
+    <header class="flex items-center justify-between animate-fade-up">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight text-foreground">Clients</h1>
-        <p class="text-sm font-medium text-muted-foreground mt-1">
+        <h1 class="text-2xl font-semibold tracking-tight text-foreground">Clients</h1>
+        <p class="text-sm text-muted-foreground mt-1">
           Manage your registered OAuth2 applications.
         </p>
       </div>
       <RouterLink to="/admin/clients/new">
         <Button variant="default" size="sm" class="h-9 px-4 font-semibold gap-1.5 shadow-sm">
-          <Plus class="h-4 w-4" />
+          <Plus class="h-4 w-4" aria-hidden="true" />
           New client
         </Button>
       </RouterLink>
-    </div>
+    </header>
 
+    <!-- ── Loading Skeleton ── -->
+    <template v-if="isLoading && !adminStore.clientsData">
+      <div class="space-y-4 pt-4">
+        <div class="flex items-center gap-2.5">
+          <div class="skeleton h-9 w-72 rounded-md" />
+          <div class="skeleton h-9 w-20 rounded-md" />
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <div class="bg-muted/30 h-10 border-b border-border" />
+          <div v-for="n in 5" :key="n" class="flex items-center gap-4 px-5 py-4 border-b border-border/40">
+            <div class="skeleton h-4 w-32" />
+            <div class="skeleton h-4 w-40" />
+            <div class="skeleton h-4 w-16" />
+            <div class="skeleton h-4 w-16" />
+            <div class="skeleton h-4 w-12" />
+            <div class="skeleton h-4 w-20" />
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
     <!-- ── Toolbar ── -->
-    <div class="flex items-center gap-2.5 pt-5 pb-5">
+    <div class="flex items-center gap-2.5 animate-fade-up stagger-1">
       <!-- Search -->
       <div class="relative w-72">
-        <Search class="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
+        <Search class="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" aria-hidden="true" />
         <Input
           v-model="search"
           class="pl-9 h-9 text-sm bg-muted/40 border-border/60 placeholder:text-muted-foreground/50"
           placeholder="Search by name or client ID…"
+          aria-label="Search clients"
         />
       </div>
 
@@ -165,7 +176,7 @@ const metrics = [
     </div>
 
     <!-- ── Table Card ── -->
-    <div class="rounded-xl border border-border/70 bg-card shadow-sm overflow-hidden">
+    <div class="rounded-xl border border-border/70 bg-card shadow-sm overflow-hidden animate-fade-up stagger-2" role="region" aria-label="Clients table">
       <table class="w-full border-collapse">
         <thead>
           <tr class="bg-muted/30 border-b border-border/60">
@@ -260,7 +271,7 @@ const metrics = [
     </div>
 
     <!-- ── Metric Cards ── -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5">
+    <section aria-label="Client performance metrics" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div
         v-for="card in metrics"
         :key="card.label"
@@ -285,7 +296,16 @@ const metrics = [
           </p>
         </div>
       </div>
-    </div>
-
+    </section>
+    </template>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-pulse {
+    animation: none !important;
+  }
+}
+</style>

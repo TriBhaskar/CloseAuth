@@ -1,42 +1,76 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShieldCheck, Users, KeyRound, Server, Check } from 'lucide-vue-next'
+import {
+  ShieldCheck,
+  Users,
+  KeyRound,
+  Server,
+  Check,
+  Menu,
+  X,
+  Zap,
+  Globe,
+  ArrowRight,
+} from 'lucide-vue-next'
+import { homePageMock } from '@/api/mocks/homeMocks'
 
 const authStore = useAuthStore()
+const mobileMenuOpen = ref(false)
+
+// ── Icon mapping (maps iconName from model to component) ───────────────────────
+const iconMap: Record<string, typeof ShieldCheck> = { ShieldCheck, Users, KeyRound, Server }
+
+const features = homePageMock.features.map((f) => ({
+  ...f,
+  icon: iconMap[f.iconName] ?? ShieldCheck,
+}))
+
+const stats = homePageMock.stats
+const checklist = homePageMock.checklist
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground">
+    <!-- Skip to content (a11y) -->
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium"
+    >
+      Skip to main content
+    </a>
+
     <!-- Header -->
-    <header class="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-      <div class="mx-auto w-full px-6">
-        <div class="flex justify-between items-center h-14">
+    <header class="border-b border-border glass sticky top-0 z-50" role="banner">
+      <div class="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
           <!-- Logo -->
-          <div class="flex items-center gap-2.5">
-            <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
-              <ShieldCheck class="h-4 w-4 text-primary-foreground" />
+          <RouterLink to="/" class="flex items-center gap-2.5 group" aria-label="CloseAuth home">
+            <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center transition-transform group-hover:scale-105">
+              <ShieldCheck class="h-4.5 w-4.5 text-primary-foreground" />
             </div>
             <span class="text-base font-semibold tracking-tight">CloseAuth</span>
-          </div>
+          </RouterLink>
 
           <!-- Nav (desktop) -->
-          <nav class="hidden md:flex items-center gap-10">
-            <a href="#features" class="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
-            <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">Documentation</a>
-            <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors">API</a>
+          <nav class="hidden md:flex items-center gap-8" aria-label="Primary navigation">
+            <a href="#features" class="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 rounded-sm">Features</a>
+            <a href="#stats" class="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 rounded-sm">Performance</a>
+            <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 rounded-sm">Documentation</a>
+            <a href="#" class="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 rounded-sm">API</a>
           </nav>
 
-          <!-- Auth Buttons -->
-          <div class="flex items-center gap-3">
+          <!-- Auth Buttons (desktop) -->
+          <div class="hidden md:flex items-center gap-3">
             <template v-if="!authStore.isAuthenticated">
               <RouterLink to="/admin/login">
                 <Button variant="ghost" size="sm">Sign in</Button>
               </RouterLink>
               <RouterLink to="/admin/register">
-                <Button size="sm">Sign up</Button>
+                <Button size="sm">Get Started</Button>
               </RouterLink>
             </template>
             <template v-else>
@@ -46,197 +80,304 @@ const authStore = useAuthStore()
               </RouterLink>
             </template>
           </div>
+
+          <!-- Mobile menu toggle -->
+          <button
+            class="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-lg hover:bg-muted transition-colors"
+            :aria-expanded="mobileMenuOpen"
+            aria-controls="mobile-nav"
+            aria-label="Toggle navigation menu"
+            @click="mobileMenuOpen = !mobileMenuOpen"
+          >
+            <Menu v-if="!mobileMenuOpen" class="h-5 w-5" />
+            <X v-else class="h-5 w-5" />
+          </button>
         </div>
+
+        <!-- Mobile nav -->
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 -translate-y-2"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 -translate-y-2"
+        >
+          <nav
+            v-if="mobileMenuOpen"
+            id="mobile-nav"
+            class="md:hidden pb-4 border-t border-border pt-4 space-y-3"
+            aria-label="Mobile navigation"
+          >
+            <a href="#features" class="block text-sm text-muted-foreground hover:text-foreground py-2" @click="mobileMenuOpen = false">Features</a>
+            <a href="#stats" class="block text-sm text-muted-foreground hover:text-foreground py-2" @click="mobileMenuOpen = false">Performance</a>
+            <a href="#" class="block text-sm text-muted-foreground hover:text-foreground py-2">Documentation</a>
+            <a href="#" class="block text-sm text-muted-foreground hover:text-foreground py-2">API</a>
+            <div class="flex gap-3 pt-2">
+              <template v-if="!authStore.isAuthenticated">
+                <RouterLink to="/admin/login" class="flex-1">
+                  <Button variant="outline" size="sm" class="w-full">Sign in</Button>
+                </RouterLink>
+                <RouterLink to="/admin/register" class="flex-1">
+                  <Button size="sm" class="w-full">Get Started</Button>
+                </RouterLink>
+              </template>
+              <template v-else>
+                <RouterLink to="/admin/dashboard" class="flex-1">
+                  <Button size="sm" class="w-full">Dashboard</Button>
+                </RouterLink>
+              </template>
+            </div>
+          </nav>
+        </Transition>
       </div>
     </header>
 
-    <!-- Hero Section -->
-    <section class="relative overflow-hidden pt-14 pb-14 bg-mesh-light dark:bg-mesh-dark">
-      <div class="mx-auto w-full px-12 text-center">
-        <!-- Badge -->
-        <div
-          class="inline-flex items-center px-3 py-3 rounded-full text-xs font-medium bg-primary/10 text-primary mb-12 animate-fade-down"
-        >
-          Enterprise Authentication Server
+    <main id="main-content">
+      <!-- Hero Section -->
+      <section class="relative overflow-hidden pt-20 pb-16 sm:pt-28 sm:pb-20 bg-mesh-light dark:bg-mesh-dark" aria-labelledby="hero-heading">
+        <!-- Decorative background orbs -->
+        <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+          <div class="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-primary/5 blur-3xl animate-pulse-slow" />
+          <div class="absolute -bottom-48 -left-24 w-80 h-80 rounded-full bg-violet-500/5 blur-3xl animate-pulse-slow" style="animation-delay: 3s" />
         </div>
 
-        <!-- Heading -->
-        <h1 class="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.15] animate-fade-up">
-          Lightweight, Scalable Authentication<br class="hidden sm:block" />
-          <span class="text-primary">for Modern Applications</span>
-        </h1>
-
-        <!-- Subtitle -->
-        <p class="inline-flex text-base sm:text-lg text-muted-foreground max-w-2xl py-3 animate-fade-up stagger-1">
-          CloseAuth provides centralized identity management with OAuth2.1 &amp; OpenID Connect.
-          Focus on your business logic while we handle user authentication, authorization, and security.
-        </p>
-
-        <!-- CTA -->
-        <div class="flex flex-col sm:flex-row gap-3 justify-center mb-8 py-3 animate-fade-up stagger-2">
-          <template v-if="!authStore.isAuthenticated">
-            <RouterLink to="/admin/register">
-              <Button size="lg" class="px-8">Start Free Trial →</Button>
-            </RouterLink>
-            <RouterLink to="/admin/login">
-              <Button variant="outline" size="lg" class="px-8">View Demo</Button>
-            </RouterLink>
-          </template>
-          <template v-else>
-            <RouterLink to="/admin/dashboard">
-              <Button size="lg" class="px-8">Go to Dashboard →</Button>
-            </RouterLink>
-          </template>
-        </div>
-
-        <!-- Feature Pills -->
-        <div class="flex flex-wrap justify-center gap-5 text-sm text-muted-foreground animate-fade-up stagger-3">
-          <div class="flex items-center gap-1.5">
-            <Check class="h-4 w-4 text-green-500" />
-            <span>No credit card required</span>
+        <div class="relative mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
+          <!-- Badge -->
+          <div
+            class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20 mb-8 animate-fade-down"
+          >
+            <Zap class="h-3.5 w-3.5" aria-hidden="true" />
+            Enterprise Authentication Server
           </div>
-          <div class="flex items-center gap-1.5">
-            <Check class="h-4 w-4 text-green-500" />
-            <span>5-minute setup</span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <Check class="h-4 w-4 text-green-500" />
-            <span>Enterprise ready</span>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- Features Section -->
-    <section id="features" class="py-14">
-      <div class="mx-auto w-full px-30">
-        <div class="text-center mb-10">
-          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-6 py-2">Built for Modern Authentication</h2>
-          <p class="text-muted-foreground mx-auto">
-            CloseAuth implements industry standards and best practices to provide secure,
-            scalable authentication for your applications.
+          <!-- Heading -->
+          <h1 id="hero-heading" class="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.1] animate-fade-up">
+            Lightweight, Scalable
+            <br class="hidden sm:block" />
+            <span class="bg-gradient-to-r from-primary via-violet-500 to-primary bg-clip-text text-transparent">
+              Authentication
+            </span>
+            <br class="hidden sm:block" />
+            for Modern Applications
+          </h1>
+
+          <!-- Subtitle -->
+          <p class="mt-6 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed animate-fade-up stagger-1">
+            CloseAuth provides centralized identity management with OAuth2.1 &amp; OpenID Connect.
+            Focus on your business logic while we handle user authentication, authorization, and security.
           </p>
-        </div>
 
-        <!-- Features Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-          <div class="rounded-xl border bg-card text-card-foreground p-6 hover-lift">
-            <div class="flex items-center gap-3 mb-3">
-              <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <ShieldCheck class="h-5 w-5 text-primary" />
-              </div>
-              <h3 class="font-semibold">OAuth2.1 &amp; OpenID Connect</h3>
-            </div>
-            <p class="text-sm text-muted-foreground leading-relaxed">
-              Built with modern authentication standards for maximum security and compatibility.
-            </p>
+          <!-- CTA -->
+          <div class="flex flex-col sm:flex-row gap-4 justify-center mt-10 animate-fade-up stagger-2">
+            <template v-if="!authStore.isAuthenticated">
+              <RouterLink to="/admin/register">
+                <Button size="lg" class="px-8 gap-2 group">
+                  Start Free Trial
+                  <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                </Button>
+              </RouterLink>
+              <RouterLink to="/admin/login">
+                <Button variant="outline" size="lg" class="px-8">View Demo</Button>
+              </RouterLink>
+            </template>
+            <template v-else>
+              <RouterLink to="/admin/dashboard">
+                <Button size="lg" class="px-8 gap-2 group">
+                  Go to Dashboard
+                  <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                </Button>
+              </RouterLink>
+            </template>
           </div>
 
-          <div class="rounded-xl border bg-card text-card-foreground p-6 hover-lift">
-            <div class="flex items-center gap-3 mb-3">
-              <div class="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
-                <Users class="h-5 w-5 text-green-600" />
-              </div>
-              <h3 class="font-semibold">Multi-Tenant Support</h3>
+          <!-- Feature Pills -->
+          <div class="flex flex-wrap justify-center gap-x-6 gap-y-3 mt-10 text-sm text-muted-foreground animate-fade-up stagger-3">
+            <div class="flex items-center gap-2">
+              <Check class="h-4 w-4 text-green-500" aria-hidden="true" />
+              <span>No credit card required</span>
             </div>
-            <p class="text-sm text-muted-foreground leading-relaxed">
-              Manage multiple applications and organizations with per-tenant branding and configuration.
-            </p>
-          </div>
-
-          <div class="rounded-xl border bg-card text-card-foreground p-6 hover-lift">
-            <div class="flex items-center gap-3 mb-3">
-              <div class="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                <KeyRound class="h-5 w-5 text-violet-600" />
-              </div>
-              <h3 class="font-semibold">Hybrid Token Strategy</h3>
+            <div class="flex items-center gap-2">
+              <Check class="h-4 w-4 text-green-500" aria-hidden="true" />
+              <span>5-minute setup</span>
             </div>
-            <p class="text-sm text-muted-foreground leading-relaxed">
-              JWT access tokens for performance, opaque refresh tokens for security.
-            </p>
-          </div>
-
-          <div class="rounded-xl border bg-card text-card-foreground p-6 hover-lift">
-            <div class="flex items-center gap-3 mb-3">
-              <div class="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                <Server class="h-5 w-5 text-amber-600" />
-              </div>
-              <h3 class="font-semibold">Microservices Ready</h3>
+            <div class="flex items-center gap-2">
+              <Check class="h-4 w-4 text-green-500" aria-hidden="true" />
+              <span>Enterprise ready</span>
             </div>
-            <p class="text-sm text-muted-foreground leading-relaxed">
-              Seamless integration across distributed systems and microservice architectures.
-            </p>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Everything You Need Section -->
-    <section class="py-14 bg-muted/40">
-      <div class="mx-auto w-full px-30">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-          <!-- Left Content -->
-          <div>
-            <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
-              Everything you need for<br />authentication
+      <!-- Stats Section -->
+      <section id="stats" class="py-12 border-b border-border" aria-label="Platform statistics">
+        <div class="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div
+              v-for="(stat, index) in stats"
+              :key="stat.label"
+              class="text-center animate-fade-up"
+              :class="`stagger-${index + 1}`"
+            >
+              <div class="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">{{ stat.value }}</div>
+              <div class="mt-1 text-sm text-muted-foreground">{{ stat.label }}</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section id="features" class="py-20 sm:py-24" aria-labelledby="features-heading">
+        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div class="text-center mb-14">
+            <h2 id="features-heading" class="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
+              Built for Modern Authentication
             </h2>
-            <p class="text-muted-foreground mb-6 leading-relaxed py-2">
-              CloseAuth handles the complexity of modern authentication so you can focus on building great products.
-              From user registration to advanced security features, we've got you covered.
+            <p class="text-muted-foreground max-w-xl mx-auto leading-relaxed">
+              CloseAuth implements industry standards and best practices to provide secure,
+              scalable authentication for your applications.
             </p>
-
-            <div class="space-y-2.5">
-              <div v-for="item in [
-                'Centralized identity management',
-                'Role-based access control',
-                'Secure password reset flows',
-                'Session management',
-                'API key management',
-                'Audit logging & monitoring',
-              ]" :key="item" class="flex items-center gap-2.5 text-sm">
-                <Check class="h-4 w-4 text-green-500 shrink-0" />
-                <span>{{ item }}</span>
-              </div>
-            </div>
           </div>
 
-          <!-- Right CTA Card -->
-          <Card class="card-elevated">
-            <CardHeader>
-              <CardTitle class="text-xl">Ready to get started?</CardTitle>
-              <CardDescription>
-                Join thousands of developers who trust CloseAuth for their authentication needs.
-              </CardDescription>
-            </CardHeader>
-            <CardContent class="space-y-3">
-              <RouterLink to="/admin/register" class="block">
-                <Button class="w-full" size="lg">Create Free Account</Button>
-              </RouterLink>
-              <RouterLink to="/admin/login" class="block">
-                <Button variant="outline" class="w-full" size="lg">Sign In to Dashboard</Button>
-              </RouterLink>
-            </CardContent>
-            <CardFooter class="justify-center">
-              <p class="text-xs text-muted-foreground text-center">
-                Questions? Contact our team for enterprise solutions.
+          <!-- Features Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <article
+              v-for="(feature, index) in features"
+              :key="feature.title"
+              class="rounded-xl border bg-card text-card-foreground p-6 hover-lift group transition-all duration-300 animate-fade-up"
+              :class="`stagger-${index + 1}`"
+            >
+              <div class="flex items-center gap-3 mb-4">
+                <div class="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-110" :class="feature.bgClass">
+                  <component :is="feature.icon" class="h-5 w-5" :class="feature.textClass" aria-hidden="true" />
+                </div>
+              </div>
+              <h3 class="font-semibold mb-2">{{ feature.title }}</h3>
+              <p class="text-sm text-muted-foreground leading-relaxed">
+                {{ feature.description }}
               </p>
-            </CardFooter>
-          </Card>
+            </article>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <!-- Everything You Need Section -->
+      <section class="py-20 sm:py-24 bg-muted/40" aria-labelledby="everything-heading">
+        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            <!-- Left Content -->
+            <div>
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 border border-green-500/20 mb-6">
+                <Globe class="h-3.5 w-3.5" aria-hidden="true" />
+                Complete Solution
+              </div>
+              <h2 id="everything-heading" class="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
+                Everything you need for
+                <span class="text-primary">authentication</span>
+              </h2>
+              <p class="text-muted-foreground mb-8 leading-relaxed">
+                CloseAuth handles the complexity of modern authentication so you can focus on building great products.
+                From user registration to advanced security features, we've got you covered.
+              </p>
+
+              <ul class="space-y-3" role="list">
+                <li
+                  v-for="(item, index) in checklist"
+                  :key="item"
+                  class="flex items-center gap-3 text-sm animate-fade-up"
+                  :class="`stagger-${index + 1}`"
+                >
+                  <div class="h-5 w-5 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                    <Check class="h-3 w-3 text-green-600" aria-hidden="true" />
+                  </div>
+                  <span>{{ item }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Right CTA Card -->
+            <Card class="card-elevated">
+              <CardHeader>
+                <CardTitle class="text-xl">Ready to get started?</CardTitle>
+                <CardDescription>
+                  Join thousands of developers who trust CloseAuth for their authentication needs.
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="space-y-3">
+                <RouterLink to="/admin/register" class="block">
+                  <Button class="w-full gap-2 group" size="lg">
+                    Create Free Account
+                    <ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </Button>
+                </RouterLink>
+                <RouterLink to="/admin/login" class="block">
+                  <Button variant="outline" class="w-full" size="lg">Sign In to Dashboard</Button>
+                </RouterLink>
+              </CardContent>
+              <CardFooter class="justify-center">
+                <p class="text-xs text-muted-foreground text-center">
+                  Questions? Contact our team for enterprise solutions.
+                </p>
+              </CardFooter>
+            </Card>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <!-- Footer -->
-    <footer class="border-t border-border py-6">
-      <div class="mx-auto w-full max-w-6xl px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div class="flex items-center gap-2">
-          <div class="h-5 w-5 rounded bg-primary flex items-center justify-center">
-            <ShieldCheck class="h-3 w-3 text-primary-foreground" />
+    <footer class="border-t border-border py-10" role="contentinfo">
+      <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-8">
+          <!-- Brand -->
+          <div>
+            <div class="flex items-center gap-2 mb-3">
+              <div class="h-6 w-6 rounded-md bg-primary flex items-center justify-center">
+                <ShieldCheck class="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" />
+              </div>
+              <span class="text-sm font-semibold">CloseAuth</span>
+            </div>
+            <p class="text-xs text-muted-foreground leading-relaxed">
+              Enterprise-grade authentication for modern applications.
+            </p>
           </div>
-          <span class="text-xs font-mono text-muted-foreground">Powered by CloseAuth</span>
+
+          <!-- Product links -->
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Product</h3>
+            <ul class="space-y-2 text-sm">
+              <li><a href="#features" class="text-muted-foreground hover:text-foreground transition-colors">Features</a></li>
+              <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Documentation</a></li>
+              <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">API Reference</a></li>
+            </ul>
+          </div>
+
+          <!-- Company links -->
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Company</h3>
+            <ul class="space-y-2 text-sm">
+              <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">About</a></li>
+              <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</a></li>
+              <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Terms of Service</a></li>
+            </ul>
+          </div>
         </div>
-        <p class="text-xs text-muted-foreground">© 2026 CloseAuth. All rights reserved.</p>
+
+        <div class="border-t border-border pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p class="text-xs text-muted-foreground">© 2026 CloseAuth. All rights reserved.</p>
+          <p class="text-xs font-mono text-muted-foreground">Powered by CloseAuth v2.0</p>
+        </div>
       </div>
     </footer>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-down,
+  .animate-pulse-slow {
+    animation: none !important;
+  }
+}
+</style>

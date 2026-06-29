@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { MoreHorizontal, Plus, Search, Shield, TrendingUp, UserCheck, Users } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,54 +54,57 @@ const roleBadgeClass: Record<UserRole, string> = {
 }
 
 const statusConfig: Record<UserStatus, { dot: string; pill: string }> = {
-  Active:   { dot: 'bg-emerald-500', pill: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200' },
-  Inactive: { dot: 'bg-zinc-300',    pill: 'bg-zinc-100 text-zinc-400 ring-1 ring-inset ring-zinc-200' },
+  Active:   { dot: 'bg-emerald-500', pill: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/20' },
+  Inactive: { dot: 'bg-zinc-300 dark:bg-zinc-600', pill: 'bg-muted text-muted-foreground ring-1 ring-inset ring-border' },
 }
 </script>
 
 <template>
-  <div class="p-6 space-y-10 font-sans">
+  <div class="p-4 sm:p-6 lg:p-8 space-y-8 font-sans">
     <!-- ── Page Header ── -->
-    <div class="flex items-center justify-between">
+    <header class="flex items-center justify-between animate-fade-up">
       <div>
-        <h1 class="text-2xl font-bold text-foreground tracking-tight">Users</h1>
-        <p class="text-sm font-medium text-muted-foreground mt-1">Manage user accounts and permissions.</p>
+        <h1 class="text-2xl font-semibold text-foreground tracking-tight">Users</h1>
+        <p class="text-sm text-muted-foreground mt-1">Manage user accounts and permissions.</p>
       </div>
-      <Button variant="default" size="sm" class="h-9 px-4 font-semibold gap-1.5">
-        <Plus class="h-4 w-4" />
-        Add user
-      </Button>
-    </div>
+      <RouterLink to="/admin/users/new">
+        <Button variant="default" size="sm" class="h-9 px-4 font-semibold gap-1.5">
+          <Plus class="h-4 w-4" aria-hidden="true" />
+          Add user
+        </Button>
+      </RouterLink>
+    </header>
 
     <!-- ── Stat Cards ── -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-5">
+    <section aria-label="User statistics" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div
-        v-for="card in stats"
+        v-for="(card, index) in stats"
         :key="card.label"
-        class="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col gap-3"
+        class="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col gap-3 hover-lift animate-fade-up"
+        :class="'stagger-' + (index + 1)"
       >
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-muted-foreground uppercase tracking-widest leading-tight">
+          <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
             {{ card.label }}
           </span>
-          <div class="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <component :is="card.icon" class="h-4 w-4 text-muted-foreground" />
+          <div class="h-8 w-8 rounded-lg bg-muted/60 flex items-center justify-center shrink-0">
+            <component :is="card.icon" class="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </div>
         </div>
-        <p class="text-3xl font-bold text-foreground" style="font-variant-numeric: tabular-nums">
+        <p class="text-2xl sm:text-3xl font-bold text-foreground tabular-nums">
           {{ card.value }}
         </p>
-        <p class="text-xs font-semibold mt-0.5" :class="card.trendUp ? 'text-green-600' : 'text-muted-foreground'">
+        <p class="text-xs font-semibold" :class="card.trendUp ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'">
           {{ card.trend }}
         </p>
       </div>
-    </div>
+    </section>
 
     <!-- ── Toolbar ── -->
-    <div class="flex items-center gap-3 pt-5 pb-5">
+    <div class="flex items-center gap-3 animate-fade-up stagger-2">
       <div class="relative w-72">
-        <Search class="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
-        <Input v-model="search" class="pl-9 h-9 text-sm" placeholder="Search by name or email…" />
+        <Search class="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" aria-hidden="true" />
+        <Input v-model="search" class="pl-9 h-9 text-sm" placeholder="Search by name or email…" aria-label="Search users" />
       </div>
       <span class="text-xs font-medium text-muted-foreground ml-auto tabular-nums">
         {{ filteredUsers.length }} user{{ filteredUsers.length !== 1 ? 's' : '' }}
@@ -108,7 +112,7 @@ const statusConfig: Record<UserStatus, { dot: string; pill: string }> = {
     </div>
 
     <!-- ── Table Card ── -->
-    <div class="rounded-xl border border-border/70 bg-card shadow-sm overflow-hidden">
+    <div class="rounded-xl border border-border/70 bg-card shadow-sm overflow-hidden animate-fade-up stagger-3" role="region" aria-label="Users table">
       <table class="w-full border-collapse">
         <thead>
           <tr class="bg-muted/30 border-b border-border/60">
@@ -196,3 +200,11 @@ const statusConfig: Record<UserStatus, { dot: string; pill: string }> = {
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none !important;
+  }
+}
+</style>

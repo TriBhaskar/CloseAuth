@@ -7,6 +7,8 @@ import type {
   AdminUser,
   CreateClientRequest,
   CreateClientResponse,
+  CreateUserRequest,
+  CreateUserResponse,
   ForgotPasswordRequest,
   ForgotPasswordResponse,
   OtpResendRequest,
@@ -64,6 +66,12 @@ export const adminService = {
 
   createClient(payload: CreateClientRequest): Promise<CreateClientResponse> {
     return apiClient.post('/admin/clients', payload)
+  },
+
+  // ── Users ───────────────────────────────────────────────────────────────────
+
+  createUser(payload: CreateUserRequest): Promise<CreateUserResponse> {
+    return apiClient.post('/admin/users', payload)
   },
 
   // ── Settings ────────────────────────────────────────────────────────────────

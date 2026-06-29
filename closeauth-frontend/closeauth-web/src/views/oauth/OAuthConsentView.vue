@@ -15,7 +15,8 @@ import {
 } from 'lucide-vue-next'
 import { useOAuthTheme } from '@/composables/useOAuthTheme'
 import {apiClient, getCsrfToken} from '@/api/client'
-import {oauthService} from "@/api/services";
+import {oauthService} from "@/api/services"
+import { oauthScopesMock } from '@/api/mocks/oauthMocks';
 
 const route = useRoute()
 
@@ -33,14 +34,16 @@ const isLoading = ref(true)
 // ── Scope metadata ─────────────────────────────────────────────────────────────
 type ScopeInfo = { label: string; description: string; icon: typeof Shield }
 
-const scopeMap: Record<string, ScopeInfo> = {
-  openid:         { label: 'Sign you in',        description: 'Verify your identity',          icon: KeyRound  },
-  profile:        { label: 'View your profile',   description: 'Access your name and picture',  icon: User      },
-  email:          { label: 'Access your email',   description: 'Know your email address',       icon: Mail      },
-  offline_access: { label: 'Stay signed in',      description: "Access when you're not active", icon: RefreshCw },
-  'read:users':   { label: 'Read users',          description: 'List and view user data',       icon: Eye       },
-  'write:users':  { label: 'Manage users',        description: 'Create and modify users',       icon: PenLine   },
+const iconMap: Record<string, typeof Shield> = {
+  KeyRound, User, Mail, RefreshCw, Eye, PenLine, Shield,
 }
+
+const scopeMap = Object.fromEntries(
+  oauthScopesMock.map((s) => [
+    s.key,
+    { label: s.label, description: s.description, icon: iconMap[s.iconName] ?? Shield },
+  ]),
+) as Record<string, ScopeInfo>
 
 const scopeInfo = computed(() =>
   scopes.value.map((scope) => ({

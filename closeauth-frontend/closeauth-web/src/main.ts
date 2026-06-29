@@ -4,4 +4,18 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 
-createApp(App).use(createPinia()).use(router).mount('#app')
+const app = createApp(App)
+const pinia = createPinia()
+app.use(pinia).use(router)
+
+// In mock mode, seed a fake authenticated user so admin pages are accessible
+if (import.meta.env.VITE_MOCK_MODE === 'true') {
+  import('@/stores/auth').then(({ useAuthStore }) => {
+    const authStore = useAuthStore()
+    if (!authStore.isAuthenticated) {
+      authStore.setUser('admin@closeauth.dev', 'MockAdmin', 'Admin')
+    }
+  })
+}
+
+app.mount('#app')

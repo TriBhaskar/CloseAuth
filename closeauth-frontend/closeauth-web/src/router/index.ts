@@ -22,6 +22,10 @@ const router = createRouter({
       meta: { requiresAuth: true },
       children: [
         {
+          path: '',
+          redirect: { path: '/admin/dashboard' },
+        },
+        {
           path: 'dashboard',
           component: () => import('@/views/admin/DashboardView.vue'),
         },
@@ -36,6 +40,10 @@ const router = createRouter({
         {
           path: 'users',
           component: () => import('@/views/admin/UsersView.vue'),
+        },
+        {
+          path: 'users/new',
+          component: () => import('@/views/admin/UserCreateView.vue'),
         },
         {
           path: 'analytics',
@@ -83,6 +91,9 @@ const router = createRouter({
 
 // ── Navigation guard ──────────────────────────────────────────────────────────
 router.beforeEach((to) => {
+  // Skip auth check in mock mode (no backend needed)
+  if (import.meta.env.VITE_MOCK_MODE === 'true') return
+
   if (to.meta.requiresAuth) {
     const authStore = useAuthStore()
     if (!authStore.isAuthenticated) {

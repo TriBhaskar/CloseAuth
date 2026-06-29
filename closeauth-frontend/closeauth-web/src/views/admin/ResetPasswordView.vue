@@ -99,19 +99,19 @@ const handleSubmit = async () => {
   <AuthLayout>
     <!-- ── Loading: Validating Token ── -->
     <template v-if="tokenValid === null">
-      <div class="flex flex-col items-center text-center space-y-4 py-8">
-        <Loader2 class="h-8 w-8 animate-spin text-muted-foreground" />
+      <div class="flex flex-col items-center text-center space-y-4 py-8" role="status" aria-live="polite">
+        <Loader2 class="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
         <p class="text-sm text-muted-foreground">Validating your reset link…</p>
       </div>
     </template>
 
     <!-- ── Invalid / Expired Token ── -->
     <template v-else-if="!tokenValid">
-      <div class="flex flex-col items-center text-center space-y-4">
+      <div class="flex flex-col items-center text-center space-y-4" role="alert">
         <div
           class="h-12 w-12 flex items-center justify-center rounded-full bg-destructive/10"
         >
-          <XCircle class="h-6 w-6 text-destructive" />
+          <XCircle class="h-6 w-6 text-destructive" aria-hidden="true" />
         </div>
 
         <div class="space-y-1.5">
@@ -143,11 +143,11 @@ const handleSubmit = async () => {
 
     <!-- ── Reset Success ── -->
     <template v-else-if="resetSuccess">
-      <div class="flex flex-col items-center text-center space-y-4">
+      <div class="flex flex-col items-center text-center space-y-4" role="status" aria-live="polite">
         <div
           class="h-12 w-12 flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
         >
-          <CheckCircle2 class="h-6 w-6 text-green-600 dark:text-green-400" />
+          <CheckCircle2 class="h-6 w-6 text-green-600 dark:text-green-400" aria-hidden="true" />
         </div>
 
         <div class="space-y-1.5">
@@ -173,10 +173,10 @@ const handleSubmit = async () => {
         <p class="text-sm text-muted-foreground">Choose a strong password for your account.</p>
       </div>
 
-      <form class="space-y-5" @submit.prevent="handleSubmit">
+      <form class="space-y-4" @submit.prevent="handleSubmit">
         <!-- New password -->
-        <div class="space-y-2 py-2">
-          <Label for="password" class="text-sm font-medium leading-none py-2">New password</Label>
+        <div class="space-y-1.5">
+          <Label for="password" class="text-sm font-medium leading-none">New password</Label>
           <div class="relative">
             <Input
               id="password"
@@ -184,7 +184,7 @@ const handleSubmit = async () => {
               :type="showPassword ? 'text' : 'password'"
               autocomplete="new-password"
               placeholder="••••••••"
-              class="h-[36px] pr-10"
+              class="h-9 pr-10"
             />
             <Button
               type="button"
@@ -199,7 +199,7 @@ const handleSubmit = async () => {
             </Button>
           </div>
           <!-- Strength bar -->
-          <div v-if="password" class="flex gap-1 mt-2">
+          <div v-if="password" class="flex gap-1 mt-1.5">
             <div
               v-for="i in 4"
               :key="i"
@@ -207,12 +207,12 @@ const handleSubmit = async () => {
               :class="strengthSegmentColor(i - 1)"
             />
           </div>
-          <p v-if="password" class="text-xs text-muted-foreground">{{ strengthLabel }}</p>
+          <p v-if="password" class="text-[11px] text-muted-foreground">{{ strengthLabel }}</p>
         </div>
 
         <!-- Confirm password -->
-        <div class="space-y-2 pb-3">
-          <Label for="confirmPassword" class="text-sm font-medium leading-none py-2"
+        <div class="space-y-1.5">
+          <Label for="confirmPassword" class="text-sm font-medium leading-none"
           >Confirm password</Label
           >
           <div class="relative">
@@ -222,7 +222,7 @@ const handleSubmit = async () => {
               :type="showConfirm ? 'text' : 'password'"
               autocomplete="new-password"
               placeholder="••••••••"
-              class="h-[36px] pr-10"
+              class="h-9 pr-10"
             />
             <span
               v-if="passwordsMatch"
@@ -249,18 +249,21 @@ const handleSubmit = async () => {
         <div
           v-if="errorMessage"
           class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3.5 py-3"
+          role="alert"
+          aria-live="polite"
         >
-          <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+          <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
           <p class="text-sm text-destructive">{{ errorMessage }}</p>
         </div>
 
         <Button
           type="submit"
           variant="default"
-          class="w-full h-[36px] transition-all active:scale-[0.98]"
+          class="w-full h-9 transition-all active:scale-[0.98]"
           :disabled="isLoading || !passwordsMatch"
+          :aria-busy="isLoading"
         >
-          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
           {{ isLoading ? 'Resetting...' : 'Reset password' }}
         </Button>
       </form>

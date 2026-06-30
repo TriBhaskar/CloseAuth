@@ -10,7 +10,7 @@ import com.anterka.closeauthbackend.client.repository.ThemeConfigurationReposito
 import com.anterka.closeauthbackend.common.exception.ClientOwnershipException;
 import com.anterka.closeauthbackend.common.exception.InvalidThemeConfigurationException;
 import com.anterka.closeauthbackend.common.exception.ThemeNotFoundException;
-import jakarta.servlet.http.HttpServletRequest;
+import com.anterka.closeauthbackend.user.security.UserActionContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,8 +38,8 @@ public class ThemeConfigurationService {
     @Transactional
     public ThemeConfigResponse createConfiguration(String clientId, Long themeId,
                                                    CreateThemeConfigurationDto dto,
-                                                   String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                                   UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -68,8 +68,8 @@ public class ThemeConfigurationService {
         metadata.put("themeId", themeId);
         metadata.put("configKey", dto.getConfigKey());
         metadata.put("configType", saved.getConfigType());
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "THEME_CONFIG_CREATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "THEME_CONFIG_CREATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Created theme configuration: {} for theme: {}", dto.getConfigKey(), themeId);
         return mapToResponse(saved);
@@ -81,8 +81,8 @@ public class ThemeConfigurationService {
     @Transactional
     public ThemeConfigResponse updateConfiguration(String clientId, Long themeId, Long configId,
                                                    CreateThemeConfigurationDto dto,
-                                                   String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                                   UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -122,8 +122,8 @@ public class ThemeConfigurationService {
         metadata.put("after", Map.of(
                 "configValue", updated.getConfigValue(),
                 "configType", updated.getConfigType()));
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "THEME_CONFIG_UPDATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "THEME_CONFIG_UPDATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Updated theme configuration: {} for theme: {}", configId, themeId);
         return mapToResponse(updated);
@@ -133,8 +133,8 @@ public class ThemeConfigurationService {
      * Get all configurations for a theme
      */
     @Transactional(readOnly = true)
-    public List<ThemeConfigResponse> getConfigurationsByTheme(String clientId, Long themeId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public List<ThemeConfigResponse> getConfigurationsByTheme(String clientId, Long themeId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -152,8 +152,8 @@ public class ThemeConfigurationService {
      * Get a specific configuration
      */
     @Transactional(readOnly = true)
-    public ThemeConfigResponse getConfiguration(String clientId, Long themeId, Long configId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public ThemeConfigResponse getConfiguration(String clientId, Long themeId, Long configId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -177,8 +177,8 @@ public class ThemeConfigurationService {
      */
     @Transactional
     public void deleteConfiguration(String clientId, Long themeId, Long configId,
-                                   String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                    UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -202,8 +202,8 @@ public class ThemeConfigurationService {
         metadata.put("themeId", themeId);
         metadata.put("configId", configId);
         metadata.put("configKey", configKey);
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "THEME_CONFIG_DELETED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "THEME_CONFIG_DELETED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Deleted theme configuration: {} for theme: {}", configId, themeId);
     }
@@ -223,4 +223,3 @@ public class ThemeConfigurationService {
                 .build();
     }
 }
-

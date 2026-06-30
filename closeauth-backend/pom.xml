@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>org.springframework.boot</groupId>
@@ -15,11 +15,22 @@
 	<description>CloseAuth OAuth2 Authorization Server</description>
 	<properties>
 		<java.version>21</java.version>
-        <jedis.version>6.0.0</jedis.version>
+		<jedis.version>6.0.0</jedis.version>
 
 		<docker.image.tag>${project.version}</docker.image.tag>
 		<docker-maven-plugin.version>0.46.0</docker-maven-plugin.version>
 		<exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
+
+		<!--
+		    Flyway CLI (maven plugin) connection settings for manual migration runs.
+		    Credentials are intentionally NOT committed. Override at invocation, e.g.:
+		      mvn flyway:migrate -Dflyway.user=postgres -Dflyway.password=*** \
+		                         -Dflyway.url=jdbc:postgresql://localhost:5432/closeauth
+		    (Runtime migrations are executed by Spring Boot using the app datasource.)
+		-->
+		<flyway.url>jdbc:postgresql://localhost:5432/closeauth</flyway.url>
+		<flyway.user/>
+		<flyway.password/>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -38,37 +49,37 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-<!--        <dependency>-->
-<!--            <groupId>com.github.gavlyukovskiy</groupId>-->
-<!--            <artifactId>p6spy-spring-boot-starter</artifactId>-->
-<!--            <version>1.9.2</version>-->
-<!--        </dependency>-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+		<!--        <dependency>-->
+		<!--            <groupId>com.github.gavlyukovskiy</groupId>-->
+		<!--            <artifactId>p6spy-spring-boot-starter</artifactId>-->
+		<!--            <version>1.9.2</version>-->
+		<!--        </dependency>-->
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
 		</dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>redis.clients</groupId>
-            <artifactId>jedis</artifactId>
-            <version>${jedis.version}</version>
-        </dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>redis.clients</groupId>
+			<artifactId>jedis</artifactId>
+			<version>${jedis.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
@@ -147,9 +158,9 @@
 				<artifactId>flyway-maven-plugin</artifactId>
 				<version>11.7.2</version>
 				<configuration>
-					<url>jdbc:postgresql://localhost:5432/closeauth</url>
-					<user>bhaskar</user>
-					<password>bhaskar</password>
+					<url>${flyway.url}</url>
+					<user>${flyway.user}</user>
+					<password>${flyway.password}</password>
 					<locations>
 						<location>classpath:db/migration</location>
 					</locations>
@@ -181,10 +192,10 @@
 											<ENTRYPOINT_FILE>entrypoint.sh</ENTRYPOINT_FILE>
 										</args>
 									</build>
-<!--									<tags>-->
-<!--										<tag>latest</tag>-->
-<!--										<tag>${docker.image.tag}</tag>-->
-<!--									</tags>-->
+									<!--									<tags>-->
+									<!--										<tag>latest</tag>-->
+									<!--										<tag>${docker.image.tag}</tag>-->
+									<!--									</tags>-->
 								</image>
 							</images>
 						</configuration>

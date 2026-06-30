@@ -20,6 +20,10 @@ public class RateLimiterService {
 
     /**
      * Checks if the action is rate limited for the given identifier.
+     * <p>
+     * The counter is incremented atomically (server-side INCR + EXPIRE) so that
+     * concurrent requests cannot race past the configured limit.
+     *
      * @param action The action type (e.g., "forgot_password", "reset_password")
      * @param identifier The unique identifier (e.g., IP address, user ID)
      * @return true if rate limited, false otherwise
@@ -27,20 +31,16 @@ public class RateLimiterService {
     public boolean isLimited(String action, String identifier) {
         RateLimitStrategy strategy = strategyFactory.getStrategy(action);
 
-        int currentCount = rateLimitRepository.getCount(action, identifier);
+        long currentCount = rateLimitRepository.incrementAndGetCount(
+                action, identifier, strategy.getWindowSeconds());
         int limit = strategy.getMaxAttempts();
 
-        if (currentCount >= limit) {
-            log.debug("Rate limit exceeded for action '{}', identifier '{}': {} >= {}",
+        if (currentCount > limit) {
+            log.debug("Rate limit exceeded for action '{}', identifier '{}': {} > {}",
                     action, identifier, currentCount, limit);
             return true;
         }
 
-        if (currentCount == 0) {
-            rateLimitRepository.initializeCounter(action, identifier, strategy.getWindowSeconds());
-        } else {
-            rateLimitRepository.incrementCounter(action, identifier);
-        }
 
         return false;
     }

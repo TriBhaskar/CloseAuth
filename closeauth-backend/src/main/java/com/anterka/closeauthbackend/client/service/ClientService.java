@@ -191,7 +191,6 @@ public class ClientService implements RegisteredClientRepository {
         entity.setId(registeredClient.getId());
         entity.setClientId(registeredClient.getClientId());
         entity.setClientIdIssuedAt(registeredClient.getClientIdIssuedAt());
-//        entity.setClientSecret(passwordEncoder.encode(registeredClient.getClientSecret()));
         entity.setClientSecret(registeredClient.getClientSecret());
         entity.setClientSecretExpiresAt(registeredClient.getClientSecretExpiresAt() != null ? registeredClient.getClientSecretExpiresAt() : Instant.now().plusSeconds(31536000));
         entity.setClientName(registeredClient.getClientName());

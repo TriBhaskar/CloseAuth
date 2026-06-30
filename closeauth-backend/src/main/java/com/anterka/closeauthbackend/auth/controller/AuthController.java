@@ -12,6 +12,10 @@ import com.anterka.closeauthbackend.auth.dto.response.UserRegistrationResponse;
 import com.anterka.closeauthbackend.auth.service.AuthenticationService;
 import com.anterka.closeauthbackend.user.service.UserPasswordResetService;
 import com.anterka.closeauthbackend.cache.service.RateLimiterService;
+import com.anterka.closeauthbackend.cache.strategy.LoginRateLimitStrategy;
+import com.anterka.closeauthbackend.cache.strategy.VerifyOtpRateLimitStrategy;
+import com.anterka.closeauthbackend.common.exception.RateLimitExceededException;
+import com.anterka.closeauthbackend.common.util.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,13 +39,20 @@ public class AuthController {
     private final AuthenticationService authenticationService;
     private final RateLimiterService rateLimiter;
     private final UserPasswordResetService passwordResetService;
+    private final ClientIpResolver clientIpResolver;
 
     @PostMapping(value = ApiPaths.LOGIN, consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<UserLoginResponse> loginUser(
-            @RequestBody UserLoginDto userLoginDto,
-            Authentication authentication) {
+            @Valid @RequestBody UserLoginDto userLoginDto,
+            Authentication authentication,
+            HttpServletRequest servletRequest) {
         log.info("Received authenticated user login request for email: {}", userLoginDto.email());
+
+        String clientIp = getClientIp(servletRequest);
+        if (rateLimiter.isLimited(LoginRateLimitStrategy.ACTION, clientIp)) {
+            throw new RateLimitExceededException("Too many login attempts. Please try again later.");
+        }
 
         String clientId = extractClientIdFromAuthentication(authentication);
 
@@ -57,7 +68,7 @@ public class AuthController {
 
     @PostMapping(value = ApiPaths.REGISTER, consumes = {MediaType.APPLICATION_JSON_VALUE})
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
-    public ResponseEntity<UserRegistrationResponse> registerUser(@RequestBody UserRegistrationDto userRegistrationDto) {
+    public ResponseEntity<UserRegistrationResponse> registerUser(@Valid @RequestBody UserRegistrationDto userRegistrationDto) {
         log.info("Received user creation request for username: {}", userRegistrationDto.username());
         return ResponseEntity.status(HttpStatus.CREATED).body(authenticationService.registerUser(userRegistrationDto));
     }
@@ -65,6 +76,12 @@ public class AuthController {
     @PostMapping(value = ApiPaths.VERIFY_EMAIL, consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<CustomApiResponse<Void>> verifyEmail(@Valid @RequestBody UserEmailVerificationDto userEmailVerificationRequest) {
         log.info("Received OTP verification request for email: {}", userEmailVerificationRequest.email());
+
+        // Limit OTP verification attempts per email to prevent brute-forcing the numeric code.
+        if (rateLimiter.isLimited(VerifyOtpRateLimitStrategy.ACTION, userEmailVerificationRequest.email())) {
+            throw new RateLimitExceededException("Too many verification attempts. Please try again later.");
+        }
+
         return ResponseEntity.ok(authenticationService.verifyUserEmail(userEmailVerificationRequest));
     }
 
@@ -100,7 +117,7 @@ public class AuthController {
 
     @PostMapping(value = ApiPaths.RESET_PASSWORD, consumes = {MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<CustomApiResponse<Void>> resetPassword(
-            @RequestBody UserResetPasswordDto request,
+            @Valid @RequestBody UserResetPasswordDto request,
             HttpServletRequest servletRequest) {
 
         String clientIp = getClientIp(servletRequest);
@@ -126,7 +143,8 @@ public class AuthController {
     public ResponseEntity<UserTokenValidationResponse> validateResetToken(
             @RequestParam String token
     ){
-        log.info("Received reset token request for token: {}", token);
+        // Do NOT log the raw token — it is a sensitive, single-use credential.
+        log.info("Received reset token validation request");
         UserTokenValidationResponse response = passwordResetService.validateToken(token);
         if(response.valid()){
             return ResponseEntity.ok(response);
@@ -135,10 +153,6 @@ public class AuthController {
     }
 
     private String getClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        return clientIpResolver.resolve(request);
     }
 }

@@ -11,6 +11,9 @@ import com.anterka.closeauthbackend.client.service.ClientThemeService;
 import com.anterka.closeauthbackend.client.service.ThemeConfigurationService;
 import com.anterka.closeauthbackend.common.dto.CustomApiResponse;
 import com.anterka.closeauthbackend.common.dto.ResponseStatusEnum;
+import com.anterka.closeauthbackend.common.util.ClientIpResolver;
+import com.anterka.closeauthbackend.user.security.UserActionContext;
+import com.anterka.closeauthbackend.user.security.UserContextHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +46,18 @@ public class ClientConfigurationController {
     private final ApplicationRegistrationConfigService registrationConfigService;
     private final ClientThemeService themeService;
     private final ThemeConfigurationService themeConfigService;
+    private final ClientIpResolver clientIpResolver;
+
+    /**
+     * Builds the immutable per-request user/action context (user id + audit
+     * metadata) so the service layer never has to touch HttpServletRequest.
+     */
+    private UserActionContext actionContext(HttpServletRequest request) {
+        return new UserActionContext(
+                UserContextHelper.getUserId(request),
+                clientIpResolver.resolve(request),
+                request.getHeader("User-Agent"));
+    }
 
     // ========================================
     // APPLICATION ROLES ENDPOINTS
@@ -56,10 +71,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Creating role for client: {}", clientId);
-        ApplicationRoleResponse response = roleService.createRole(
-                clientId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        ApplicationRoleResponse response = roleService.createRole(clientId, dto, actionContext(request));
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(CustomApiResponse.<ApplicationRoleResponse>builder()
@@ -73,10 +85,10 @@ public class ClientConfigurationController {
     @GetMapping("/{clientId}/roles")
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<List<ApplicationRoleResponse>>> getRoles(
-            @PathVariable String clientId,HttpServletRequest request) {
+            @PathVariable String clientId, HttpServletRequest request) {
 
         log.info("Getting roles for client: {}", clientId);
-        List<ApplicationRoleResponse> roles = roleService.getRolesByClient(clientId,request);
+        List<ApplicationRoleResponse> roles = roleService.getRolesByClient(clientId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<List<ApplicationRoleResponse>>builder()
                 .timestamp(LocalDateTime.now())
@@ -90,10 +102,10 @@ public class ClientConfigurationController {
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<ApplicationRoleResponse>> getRole(
             @PathVariable String clientId,
-            @PathVariable Integer roleId,HttpServletRequest request) {
+            @PathVariable Integer roleId, HttpServletRequest request) {
 
         log.info("Getting role {} for client: {}", roleId, clientId);
-        ApplicationRoleResponse response = roleService.getRole(clientId, roleId,request);
+        ApplicationRoleResponse response = roleService.getRole(clientId, roleId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ApplicationRoleResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -112,10 +124,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Updating role {} for client: {}", roleId, clientId);
-        ApplicationRoleResponse response = roleService.updateRole(
-                clientId, roleId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        ApplicationRoleResponse response = roleService.updateRole(clientId, roleId, dto, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ApplicationRoleResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -133,10 +142,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Deleting role {} for client: {}", roleId, clientId);
-        roleService.deleteRole(
-                clientId, roleId,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        roleService.deleteRole(clientId, roleId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<Void>builder()
                 .timestamp(LocalDateTime.now())
@@ -152,10 +158,10 @@ public class ClientConfigurationController {
     @GetMapping("/{clientId}/registration-config")
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<RegistrationConfigResponse>> getRegistrationConfig(
-            @PathVariable String clientId,HttpServletRequest request) {
+            @PathVariable String clientId, HttpServletRequest request) {
 
         log.info("Getting registration config for client: {}", clientId);
-        RegistrationConfigResponse response = registrationConfigService.getConfig(clientId,request);
+        RegistrationConfigResponse response = registrationConfigService.getConfig(clientId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<RegistrationConfigResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -173,10 +179,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Updating registration config for client: {}", clientId);
-        RegistrationConfigResponse response = registrationConfigService.updateConfig(
-                clientId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"), request);
+        RegistrationConfigResponse response = registrationConfigService.updateConfig(clientId, dto, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<RegistrationConfigResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -198,10 +201,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Creating theme for client: {}", clientId);
-        ThemeResponse response = themeService.createTheme(
-                clientId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        ThemeResponse response = themeService.createTheme(clientId, dto, actionContext(request));
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(CustomApiResponse.<ThemeResponse>builder()
@@ -215,10 +215,10 @@ public class ClientConfigurationController {
     @GetMapping("/{clientId}/themes")
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<List<ThemeResponse>>> getThemes(
-            @PathVariable String clientId,HttpServletRequest request) {
+            @PathVariable String clientId, HttpServletRequest request) {
 
         log.info("Getting themes for client: {}", clientId);
-        List<ThemeResponse> themes = themeService.getThemesByClient(clientId,request);
+        List<ThemeResponse> themes = themeService.getThemesByClient(clientId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<List<ThemeResponse>>builder()
                 .timestamp(LocalDateTime.now())
@@ -232,10 +232,10 @@ public class ClientConfigurationController {
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<ThemeResponse>> getTheme(
             @PathVariable String clientId,
-            @PathVariable Long themeId,HttpServletRequest request) {
+            @PathVariable Long themeId, HttpServletRequest request) {
 
         log.info("Getting theme {} for client: {}", themeId, clientId);
-        ThemeResponse response = themeService.getTheme(clientId, themeId,request);
+        ThemeResponse response = themeService.getTheme(clientId, themeId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ThemeResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -248,10 +248,10 @@ public class ClientConfigurationController {
     @GetMapping("/{clientId}/themes/active")
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<ThemeResponse>> getActiveTheme(
-            @PathVariable String clientId,HttpServletRequest request) {
+            @PathVariable String clientId, HttpServletRequest request) {
 
         log.info("Getting active theme for client: {}", clientId);
-        ThemeResponse response = themeService.getActiveTheme(clientId,request);
+        ThemeResponse response = themeService.getActiveTheme(clientId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ThemeResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -270,10 +270,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Updating theme {} for client: {}", themeId, clientId);
-        ThemeResponse response = themeService.updateTheme(
-                clientId, themeId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        ThemeResponse response = themeService.updateTheme(clientId, themeId, dto, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ThemeResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -287,10 +284,10 @@ public class ClientConfigurationController {
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<ThemeResponse>> activateTheme(
             @PathVariable String clientId,
-            @PathVariable Long themeId,HttpServletRequest request) {
+            @PathVariable Long themeId, HttpServletRequest request) {
 
         log.info("Activating theme {} for client: {}", themeId, clientId);
-        ThemeResponse response = themeService.activateTheme(clientId, themeId,request);
+        ThemeResponse response = themeService.activateTheme(clientId, themeId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ThemeResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -308,10 +305,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Deleting theme {} for client: {}", themeId, clientId);
-        themeService.deleteTheme(
-                clientId, themeId,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        themeService.deleteTheme(clientId, themeId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<Void>builder()
                 .timestamp(LocalDateTime.now())
@@ -333,10 +327,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Creating configuration for theme {} in client: {}", themeId, clientId);
-        ThemeConfigResponse response = themeConfigService.createConfiguration(
-                clientId, themeId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        ThemeConfigResponse response = themeConfigService.createConfiguration(clientId, themeId, dto, actionContext(request));
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(CustomApiResponse.<ThemeConfigResponse>builder()
@@ -351,10 +342,10 @@ public class ClientConfigurationController {
     @PreAuthorize("hasAuthority('SCOPE_client.create')")
     public ResponseEntity<CustomApiResponse<List<ThemeConfigResponse>>> getThemeConfigurations(
             @PathVariable String clientId,
-            @PathVariable Long themeId,HttpServletRequest request) {
+            @PathVariable Long themeId, HttpServletRequest request) {
 
         log.info("Getting configurations for theme {} in client: {}", themeId, clientId);
-        List<ThemeConfigResponse> configs = themeConfigService.getConfigurationsByTheme(clientId, themeId,request);
+        List<ThemeConfigResponse> configs = themeConfigService.getConfigurationsByTheme(clientId, themeId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<List<ThemeConfigResponse>>builder()
                 .timestamp(LocalDateTime.now())
@@ -369,10 +360,10 @@ public class ClientConfigurationController {
     public ResponseEntity<CustomApiResponse<ThemeConfigResponse>> getThemeConfiguration(
             @PathVariable String clientId,
             @PathVariable Long themeId,
-            @PathVariable Long configId,HttpServletRequest request) {
+            @PathVariable Long configId, HttpServletRequest request) {
 
         log.info("Getting configuration {} for theme {} in client: {}", configId, themeId, clientId);
-        ThemeConfigResponse response = themeConfigService.getConfiguration(clientId, themeId, configId,request);
+        ThemeConfigResponse response = themeConfigService.getConfiguration(clientId, themeId, configId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ThemeConfigResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -392,10 +383,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Updating configuration {} for theme {} in client: {}", configId, themeId, clientId);
-        ThemeConfigResponse response = themeConfigService.updateConfiguration(
-                clientId, themeId, configId, dto,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),request);
+        ThemeConfigResponse response = themeConfigService.updateConfiguration(clientId, themeId, configId, dto, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<ThemeConfigResponse>builder()
                 .timestamp(LocalDateTime.now())
@@ -414,11 +402,7 @@ public class ClientConfigurationController {
             HttpServletRequest request) {
 
         log.info("Deleting configuration {} for theme {} in client: {}", configId, themeId, clientId);
-        themeConfigService.deleteConfiguration(
-                clientId, themeId, configId,
-                request.getRemoteAddr(),
-                request.getHeader("User-Agent"),
-                request);
+        themeConfigService.deleteConfiguration(clientId, themeId, configId, actionContext(request));
 
         return ResponseEntity.ok(CustomApiResponse.<Void>builder()
                 .timestamp(LocalDateTime.now())
@@ -427,4 +411,3 @@ public class ClientConfigurationController {
                 .build());
     }
 }
-

@@ -27,6 +27,7 @@ public class CloseAuthProperties {
     private Registration registration = new Registration();
     private Cors cors = new Cors();
     private Bff bff = new Bff();
+    private Bootstrap bootstrap = new Bootstrap();
 
     @Getter
     @Setter
@@ -40,6 +41,15 @@ public class CloseAuthProperties {
     public static class Security {
         private int maxLoginAttempts = 5;
         private int lockoutDurationMinutes = 30;
+
+        /**
+         * IP addresses of trusted reverse proxies / BFF instances. The
+         * {@code X-Forwarded-For} header is only honored when the direct caller
+         * ({@code request.getRemoteAddr()}) is in this list. When empty, the raw
+         * socket address is always used, preventing clients from spoofing their IP
+         * to bypass IP-based rate limiting.
+         */
+        private List<String> trustedProxies = List.of();
     }
 
     @Getter
@@ -88,6 +98,34 @@ public class CloseAuthProperties {
          * This is the maximum time a user has to complete the login+consent flow.
          */
         private int oauthContextTtlSeconds = 600;
+    }
+
+    /**
+     * Settings for the bootstrap (seed) OAuth2 client created at startup by
+     * {@code DefaultClientInitializer}. The secret MUST be provided externally
+     * (env/secret manager) in any non-local environment, and seeding should be
+     * disabled once the client exists in a managed datastore.
+     */
+    @Getter
+    @Setter
+    public static class Bootstrap {
+        /**
+         * Whether to create the default admin client on startup if it is missing.
+         * Set to {@code false} in production once the client is provisioned.
+         */
+        private boolean enabled = true;
+
+        private String clientId = "admin-client";
+
+        /**
+         * Plaintext secret for the bootstrap client. When blank, seeding is skipped
+         * (no client with a default/guessable secret is ever created).
+         */
+        private String clientSecret = "";
+
+        private String redirectUri = "http://localhost:8080/login/oauth2/code/admin-client";
+
+        private List<String> scopes = List.of("read", "write", "client.create");
     }
 }
 

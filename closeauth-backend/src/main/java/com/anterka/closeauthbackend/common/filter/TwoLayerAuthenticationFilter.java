@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.common.filter;
 
+import com.anterka.closeauthbackend.auth.service.JwtTokenService;
 import com.anterka.closeauthbackend.user.security.UserContextHelper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -92,6 +93,17 @@ public class TwoLayerAuthenticationFilter extends OncePerRequestFilter {
     private boolean validateAndStoreUserInfo(String token, HttpServletRequest request) {
         try {
             Jwt jwt = jwtDecoder.decode(token);
+
+            // Ensure this is genuinely a user-identity token and not some other JWT
+            // (e.g. an OAuth2 access token) that happens to be signed by the same key.
+            // This closes a token-confusion gap between the "client identity" and
+            // "user identity" trust boundaries.
+            if (!JwtTokenService.USER_TOKEN_USE.equals(jwt.getClaimAsString("token_use"))
+                    || jwt.getAudience() == null
+                    || !jwt.getAudience().contains(JwtTokenService.USER_TOKEN_AUDIENCE)) {
+                log.warn("X-User-Token rejected: missing/invalid token_use or audience claim");
+                return false;
+            }
 
             String username = jwt.getSubject();
             if (username == null) {

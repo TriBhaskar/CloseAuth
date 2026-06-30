@@ -12,8 +12,8 @@ import com.anterka.closeauthbackend.client.repository.*;
 import com.anterka.closeauthbackend.common.exception.ClientOwnershipException;
 import com.anterka.closeauthbackend.common.exception.RoleAlreadyExistsException;
 import com.anterka.closeauthbackend.user.entity.Users;
+import com.anterka.closeauthbackend.user.security.UserActionContext;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,8 +43,8 @@ public class ApplicationRoleService {
      */
     @Transactional
     public ApplicationRoleResponse createRole(String clientId, CreateApplicationRoleDto dto,
-                                             String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                              UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         // Check if role already exists
         if (applicationRoleRepository.findByClientIdAndRoleName(clientId, dto.getRoleName()).isPresent()) {
@@ -68,8 +68,8 @@ public class ApplicationRoleService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("roleName", dto.getRoleName());
         metadata.put("isDefault", saved.getIsDefault());
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "ROLE_CREATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "ROLE_CREATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Created application role: {} for client: {}", dto.getRoleName(), clientId);
         return mapToResponse(saved);
@@ -156,9 +156,9 @@ public class ApplicationRoleService {
      */
     @Transactional
     public ApplicationRoleResponse updateRole(String clientId, Integer roleId,
-                                             UpdateApplicationRoleDto dto,
-                                             String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                              UpdateApplicationRoleDto dto,
+                                              UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ApplicationRole role = applicationRoleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Role not found"));
@@ -193,8 +193,8 @@ public class ApplicationRoleService {
                 "description", updated.getDescription(),
                 "permissions", updated.getPermissions(),
                 "isDefault", updated.getIsDefault()));
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "ROLE_UPDATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "ROLE_UPDATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Updated role: {} for client: {}", roleId, clientId);
         return mapToResponse(updated);
@@ -204,8 +204,8 @@ public class ApplicationRoleService {
      * Get all roles for a client
      */
     @Transactional(readOnly = true)
-    public List<ApplicationRoleResponse> getRolesByClient(String clientId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public List<ApplicationRoleResponse> getRolesByClient(String clientId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
         return applicationRoleRepository.findByClientId(clientId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -215,8 +215,8 @@ public class ApplicationRoleService {
      * Get a specific role
      */
     @Transactional(readOnly = true)
-    public ApplicationRoleResponse getRole(String clientId, Integer roleId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public ApplicationRoleResponse getRole(String clientId, Integer roleId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ApplicationRole role = applicationRoleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Role not found"));
@@ -232,8 +232,8 @@ public class ApplicationRoleService {
      * Delete a role
      */
     @Transactional
-    public void deleteRole(String clientId, Integer roleId, String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public void deleteRole(String clientId, Integer roleId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ApplicationRole role = applicationRoleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Role not found"));
@@ -249,8 +249,8 @@ public class ApplicationRoleService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("roleId", roleId);
         metadata.put("roleName", roleName);
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "ROLE_DELETED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "ROLE_DELETED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Deleted role: {} for client: {}", roleId, clientId);
     }
@@ -271,4 +271,3 @@ public class ApplicationRoleService {
                 .build();
     }
 }
-

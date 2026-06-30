@@ -16,7 +16,6 @@ import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties
 import com.anterka.closeauthbackend.common.dto.CustomApiResponse;
 import com.anterka.closeauthbackend.common.exception.DataAlreadyExistsException;
 import com.anterka.closeauthbackend.common.exception.UserAuthenticationException;
-import com.anterka.closeauthbackend.common.exception.UserNotFoundException;
 import com.anterka.closeauthbackend.common.exception.UserRegistrationException;
 import com.anterka.closeauthbackend.notification.service.EmailService;
 import com.anterka.closeauthbackend.user.entity.Users;
@@ -142,8 +141,10 @@ public class AuthenticationService {
     public UserLoginResponse loginUser(UserLoginDto request, String clientId) {
         log.info("Processing login request for email: {}", request.email());
 
+        // Use the SAME exception + message for "unknown email" and "wrong password"
+        // so the response cannot be used to enumerate which emails are registered.
         Users user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new UserNotFoundException("Invalid email or password"));
+                .orElseThrow(() -> new UserAuthenticationException("Invalid email or password"));
 
         // Check if account is locked
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(LocalDateTime.now())) {

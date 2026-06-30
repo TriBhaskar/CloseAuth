@@ -5,12 +5,14 @@ import com.anterka.closeauthbackend.common.config.handler.OAuthLoginSuccessHandl
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.constants.ApiPaths;
 import com.anterka.closeauthbackend.common.filter.TwoLayerAuthenticationFilter;
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +38,11 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -45,6 +52,7 @@ import static com.anterka.closeauthbackend.common.config.CustomClientMetadataCon
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@Slf4j
 public class AuthorisationServerConfig {
 
     private final CloseAuthProperties properties;
@@ -194,17 +202,55 @@ public class AuthorisationServerConfig {
     }
 
     /**
-     * JWK Source using persisted RSA keys from PEM files.
-     * Keys survive application restarts — tokens remain valid.
+     * JWK Source backed by the configured RSA keys. When no keys are configured
+     * (development), an ephemeral keypair is generated so the server can still
+     * start — tokens will NOT survive a restart in that case.
+     *
+     * <p>The key id ({@code kid}) is derived deterministically from the key
+     * (RFC 7638 thumbprint) so it stays stable across restarts for the same key,
+     * keeping JWKS-caching clients working.
      */
     @Bean
     public JWKSource<SecurityContext> jwkSource() {
-        RSAKey rsaKey = new RSAKey.Builder(properties.getKeys().getRsaPublicKey())
-                .privateKey(properties.getKeys().getRsaPrivateKey())
-                .keyID(UUID.randomUUID().toString())
-                .build();
+        RSAPublicKey publicKey = properties.getKeys().getRsaPublicKey();
+        RSAPrivateKey privateKey = properties.getKeys().getRsaPrivateKey();
+
+        if (publicKey == null || privateKey == null) {
+            log.warn("No RSA signing keys configured (closeauth.keys.*). Generating an EPHEMERAL keypair; "
+                    + "issued tokens will not survive a restart. Configure persistent keys for production.");
+            KeyPair keyPair = generateRsaKeyPair();
+            publicKey = (RSAPublicKey) keyPair.getPublic();
+            privateKey = (RSAPrivateKey) keyPair.getPrivate();
+        }
+
+        RSAKey rsaKey = buildRsaKey(publicKey, privateKey);
         JWKSet jwkSet = new JWKSet(rsaKey);
         return new ImmutableJWKSet<>(jwkSet);
+    }
+
+    private static RSAKey buildRsaKey(RSAPublicKey publicKey, RSAPrivateKey privateKey) {
+        try {
+            return new RSAKey.Builder(publicKey)
+                    .privateKey(privateKey)
+                    .keyIDFromThumbprint()
+                    .build();
+        } catch (JOSEException e) {
+            // Extremely unlikely; fall back to a random key id rather than failing startup.
+            return new RSAKey.Builder(publicKey)
+                    .privateKey(privateKey)
+                    .keyID(UUID.randomUUID().toString())
+                    .build();
+        }
+    }
+
+    private static KeyPair generateRsaKeyPair() {
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(2048);
+            return generator.generateKeyPair();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Unable to generate RSA keypair", e);
+        }
     }
 
     @Bean

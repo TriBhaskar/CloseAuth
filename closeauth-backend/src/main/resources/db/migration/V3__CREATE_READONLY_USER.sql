@@ -4,12 +4,14 @@
 -- This user will be used by external services that need to read theme configurations
 -- but should not have access to other sensitive data in the database
 
--- Create the read-only user (change password in production!)
+-- Create the read-only user. The password is injected via a Flyway placeholder
+-- (${bffReadonlyPassword}) supplied from configuration/environment, so no real
+-- credential is committed to source control.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'bff_readonly_user') THEN
-        CREATE USER bff_readonly_user WITH PASSWORD 'bff_readonly_password';
-    END IF;
+        CREATE USER bff_readonly_user WITH PASSWORD '${bffReadonlyPassword}';
+END IF;
 END
 $$;
 

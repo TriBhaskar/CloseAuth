@@ -8,8 +8,8 @@ import com.anterka.closeauthbackend.client.entity.ApplicationRegistrationConfig;
 import com.anterka.closeauthbackend.client.entity.Client;
 import com.anterka.closeauthbackend.client.repository.ApplicationRegistrationConfigRepository;
 import com.anterka.closeauthbackend.client.repository.ClientRepository;
+import com.anterka.closeauthbackend.user.security.UserActionContext;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,8 +33,8 @@ public class ApplicationRegistrationConfigService {
      * Get registration config for a client
      */
     @Transactional(readOnly = true)
-    public RegistrationConfigResponse getConfig(String clientId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public RegistrationConfigResponse getConfig(String clientId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ApplicationRegistrationConfig config = configRepository.findByClient_ClientId(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Registration config not found for client"));
@@ -48,8 +48,8 @@ public class ApplicationRegistrationConfigService {
     @Transactional
     public RegistrationConfigResponse updateConfig(String clientId,
                                                    UpdateApplicationRegistrationConfigDto dto,
-                                                   String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                                   UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ApplicationRegistrationConfig config = configRepository.findByClient_ClientId(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Registration config not found for client"));
@@ -121,8 +121,8 @@ public class ApplicationRegistrationConfigService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("before", beforeState);
         metadata.put("after", captureState(updated));
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "REGISTRATION_CONFIG_UPDATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "REGISTRATION_CONFIG_UPDATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Updated registration config for client: {}", clientId);
         return mapToResponse(updated);
@@ -209,4 +209,3 @@ public class ApplicationRegistrationConfigService {
                 .build();
     }
 }
-

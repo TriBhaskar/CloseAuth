@@ -27,6 +27,14 @@ public class JwtTokenService {
 
     private static final long TOKEN_VALIDITY_HOURS = 24;
 
+    /**
+     * Marks a token as a CloseAuth admin user-identity token (the {@code X-User-Token}).
+     * Validated by {@code TwoLayerAuthenticationFilter} so that ordinary OAuth2 access
+     * tokens (which lack these claims) cannot be replayed as user-identity tokens.
+     */
+    public static final String USER_TOKEN_USE = "user_identity";
+    public static final String USER_TOKEN_AUDIENCE = "closeauth-user-token";
+
     private final JwtEncoder jwtEncoder;
     private final AuthorizationServerSettings authorizationServerSettings;
 
@@ -52,6 +60,7 @@ public class JwtTokenService {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(authorizationServerSettings.getIssuer())
                 .subject(user.getUsername())
+                .audience(java.util.List.of(USER_TOKEN_AUDIENCE))
                 .issuedAt(now)
                 .expiresAt(expiry)
                 .claim("userId", user.getId())
@@ -59,6 +68,7 @@ public class JwtTokenService {
                 .claim("roles", roles)
                 .claim("username", user.getUsername())
                 .claim("token_type", "access_token")
+                .claim("token_use", USER_TOKEN_USE)
                 .build();
 
         // Create JWT header

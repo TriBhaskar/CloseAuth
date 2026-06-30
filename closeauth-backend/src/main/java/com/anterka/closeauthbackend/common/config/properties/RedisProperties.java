@@ -83,6 +83,18 @@ public class RedisProperties {
         private int resetPassword = 3;
 
         /**
+         * Maximum login attempts per IP per window (brute-force protection,
+         * complements per-account lockout).
+         */
+        private int login = 10;
+
+        /**
+         * Maximum OTP verification attempts per email per window
+         * (prevents brute-forcing of the numeric OTP).
+         */
+        private int verifyOtp = 5;
+
+        /**
          * Rate limit window in minutes
          */
         private int windowMinutes = 15;

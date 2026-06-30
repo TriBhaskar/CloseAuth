@@ -9,7 +9,7 @@ import com.anterka.closeauthbackend.client.repository.ClientThemeRepository;
 import com.anterka.closeauthbackend.common.exception.ClientOwnershipException;
 import com.anterka.closeauthbackend.common.exception.ThemeActivationException;
 import com.anterka.closeauthbackend.common.exception.ThemeNotFoundException;
-import jakarta.servlet.http.HttpServletRequest;
+import com.anterka.closeauthbackend.user.security.UserActionContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,8 +35,8 @@ public class ClientThemeService {
      */
     @Transactional
     public ThemeResponse createTheme(String clientId, CreateClientThemeDto dto,
-                                     String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                     UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         // Check if theme name already exists
         if (themeRepository.existsByClientIdAndThemeName(clientId, dto.getThemeName())) {
@@ -67,8 +67,8 @@ public class ClientThemeService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("themeId", saved.getId());
         metadata.put("themeName", dto.getThemeName());
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "THEME_CREATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "THEME_CREATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Created theme: {} for client: {}", dto.getThemeName(), clientId);
         return mapToResponse(saved);
@@ -112,8 +112,8 @@ public class ClientThemeService {
      */
     @Transactional
     public ThemeResponse updateTheme(String clientId, Long themeId, UpdateClientThemeDto dto,
-                                     String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+                                     UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -161,7 +161,7 @@ public class ClientThemeService {
 
         // Handle activation toggle logic
         if (dto.getIsActive() != null && dto.getIsActive() && !theme.getIsActive()) {
-            activateTheme(clientId, themeId, request);
+            activateTheme(clientId, themeId, context);
         }
 
         ClientThemes updated = themeRepository.save(theme);
@@ -172,8 +172,8 @@ public class ClientThemeService {
         metadata.put("themeName", theme.getThemeName());
         metadata.put("before", beforeState);
         metadata.put("after", captureState(updated));
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "THEME_UPDATED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "THEME_UPDATED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Updated theme: {} for client: {}", themeId, clientId);
         return mapToResponse(updated);
@@ -183,8 +183,8 @@ public class ClientThemeService {
      * Activate a theme (deactivates all other themes for the client)
      */
     @Transactional
-    public ThemeResponse activateTheme(String clientId, Long themeId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public ThemeResponse activateTheme(String clientId, Long themeId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -208,8 +208,8 @@ public class ClientThemeService {
      * Get all themes for a client
      */
     @Transactional(readOnly = true)
-    public List<ThemeResponse> getThemesByClient(String clientId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public List<ThemeResponse> getThemesByClient(String clientId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
         return themeRepository.findByClientId(clientId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -219,8 +219,8 @@ public class ClientThemeService {
      * Get a specific theme
      */
     @Transactional(readOnly = true)
-    public ThemeResponse getTheme(String clientId, Long themeId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public ThemeResponse getTheme(String clientId, Long themeId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -236,8 +236,8 @@ public class ClientThemeService {
      * Get the active theme for a client
      */
     @Transactional(readOnly = true)
-    public ThemeResponse getActiveTheme(String clientId, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public ThemeResponse getActiveTheme(String clientId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findByClientIdAndIsActiveTrue(clientId)
                 .orElseThrow(() -> new ThemeNotFoundException("No active theme found for client"));
@@ -249,8 +249,8 @@ public class ClientThemeService {
      * Delete a theme
      */
     @Transactional
-    public void deleteTheme(String clientId, Long themeId, String ipAddress, String userAgent, HttpServletRequest request) {
-        ownershipVerifier.verify(clientId, request);
+    public void deleteTheme(String clientId, Long themeId, UserActionContext context) {
+        ownershipVerifier.verify(clientId, context.userId());
 
         ClientThemes theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ThemeNotFoundException("Theme not found"));
@@ -270,8 +270,8 @@ public class ClientThemeService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("themeId", themeId);
         metadata.put("themeName", themeName);
-        auditLogService.logAction(clientId, ownershipVerifier.getUserId(request), "THEME_DELETED",
-                ipAddress, userAgent, metadata);
+        auditLogService.logAction(clientId, context.userId(), "THEME_DELETED",
+                context.ipAddress(), context.userAgent(), metadata);
 
         log.info("Deleted theme: {} for client: {}", themeId, clientId);
     }
@@ -315,4 +315,3 @@ public class ClientThemeService {
                 .build();
     }
 }
-

@@ -28,12 +28,26 @@ public class CloseAuthProperties {
     private Cors cors = new Cors();
     private Bff bff = new Bff();
     private Bootstrap bootstrap = new Bootstrap();
+    private ResourceServer resourceServer = new ResourceServer();
 
     @Getter
     @Setter
     public static class Keys {
         private RSAPublicKey rsaPublicKey;
         private RSAPrivateKey rsaPrivateKey;
+    }
+
+    @Getter
+    @Setter
+    public static class ResourceServer {
+        /**
+         * Hostname base for auto-generated resource-server audience identifiers. An auto-created
+         * resource server's audience is a conformant URI:
+         * {@code https://{tenantSlug}.{audienceHostBase}/{rsSlug}} (e.g.
+         * {@code https://acme.rs.closeauth.io/todomaster-api}). Set to the real hosted domain in
+         * production. Explicit (non-auto) resource servers supply their own audience and ignore this.
+         */
+        private String audienceHostBase = "rs.closeauth.io";
     }
 
     @Getter

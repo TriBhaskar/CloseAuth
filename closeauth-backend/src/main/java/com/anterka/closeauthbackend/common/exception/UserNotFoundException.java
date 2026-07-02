@@ -1,22 +1,18 @@
 package com.anterka.closeauthbackend.common.exception;
 
-import org.springframework.http.HttpStatus;
+import java.util.Map;
 
-public class UserNotFoundException extends CloseAuthException {
+/**
+ * A user could not be found (within the tenant scope). Category
+ * {@link ErrorCategory#NOT_FOUND}.
+ */
+public class UserNotFoundException extends CloseAuthDomainException {
 
-    private static final String ERROR_CODE = "USER_NOT_FOUND";
+    private static final String CODE = "user.not_found";
 
-    public UserNotFoundException(String message) {
-        super(message);
-    }
-
-    @Override
-    public HttpStatus getHttpStatus() {
-        return HttpStatus.NOT_FOUND;
-    }
-
-    @Override
-    public String getErrorCode() {
-        return ERROR_CODE;
+    public UserNotFoundException(String lookupField, Object lookupValue) {
+        super(ErrorCategory.NOT_FOUND, CODE,
+                "User not found for " + lookupField + "=" + lookupValue,
+                Map.of(lookupField, String.valueOf(lookupValue)));
     }
 }

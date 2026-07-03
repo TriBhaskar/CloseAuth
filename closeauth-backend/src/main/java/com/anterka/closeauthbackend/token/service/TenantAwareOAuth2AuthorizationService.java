@@ -23,7 +23,9 @@ import java.util.List;
 @Component
 public class TenantAwareOAuth2AuthorizationService extends JdbcOAuth2AuthorizationService {
 
-    /** Verified against SAS 1.5.1 {@code JdbcOAuth2AuthorizationService.COLUMN_NAMES}. */
+    // PINNED TO SAS 1.5.1. On any SAS version bump, re-verify this column list and count against
+    // JdbcOAuth2AuthorizationService's INSERT columns (COLUMN_NAMES) and update BOTH the list below and this
+    // assertion count. See STAGE_4A_REPORT.md §1.
     private static final int SAS_COLUMN_COUNT = 33;
 
     private static final String INSERT_SQL = """

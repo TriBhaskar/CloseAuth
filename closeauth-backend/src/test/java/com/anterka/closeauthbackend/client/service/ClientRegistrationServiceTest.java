@@ -43,7 +43,8 @@ class ClientRegistrationServiceTest {
         CommandValidator commandValidator =
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         service = new ClientRegistrationService(registeredClientRepository, resourceServerService,
-                tenantService, commandValidator, passwordEncoder);
+                tenantService, commandValidator, passwordEncoder,
+                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties());
     }
 
     @Test

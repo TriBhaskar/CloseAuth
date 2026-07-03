@@ -1,6 +1,11 @@
 package com.anterka.closeauthbackend.common.config;
 
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
+import com.anterka.closeauthbackend.token.service.RefreshTokenRecordingAuthenticationProvider;
+import com.anterka.closeauthbackend.token.service.RefreshTokenRotationService;
+import com.anterka.closeauthbackend.token.service.ReplayDetectingRefreshTokenAuthenticationProvider;
+import com.anterka.closeauthbackend.token.service.RevocationAwareTokenIntrospectionAuthenticationProvider;
+import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -13,7 +18,12 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2RefreshTokenAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenIntrospectionAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
@@ -27,6 +37,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Spring Authorization Server wiring (§7.2). Uses SAS's intended extension points only — no custom filters.
@@ -46,10 +57,20 @@ public class AuthorizationServerConfig {
     /** SAS endpoints (/oauth2/**, /.well-known/**, /oauth2/jwks, /connect/**, /userinfo). */
     @Bean
     @Order(1)
-    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain authorizationServerSecurityFilterChain(
+            HttpSecurity http,
+            RefreshTokenRotationService rotationService,
+            OAuth2AuthorizationService authorizationService,
+            TokenRevocationService tokenRevocationService) throws Exception {
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .oidc(Customizer.withDefaults()); // OIDC discovery, UserInfo, ID tokens
+                .oidc(Customizer.withDefaults()) // OIDC discovery, UserInfo, ID tokens
+                // 4b-i: wrap SAS's token-endpoint providers to add refresh rotation + replay detection.
+                .tokenEndpoint(tokenEndpoint -> tokenEndpoint.authenticationProviders(
+                        rotationProviders(rotationService, authorizationService)))
+                // 4b-ii: wrap the introspection provider to consult the Redis revocation list.
+                .tokenIntrospectionEndpoint(introspection -> introspection.authenticationProviders(
+                        introspectionProviders(tokenRevocationService)));
         http
                 // Redirect unauthenticated browser requests to the (SAS default for now) login page — Stage 6 replaces it.
                 .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
@@ -58,6 +79,38 @@ public class AuthorizationServerConfig {
                 // UserInfo / protected OIDC endpoints validate the CloseAuth-issued JWT.
                 .oauth2ResourceServer(rs -> rs.jwt(Customizer.withDefaults()));
         return http.build();
+    }
+
+    /**
+     * Replaces SAS's refresh and authorization-code token-endpoint providers with CloseAuth wrappers that add
+     * rotation + replay detection (refresh) and family-root recording (authorization code). SAS constructs the
+     * providers; we only wrap the existing instances in the list (the framework's intended extension point).
+     */
+    private Consumer<List<AuthenticationProvider>> rotationProviders(
+            RefreshTokenRotationService rotationService, OAuth2AuthorizationService authorizationService) {
+        return providers -> {
+            for (int i = 0; i < providers.size(); i++) {
+                AuthenticationProvider provider = providers.get(i);
+                if (provider instanceof OAuth2RefreshTokenAuthenticationProvider) {
+                    providers.set(i, new ReplayDetectingRefreshTokenAuthenticationProvider(provider, rotationService));
+                } else if (provider instanceof OAuth2AuthorizationCodeAuthenticationProvider) {
+                    providers.set(i, new RefreshTokenRecordingAuthenticationProvider(
+                            provider, rotationService, authorizationService));
+                }
+            }
+        };
+    }
+
+    /** Replaces SAS's introspection provider with a wrapper that consults the Redis revocation list (4b-ii). */
+    private Consumer<List<AuthenticationProvider>> introspectionProviders(TokenRevocationService tokenRevocationService) {
+        return providers -> {
+            for (int i = 0; i < providers.size(); i++) {
+                if (providers.get(i) instanceof OAuth2TokenIntrospectionAuthenticationProvider provider) {
+                    providers.set(i, new RevocationAwareTokenIntrospectionAuthenticationProvider(
+                            provider, tokenRevocationService));
+                }
+            }
+        };
     }
 
     /** Everything else (login page for the authorization-code flow — SAS default until Stage 6). */

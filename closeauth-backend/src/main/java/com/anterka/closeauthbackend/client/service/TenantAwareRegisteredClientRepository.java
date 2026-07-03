@@ -31,7 +31,9 @@ import java.util.UUID;
 @Component
 public class TenantAwareRegisteredClientRepository extends JdbcRegisteredClientRepository {
 
-    /** Verified against SAS 1.5.1 {@code JdbcRegisteredClientRepository.COLUMN_NAMES}. */
+    // PINNED TO SAS 1.5.1. On any SAS version bump, re-verify this column list and count against
+    // JdbcRegisteredClientRepository's INSERT columns (COLUMN_NAMES) and update BOTH the list below and this
+    // assertion count. See STAGE_4A_REPORT.md §1.
     private static final int SAS_COLUMN_COUNT = 13;
 
     private static final String INSERT_SQL = """
@@ -53,6 +55,10 @@ public class TenantAwareRegisteredClientRepository extends JdbcRegisteredClientR
             return;
         }
 
+        // tenant_id is stored in both the settings blob (how SAS round-trips it, read here) and the column
+        // (authoritative FK/uniqueness/query source, written below). These must stay consistent; this holds
+        // because tenant_id is immutable for a client. A future feature allowing tenant reassignment would have
+        // to update BOTH the client_settings blob and the tenant_id column together.
         UUID tenantId = CloseAuthClientSettings.getTenantId(registeredClient);
         if (tenantId == null) {
             throw new IllegalStateException(

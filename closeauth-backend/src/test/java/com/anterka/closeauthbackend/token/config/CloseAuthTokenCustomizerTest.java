@@ -119,16 +119,46 @@ class CloseAuthTokenCustomizerTest {
     void machineToMachineTokenHasNoUserRolesAndTargetsResourceServerAudience() {
         JwtClaimsSet.Builder claims = JwtClaimsSet.builder().issuer("https://auth.example").subject("client-x");
         customizer.customize(context(client(AuthorizationGrantType.CLIENT_CREDENTIALS), OAuth2TokenType.ACCESS_TOKEN,
-                AuthorizationGrantType.CLIENT_CREDENTIALS, "client-x", Set.of("read"), claims));
+                AuthorizationGrantType.CLIENT_CREDENTIALS, "client-x", Set.of("todomaster-api:read"), claims));
         JwtClaimsSet result = claims.build();
 
         assertThat(result.getClaimAsString("tenant_id")).isEqualTo(TENANT.toString());
         assertThat(result.getAudience()).containsExactly(AUDIENCE);
         assertThat(result.getClaimAsString("client_id")).isEqualTo("client-x");
-        assertThat(result.getClaimAsString("scope")).isEqualTo("read");
-        assertThat(result.getClaim("tenant_roles")).isNull();   // no user roles for M2M
-        assertThat(result.getClaim("app_roles")).isNull();
-        assertThat(result.getClaim("idp")).isNull();
+        assertThat(result.getClaimAsString("scope")).isEqualTo("todomaster-api:read");
+        assertThat((Object) result.getClaim("tenant_roles")).isNull();   // no user roles for M2M
+        assertThat((Object) result.getClaim("app_roles")).isNull();
+        assertThat((Object) result.getClaim("idp")).isNull();
+    }
+
+    @Test
+    void audienceIsNarrowedToTheRequestedResourceServerOnly() {
+        // The client is authorized for BOTH RS-A (todomaster-api) and RS-B (cryptotracker-api)...
+        UUID rsBId = UUID.randomUUID();
+        String audienceB = "https://acme.rs.closeauth.io/cryptotracker-api";
+        ClientAuthorizedResourceServer linkA = new ClientAuthorizedResourceServer();
+        linkA.setResourceServerId(RS_ID);
+        ClientAuthorizedResourceServer linkB = new ClientAuthorizedResourceServer();
+        linkB.setResourceServerId(rsBId);
+        when(clientAuthRepo.findByClientRegisteredId("client-internal-id")).thenReturn(List.of(linkA, linkB));
+        ResourceServer rsA = new ResourceServer();
+        rsA.setId(RS_ID);
+        rsA.setSlug("todomaster-api");
+        rsA.setAudienceIdentifier(AUDIENCE);
+        ResourceServer rsB = new ResourceServer();
+        rsB.setId(rsBId);
+        rsB.setSlug("cryptotracker-api");
+        rsB.setAudienceIdentifier(audienceB);
+        when(resourceServerRepository.findAllById(any())).thenReturn(List.of(rsA, rsB));
+
+        // ...but the token requests ONLY RS-A's scope.
+        JwtClaimsSet.Builder claims = JwtClaimsSet.builder().issuer("https://auth.example").subject("client-x");
+        customizer.customize(context(client(AuthorizationGrantType.CLIENT_CREDENTIALS), OAuth2TokenType.ACCESS_TOKEN,
+                AuthorizationGrantType.CLIENT_CREDENTIALS, "client-x", Set.of("todomaster-api:read"), claims));
+        JwtClaimsSet result = claims.build();
+
+        assertThat(result.getAudience()).containsExactly(AUDIENCE);   // RS-A only
+        assertThat(result.getAudience()).doesNotContain(audienceB);   // NOT RS-B, though the client can target it
     }
 
     @Test
@@ -142,8 +172,8 @@ class CloseAuthTokenCustomizerTest {
 
         assertThat(result.getSubject()).isEqualTo(userId.toString());
         assertThat(result.getClaimAsString("tenant_id")).isEqualTo(TENANT.toString());
-        assertThat(result.getClaim("scope")).isNull();          // ID token excludes authorization claims
-        assertThat(result.getClaim("app_roles")).isNull();
-        assertThat(result.getClaim("tenant_roles")).isNull();
+        assertThat((Object) result.getClaim("scope")).isNull();          // ID token excludes authorization claims
+        assertThat((Object) result.getClaim("app_roles")).isNull();
+        assertThat((Object) result.getClaim("tenant_roles")).isNull();
     }
 }

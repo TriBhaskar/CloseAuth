@@ -20,6 +20,9 @@ import java.util.List;
 @Component
 public class TenantAwareOAuth2AuthorizationConsentService extends JdbcOAuth2AuthorizationConsentService {
 
+    // PINNED TO SAS 1.5.1. On any SAS version bump, re-verify this column list and count against
+    // JdbcOAuth2AuthorizationConsentService's INSERT columns and update BOTH the list below and this assertion
+    // count. See STAGE_4A_REPORT.md §1.
     private static final int SAS_COLUMN_COUNT = 3; // registered_client_id, principal_name, authorities
 
     private static final String INSERT_SQL = """

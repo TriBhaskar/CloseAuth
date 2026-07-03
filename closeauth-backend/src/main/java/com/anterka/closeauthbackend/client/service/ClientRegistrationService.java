@@ -2,6 +2,7 @@ package com.anterka.closeauthbackend.client.service;
 
 import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
+import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
 import com.anterka.closeauthbackend.resourceserver.service.ResourceServerService;
@@ -18,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,14 +38,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClientRegistrationService {
 
-    /** §7.3: 5-minute access tokens. */
-    private static final Duration ACCESS_TOKEN_TTL = Duration.ofMinutes(5);
-
     private final RegisteredClientRepository registeredClientRepository;
     private final ResourceServerService resourceServerService;
     private final TenantService tenantService;
     private final CommandValidator commandValidator;
     private final PasswordEncoder passwordEncoder;
+    private final CloseAuthProperties properties;
 
     @Transactional
     public ClientView registerClient(TenantContext context, RegisterClientCommand command) {
@@ -88,7 +86,11 @@ public class ClientRegistrationService {
         builder.clientSettings(clientSettings.build());
 
         builder.tokenSettings(TokenSettings.builder()
-                .accessTokenTimeToLive(ACCESS_TOKEN_TTL)
+                .accessTokenTimeToLive(properties.getToken().getAccessTokenTtl())
+                // reuseRefreshTokens=false makes SAS issue a NEW refresh token on each refresh — this is what
+                // enables rotation at the SAS level (4b-i). Replaces the SAS default (reuse=true, 60-min).
+                .refreshTokenTimeToLive(properties.getToken().getRefreshTokenTtl())
+                .reuseRefreshTokens(false)
                 .build());
 
         return builder.build();

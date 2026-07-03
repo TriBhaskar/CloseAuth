@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -29,6 +30,19 @@ public class CloseAuthProperties {
     private Bff bff = new Bff();
     private Bootstrap bootstrap = new Bootstrap();
     private ResourceServer resourceServer = new ResourceServer();
+    private Token token = new Token();
+
+    /**
+     * Token lifetimes (§7.3). Single source of truth: used both when configuring a client's {@code TokenSettings}
+     * and for the Redis revocation-marker TTL (which must equal the max access-token TTL so a marker outlives the
+     * tokens it suppresses). Bound as ISO/Boot durations (e.g. {@code 5m}, {@code 14d}).
+     */
+    @Getter
+    @Setter
+    public static class Token {
+        private Duration accessTokenTtl = Duration.ofMinutes(5);
+        private Duration refreshTokenTtl = Duration.ofDays(14);
+    }
 
     @Getter
     @Setter

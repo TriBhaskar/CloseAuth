@@ -108,6 +108,21 @@ public class RefreshTokenRotationService {
         return refreshTokenRepository.revokeAllUserFamilies(userId, tenantId, Instant.now());
     }
 
+    /**
+     * Stage 5 seam: link a refresh-token family to an Auth Server session (the auth-code flow wires the call in
+     * Stage 6), so that revoking the session cascades to its refresh tokens via {@link #revokeSessionFamilies}.
+     */
+    @Transactional
+    public void linkFamilyToSession(UUID familyId, UUID sessionId) {
+        refreshTokenRepository.linkFamilyToSession(familyId, sessionId);
+    }
+
+    /** Stage 5 revoke cascade: revoke every refresh token belonging to a session (session-scoped). Returns rows revoked. */
+    @Transactional
+    public int revokeSessionFamilies(UUID sessionId) {
+        return refreshTokenRepository.revokeAllSessionFamilies(sessionId, Instant.now());
+    }
+
     private RefreshToken persist(UUID userId, UUID tenantId, String clientRegisteredId, UUID familyId,
                                  UUID parentTokenId, RefreshTokenIssuance issuance) {
         RefreshToken token = new RefreshToken();

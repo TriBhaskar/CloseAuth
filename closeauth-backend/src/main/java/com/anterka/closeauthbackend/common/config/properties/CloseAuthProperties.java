@@ -31,6 +31,7 @@ public class CloseAuthProperties {
     private Bootstrap bootstrap = new Bootstrap();
     private ResourceServer resourceServer = new ResourceServer();
     private Token token = new Token();
+    private Session session = new Session();
 
     /**
      * Token lifetimes (§7.3). Single source of truth: used both when configuring a client's {@code TokenSettings}
@@ -42,6 +43,27 @@ public class CloseAuthProperties {
     public static class Token {
         private Duration accessTokenTtl = Duration.ofMinutes(5);
         private Duration refreshTokenTtl = Duration.ofDays(14);
+    }
+
+    /**
+     * Auth Server session timeouts (§7.5). Single source of truth for the tenant-scoped SSO session mechanism
+     * ({@code AuthServerSessionService}) — the idle/absolute/remember-me windows and the Redis hot-store key prefix.
+     * These are <b>platform defaults</b>; per-tenant configuration is Phase 2 and deliberately NOT modelled here.
+     * Bound as Boot durations (e.g. {@code 1h}, {@code 12h}, {@code 30d}).
+     */
+    @Getter
+    @Setter
+    public static class Session {
+        /** Sliding inactivity window; reset on each successful validation. */
+        private Duration idleTimeout = Duration.ofHours(1);
+        /** Hard cap from creation regardless of activity. */
+        private Duration absoluteTimeout = Duration.ofHours(12);
+        /** Absolute cap when the remember-me flag is set at creation (idle timeout still applies). */
+        private Duration rememberMeTimeout = Duration.ofDays(30);
+        /** Whether remember-me is permitted at all (platform policy). */
+        private boolean rememberMeAllowed = true;
+        /** Redis key prefix for the session hot store ({@code {prefix}{sessionKey}}). Tenant-navigable by design. */
+        private String redisKeyPrefix = "closeauth:authsession:";
     }
 
     @Getter

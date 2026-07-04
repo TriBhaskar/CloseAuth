@@ -78,6 +78,28 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     int revokeAllUserFamilies(@Param("userId") UUID userId, @Param("tenantId") UUID tenantId,
                               @Param("now") Instant now);
 
+    /**
+     * Stage 5 seam: associate every token in a family with an Auth Server session, so revoking that session cascades
+     * to its refresh tokens. The <em>wiring</em> of "issue refresh token → link to current session" is Stage 6 (the
+     * auth-code flow); this is the linkage mechanism it calls. Returns rows updated.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE RefreshToken t SET t.sessionId = :sessionId WHERE t.familyId = :familyId")
+    int linkFamilyToSession(@Param("familyId") UUID familyId, @Param("sessionId") UUID sessionId);
+
+    /**
+     * Stage 5 revoke cascade: revoke every refresh token belonging to a session (session-scoped, so revoking one
+     * session does NOT kill the user's other sessions' tokens). Returns the number of rows revoked.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE RefreshToken t SET t.status = com.anterka.closeauthbackend.token.enums.RefreshTokenStatus.REVOKED,
+                                      t.revokedAt = :now
+            WHERE t.sessionId = :sessionId
+              AND t.status <> com.anterka.closeauthbackend.token.enums.RefreshTokenStatus.REVOKED
+            """)
+    int revokeAllSessionFamilies(@Param("sessionId") UUID sessionId, @Param("now") Instant now);
+
     /** Lazy expiry: mark an ACTIVE-but-past-expiry token EXPIRED on read (a sweeper job is a later concern). */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

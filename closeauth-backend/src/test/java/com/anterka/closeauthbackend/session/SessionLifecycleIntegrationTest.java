@@ -80,7 +80,7 @@ class SessionLifecycleIntegrationTest {
     private String newClient(TenantContext ctx) {
         String clientId = "c-" + rnd();
         return clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, "secret", List.of("client_credentials"), List.of("read"), null, false)).id();
+                clientId, clientId, "secret", List.of("client_credentials"), List.of("read"), null, false, true)).id();
     }
 
     @Test
@@ -92,7 +92,7 @@ class SessionLifecycleIntegrationTest {
 
         // --- create ---
         SessionView session = sessionService.createSession(
-                new CreateSessionCommand(userA, tenantA, "10.0.0.1", "JUnit", false));
+                new CreateSessionCommand(userA, tenantA, "10.0.0.1", "JUnit", false, "pwd"));
         String key = session.sessionKey();
         assertThat(key).isNotBlank();
 
@@ -104,7 +104,7 @@ class SessionLifecycleIntegrationTest {
 
         // A second session in tenant B for a different user coexists and validates only against B.
         UUID userB = newUser(TenantContext.of(tenantB));
-        SessionView sessionB = sessionService.createSession(new CreateSessionCommand(userB, tenantB, null, null, false));
+        SessionView sessionB = sessionService.createSession(new CreateSessionCommand(userB, tenantB, null, null, false, "pwd"));
         assertThat(sessionService.validateSession(sessionB.sessionKey(), tenantB)).isPresent();
         assertThat(sessionService.validateSession(sessionB.sessionKey(), tenantA)).isEmpty();
 
@@ -139,8 +139,8 @@ class SessionLifecycleIntegrationTest {
         TenantContext ctx = TenantContext.of(tenantId);
         UUID user = newUser(ctx);
 
-        SessionView s1 = sessionService.createSession(new CreateSessionCommand(user, tenantId, null, null, false));
-        sessionService.createSession(new CreateSessionCommand(user, tenantId, null, null, false));
+        SessionView s1 = sessionService.createSession(new CreateSessionCommand(user, tenantId, null, null, false, "pwd"));
+        sessionService.createSession(new CreateSessionCommand(user, tenantId, null, null, false, "pwd"));
         assertThat(sessionService.listSessionsForUser(tenantId, user)).hasSize(2);
 
         sessionService.revokeSession(s1.sessionKey());

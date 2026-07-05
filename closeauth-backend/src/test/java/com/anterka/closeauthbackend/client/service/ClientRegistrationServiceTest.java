@@ -50,7 +50,7 @@ class ClientRegistrationServiceTest {
     @Test
     void registeringNewClientPersistsWithTenantAndTriggersAutoCreate() {
         var command = new RegisterClientCommand("todomaster-spa", "TodoMaster SPA", "secret-value",
-                List.of("client_credentials"), List.of("read"), null, false);
+                List.of("client_credentials"), List.of("read"), null, false, true);
 
         service.registerClient(ctx, command);
 

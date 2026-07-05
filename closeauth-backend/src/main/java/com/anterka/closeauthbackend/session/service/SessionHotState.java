@@ -28,12 +28,13 @@ public record SessionHotState(
         boolean rememberMe,
         long createdAtEpochMs,
         long idleExpiresAtEpochMs,
-        long absoluteExpiresAtEpochMs) {
+        long absoluteExpiresAtEpochMs,
+        String amr) {
 
     /** Returns a copy with the idle expiry advanced (used when sliding the window on a successful validation). */
     public SessionHotState withIdleExpiresAt(long newIdleExpiresAtEpochMs) {
         return new SessionHotState(id, sessionKey, userId, tenantId, rememberMe,
-                createdAtEpochMs, newIdleExpiresAtEpochMs, absoluteExpiresAtEpochMs);
+                createdAtEpochMs, newIdleExpiresAtEpochMs, absoluteExpiresAtEpochMs, amr);
     }
 
     public Instant createdAtInstant() {

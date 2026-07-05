@@ -23,4 +23,7 @@ public interface ResourceServerScopeRepository extends JpaRepository<ResourceSer
     Optional<ResourceServerScope> findByIdAndResourceServer_Id(UUID id, UUID resourceServerId);
 
     List<ResourceServerScope> findByResourceServer_Id(UUID resourceServerId);
+
+    /** Resolve a bare scope name within its RS (6b-ii consent: description + requires_consent for a requested scope). */
+    Optional<ResourceServerScope> findByResourceServer_IdAndScopeName(UUID resourceServerId, String scopeName);
 }

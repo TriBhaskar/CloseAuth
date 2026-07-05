@@ -1,6 +1,10 @@
 package com.anterka.closeauthbackend.common.config;
 
+import com.anterka.closeauthbackend.auth.service.ConsentScopeResolver;
+import com.anterka.closeauthbackend.auth.web.TenantSessionSsoFilter;
+import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
+import com.anterka.closeauthbackend.session.service.AuthServerSessionService;
 import com.anterka.closeauthbackend.token.service.RefreshTokenRecordingAuthenticationProvider;
 import com.anterka.closeauthbackend.token.service.RefreshTokenRotationService;
 import com.anterka.closeauthbackend.token.service.ReplayDetectingRefreshTokenAuthenticationProvider;
@@ -12,6 +16,7 @@ import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -20,8 +25,12 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsent;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationConsentAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationConsentAuthenticationToken;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2RefreshTokenAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenIntrospectionAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
@@ -29,14 +38,18 @@ import org.springframework.security.oauth2.server.authorization.config.annotatio
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -61,18 +74,33 @@ public class AuthorizationServerConfig {
             HttpSecurity http,
             RefreshTokenRotationService rotationService,
             OAuth2AuthorizationService authorizationService,
-            TokenRevocationService tokenRevocationService) throws Exception {
+            TokenRevocationService tokenRevocationService,
+            AuthServerSessionService sessionService,
+            TenantSessionSsoFilter tenantSessionSsoFilter,
+            ConsentScopeResolver consentScopeResolver) throws Exception {
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .oidc(Customizer.withDefaults()) // OIDC discovery, UserInfo, ID tokens
+                .oidc(Customizer.withDefaults()) // OIDC discovery, UserInfo, ID tokens, RP-initiated logout endpoint
+                // 6b-ii: consent screen. Non-trusted clients are redirected to the CloseAuth consent page; the
+                // auto-grant customizer approves requires_consent=false scopes without an explicit checkbox.
+                .authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
+                        .consentPage("/oauth2/consent")
+                        .authenticationProviders(consentAutoGrantProviders(consentScopeResolver)))
                 // 4b-i: wrap SAS's token-endpoint providers to add refresh rotation + replay detection.
                 .tokenEndpoint(tokenEndpoint -> tokenEndpoint.authenticationProviders(
-                        rotationProviders(rotationService, authorizationService)))
+                        rotationProviders(rotationService, authorizationService, sessionService)))
                 // 4b-ii: wrap the introspection provider to consult the Redis revocation list.
                 .tokenIntrospectionEndpoint(introspection -> introspection.authenticationProviders(
                         introspectionProviders(tokenRevocationService)));
         http
-                // Redirect unauthenticated browser requests to the (SAS default for now) login page — Stage 6 replaces it.
+                // 6a: consult the tenant-scoped Auth Server session on /oauth2/authorize (SSO). Placed right after
+                // SecurityContextHolderFilter (which loads the — anonymous — context) so a recognized session
+                // populates the SecurityContext BEFORE SAS's authorization endpoint filter reads the principal;
+                // otherwise the endpoint (which runs early, before RequestCacheAwareFilter and AnonymousAuthentication
+                // Filter) would see no principal and never skip login. SAS's own filters can't be used as an
+                // addFilterBefore reference (no registered order), so we anchor to the standard SecurityContextHolderFilter.
+                .addFilterAfter(tenantSessionSsoFilter, SecurityContextHolderFilter.class)
+                // Redirect unauthenticated browser requests to the CloseAuth login endpoint (6a's LoginController).
                 .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
@@ -87,7 +115,8 @@ public class AuthorizationServerConfig {
      * providers; we only wrap the existing instances in the list (the framework's intended extension point).
      */
     private Consumer<List<AuthenticationProvider>> rotationProviders(
-            RefreshTokenRotationService rotationService, OAuth2AuthorizationService authorizationService) {
+            RefreshTokenRotationService rotationService, OAuth2AuthorizationService authorizationService,
+            AuthServerSessionService sessionService) {
         return providers -> {
             for (int i = 0; i < providers.size(); i++) {
                 AuthenticationProvider provider = providers.get(i);
@@ -95,7 +124,58 @@ public class AuthorizationServerConfig {
                     providers.set(i, new ReplayDetectingRefreshTokenAuthenticationProvider(provider, rotationService));
                 } else if (provider instanceof OAuth2AuthorizationCodeAuthenticationProvider) {
                     providers.set(i, new RefreshTokenRecordingAuthenticationProvider(
-                            provider, rotationService, authorizationService));
+                            provider, rotationService, authorizationService, sessionService));
+                }
+            }
+        };
+    }
+
+    /**
+     * The {@link TenantSessionSsoFilter} is a {@code @Component} so Spring injects its dependencies, but it must run
+     * ONLY inside the Authorization Server security chain (added via {@code addFilterBefore} above), not as a global
+     * servlet filter on every request. Disabling its Boot auto-registration prevents the duplicate top-level filter.
+     */
+    @Bean
+    public FilterRegistrationBean<TenantSessionSsoFilter> tenantSessionSsoFilterRegistration(
+            TenantSessionSsoFilter filter) {
+        FilterRegistrationBean<TenantSessionSsoFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    /**
+     * Customizes SAS's consent provider (6b-ii): during consent processing, auto-approve every requested scope whose
+     * RS-catalog {@code requires_consent = false} — so those scopes are granted without the user having to check a box,
+     * while {@code requires_consent = true} scopes still need the user's explicit approval (submitted from the consent
+     * page). This is backend-enforced (not merely UI-honored). The per-client trusted flag governs whether the consent
+     * page shows at ALL; this governs auto-grant WITHIN a shown page.
+     */
+    private Consumer<List<AuthenticationProvider>> consentAutoGrantProviders(ConsentScopeResolver consentScopeResolver) {
+        return providers -> {
+            for (AuthenticationProvider provider : providers) {
+                if (provider instanceof OAuth2AuthorizationConsentAuthenticationProvider consentProvider) {
+                    consentProvider.setAuthorizationConsentCustomizer(context -> {
+                        OAuth2AuthorizationConsentAuthenticationToken consentAuthentication = context.getAuthentication();
+                        // A deny submits NO approved scopes → do NOT auto-grant; let SAS return access_denied and
+                        // issue nothing ("deny must actually deny"). Only auto-grant when the user is approving.
+                        if (consentAuthentication.getScopes().isEmpty()) {
+                            return;
+                        }
+                        RegisteredClient client = context.getRegisteredClient();
+                        UUID tenantId = CloseAuthClientSettings.getTenantId(client);
+                        if (tenantId == null) {
+                            return;
+                        }
+                        OAuth2AuthorizationConsent.Builder consentBuilder = context.getAuthorizationConsent();
+                        OAuth2AuthorizationRequest authorizationRequest = context.getAuthorizationRequest();
+                        // Auto-approve requires_consent=false scopes: added to the consent record, so the user is
+                        // never prompted for them and they are granted on this + subsequent authorizations.
+                        for (String scope : authorizationRequest.getScopes()) {
+                            if (consentScopeResolver.isAutoGrantable(tenantId, scope)) {
+                                consentBuilder.scope(scope);
+                            }
+                        }
+                    });
                 }
             }
         };
@@ -113,15 +193,34 @@ public class AuthorizationServerConfig {
         };
     }
 
-    /** Everything else (login page for the authorization-code flow — SAS default until Stage 6). */
+    /**
+     * Everything outside SAS's endpoints — notably the 6a custom auth endpoints ({@code /login}, {@code /logout},
+     * handled by the controllers) which must be reachable without authentication. Unauthenticated browser requests to
+     * anything else are redirected to the login endpoint.
+     *
+     * <p>CSRF is disabled on this chain: {@code /login} and {@code /logout} are the custom auth endpoints and there is
+     * no ambient session-cookie authentication for them to protect against forgery (the SSO session cookie is
+     * {@code SameSite=Lax}); a production hosted UI would add CSRF tokens. TODO(6b/UI): CSRF tokens on the login page.
+     */
     @Bean
     @Order(2)
     public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http
+                .csrf(csrf -> csrf.disable())
+                // Disable Spring Security's default LogoutFilter so POST /logout reaches the 6a LogoutController
+                // (which runs the tenant-scoped four-leg revoke cascade) instead of the framework's servlet-session logout.
+                .logout(logout -> logout.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
+                        // 6a auth endpoints + 6b-i token-based identity flows + 6b-ii public pages. All are
+                        // unauthenticated entry points (the consent page + branding render pre-/around authentication);
+                        // they enforce tenant-scoping internally and expose only non-sensitive data.
+                        .requestMatchers("/login", "/logout", "/error", "/actuator/**",
+                                "/register", "/verify-email/**", "/magic-link/**", "/password-reset/**",
+                                "/branding", "/oauth2/consent").permitAll()
                         .anyRequest().authenticated())
-                .formLogin(Customizer.withDefaults());
+                .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
+                        new LoginUrlAuthenticationEntryPoint("/login"),
+                        new MediaTypeRequestMatcher(MediaType.TEXT_HTML)));
         return http.build();
     }
 

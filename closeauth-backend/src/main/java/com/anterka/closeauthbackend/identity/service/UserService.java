@@ -269,6 +269,21 @@ public class UserService {
         return UserView.from(loadUserOrThrow(context, userId));
     }
 
+    /**
+     * Resolves the {@code idp_type} of the identity a user authenticates with (Stage 6a — feeds the token {@code idp}
+     * claim, §12, replacing 4a's hardcoded {@code LOCAL_PASSWORD} default). In 6a users authenticate via their
+     * {@code LOCAL_PASSWORD} identity, which is preferred here; if absent, the user's first identity is used.
+     * When multiple federated identities per user arrive (Phase 2), the specific identity used to authenticate is
+     * login-recorded and threaded through instead of re-derived here.
+     */
+    @Transactional(readOnly = true)
+    public Optional<IdpType> getAuthenticatingIdpType(TenantContext context, UUID userId) {
+        return userRepository.findByIdInTenant(userId, context.tenantId())
+                .flatMap(user -> findLocalPasswordIdentity(user)
+                        .or(() -> user.getIdentities().stream().findFirst()))
+                .map(UserIdentity::getIdpType);
+    }
+
     @Transactional(readOnly = true)
     public UserView getUserByEmail(TenantContext context, String email) {
         String normalized = normalizeEmail(email);

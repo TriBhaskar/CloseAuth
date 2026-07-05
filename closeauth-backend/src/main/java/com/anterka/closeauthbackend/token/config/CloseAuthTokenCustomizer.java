@@ -2,6 +2,7 @@ package com.anterka.closeauthbackend.token.config;
 
 import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
 import com.anterka.closeauthbackend.common.security.TenantContext;
+import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.rbac.dto.ResolvedAuthorization;
 import com.anterka.closeauthbackend.rbac.service.PrincipalAuthorizationService;
 import com.anterka.closeauthbackend.resourceserver.entity.ClientAuthorizedResourceServer;
@@ -53,13 +54,14 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CloseAuthTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
-    // TODO(stage-6): source `idp` from the user_identities row actually used to authenticate. Until the login
-    // flow passes it through, user tokens default to LOCAL_PASSWORD.
+    // Fallback only: if the user's authenticating identity can't be resolved (should not happen for a real login),
+    // fall back to LOCAL_PASSWORD rather than omit the claim. The real value is sourced below (Stage 6a seam closed).
     private static final String DEFAULT_IDP = "LOCAL_PASSWORD";
 
     private final PrincipalAuthorizationService principalAuthorizationService;
     private final ClientAuthorizedResourceServerRepository clientAuthorizedResourceServerRepository;
     private final ResourceServerRepository resourceServerRepository;
+    private final UserService userService;
 
     @Override
     public void customize(JwtEncodingContext context) {
@@ -99,7 +101,14 @@ public class CloseAuthTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodi
             if (maybeUserId.isPresent() && tenantId != null) {
                 UUID userId = maybeUserId.get();
                 claims.subject(userId.toString()); // stable opaque sub
-                claims.claim("idp", DEFAULT_IDP);
+                // Real idp (§12): the user_identities.idp_type of the identity used to authenticate (Stage 6a).
+                // idp = WHERE the identity lives (LOCAL_PASSWORD/…); amr = HOW they authenticated THIS login.
+                String idp = userService.getAuthenticatingIdpType(TenantContext.of(tenantId), userId)
+                        .map(Enum::name).orElse(DEFAULT_IDP);
+                claims.claim("idp", idp);
+                // OIDC amr (RFC 8176, Stage 6b-i): the login method, threaded from the session via an "AMR_" authority
+                // set by TenantSessionSsoFilter (e.g. pwd, magic_link). Distinct from idp; closes 6a's D3 seam.
+                amr(context).ifPresent(amr -> claims.claim("amr", new ArrayList<>(List.of(amr))));
 
                 ResolvedAuthorization resolved =
                         principalAuthorizationService.resolve(TenantContext.of(tenantId), userId);
@@ -165,6 +174,18 @@ public class CloseAuthTokenCustomizer implements OAuth2TokenCustomizer<JwtEncodi
                 .map(ResourceServer::getAudienceIdentifier)
                 .sorted()
                 .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /** Reads the login method (amr) from the resource-owner principal's "AMR_" authority (set by the SSO/login filter). */
+    private Optional<String> amr(JwtEncodingContext context) {
+        if (context.getPrincipal() == null || context.getPrincipal().getAuthorities() == null) {
+            return Optional.empty();
+        }
+        return context.getPrincipal().getAuthorities().stream()
+                .map(Object::toString)
+                .filter(authority -> authority.startsWith("AMR_"))
+                .map(authority -> authority.substring("AMR_".length()))
+                .findFirst();
     }
 
     private Optional<UUID> parseUserId(JwtEncodingContext context) {

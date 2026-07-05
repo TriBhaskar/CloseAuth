@@ -20,13 +20,19 @@ public record SessionView(
         UUID userId,
         UUID tenantId,
         boolean rememberMe,
+        String ipAddress,
+        String userAgent,
+        String amr,
         Instant createdAt,
         Instant idleExpiresAt,
         Instant absoluteExpiresAt,
         Instant lastAccessedAt,
         Instant revokedAt) {
 
-    /** Maps a managed {@link AuthServerSession} ledger entity to an immutable view. Call within a transaction. */
+    /**
+     * Maps a managed {@link AuthServerSession} ledger entity to an immutable view. Call within a transaction.
+     * {@code amr} is null here — it is a per-login method carried only in the Redis hot state (no ledger column).
+     */
     public static SessionView from(AuthServerSession s) {
         return new SessionView(
                 s.getId(),
@@ -34,6 +40,9 @@ public record SessionView(
                 s.getUserId(),
                 s.getTenantId(),
                 s.isRememberMe(),
+                s.getIpAddress(),
+                s.getUserAgent(),
+                null,
                 s.getCreatedAt(),
                 s.getIdleExpiresAt(),
                 s.getAbsoluteExpiresAt(),
@@ -44,6 +53,8 @@ public record SessionView(
     /**
      * Builds a view from the Redis hot state (the {@code validateSession} hot path avoids a DB read for the decision).
      * {@code revokedAt} is null by construction — a hot-store hit that passed validation is, by definition, live.
+     * {@code ipAddress}/{@code userAgent} are null (not carried in the hot state; read them from the ledger via
+     * {@code getById} when needed).
      */
     public static SessionView fromHotState(SessionHotState st, Instant lastAccessedAt) {
         return new SessionView(
@@ -52,6 +63,9 @@ public record SessionView(
                 st.userUuid(),
                 st.tenantUuid(),
                 st.rememberMe(),
+                null,
+                null,
+                st.amr(),
                 st.createdAtInstant(),
                 st.idleExpiresAtInstant(),
                 st.absoluteExpiresAtInstant(),

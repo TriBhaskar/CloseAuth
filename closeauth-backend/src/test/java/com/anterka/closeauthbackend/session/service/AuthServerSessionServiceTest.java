@@ -72,7 +72,7 @@ class AuthServerSessionServiceTest {
     @Test
     void createPersistsLedgerAndHotStoreWithCorrectWindows() {
         Instant now = clock.instant();
-        SessionView view = service.createSession(new CreateSessionCommand(userId, tenantA, "1.2.3.4", "UA", false));
+        SessionView view = service.createSession(new CreateSessionCommand(userId, tenantA, "1.2.3.4", "UA", false, "pwd"));
 
         ArgumentCaptor<SessionHotState> stateCaptor = ArgumentCaptor.forClass(SessionHotState.class);
         ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
@@ -91,7 +91,7 @@ class AuthServerSessionServiceTest {
     @Test
     void rememberMeExtendsAbsoluteButIdleStillApplies() {
         Instant now = clock.instant();
-        service.createSession(new CreateSessionCommand(userId, tenantA, null, null, true));
+        service.createSession(new CreateSessionCommand(userId, tenantA, null, null, true, "pwd"));
 
         ArgumentCaptor<SessionHotState> stateCaptor = ArgumentCaptor.forClass(SessionHotState.class);
         verify(hotStore).save(stateCaptor.capture(), any(Duration.class));
@@ -106,7 +106,7 @@ class AuthServerSessionServiceTest {
     void rememberMeIgnoredWhenPolicyDisallowsIt() {
         Instant now = clock.instant();
         properties.getSession().setRememberMeAllowed(false);
-        service.createSession(new CreateSessionCommand(userId, tenantA, null, null, true));
+        service.createSession(new CreateSessionCommand(userId, tenantA, null, null, true, "pwd"));
 
         ArgumentCaptor<SessionHotState> stateCaptor = ArgumentCaptor.forClass(SessionHotState.class);
         verify(hotStore).save(stateCaptor.capture(), any(Duration.class));
@@ -246,7 +246,7 @@ class AuthServerSessionServiceTest {
 
     private SessionHotState state(String key, UUID tenantId, Instant idleExpiresAt, Instant absoluteExpiresAt) {
         return new SessionHotState(UUID.randomUUID().toString(), key, userId.toString(), tenantId.toString(),
-                false, clock.instant().toEpochMilli(), idleExpiresAt.toEpochMilli(), absoluteExpiresAt.toEpochMilli());
+                false, clock.instant().toEpochMilli(), idleExpiresAt.toEpochMilli(), absoluteExpiresAt.toEpochMilli(), "pwd");
     }
 
     private AuthServerSession ledgerRow(UUID id, UUID tenantId, UUID userId) {

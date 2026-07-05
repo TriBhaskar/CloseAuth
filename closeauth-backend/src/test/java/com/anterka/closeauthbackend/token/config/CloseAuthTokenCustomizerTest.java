@@ -1,6 +1,8 @@
 package com.anterka.closeauthbackend.token.config;
 
 import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
+import com.anterka.closeauthbackend.identity.enums.IdpType;
+import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.rbac.dto.ResolvedAuthorization;
 import com.anterka.closeauthbackend.rbac.dto.ResolvedAuthorization.AppRoleGrant;
 import com.anterka.closeauthbackend.rbac.service.PrincipalAuthorizationService;
@@ -8,6 +10,8 @@ import com.anterka.closeauthbackend.resourceserver.entity.ClientAuthorizedResour
 import com.anterka.closeauthbackend.resourceserver.entity.ResourceServer;
 import com.anterka.closeauthbackend.resourceserver.repository.ClientAuthorizedResourceServerRepository;
 import com.anterka.closeauthbackend.resourceserver.repository.ResourceServerRepository;
+
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -40,6 +44,7 @@ class CloseAuthTokenCustomizerTest {
     private PrincipalAuthorizationService principalAuthorizationService;
     private ClientAuthorizedResourceServerRepository clientAuthRepo;
     private ResourceServerRepository resourceServerRepository;
+    private UserService userService;
     private CloseAuthTokenCustomizer customizer;
 
     @BeforeEach
@@ -47,7 +52,11 @@ class CloseAuthTokenCustomizerTest {
         principalAuthorizationService = mock(PrincipalAuthorizationService.class);
         clientAuthRepo = mock(ClientAuthorizedResourceServerRepository.class);
         resourceServerRepository = mock(ResourceServerRepository.class);
-        customizer = new CloseAuthTokenCustomizer(principalAuthorizationService, clientAuthRepo, resourceServerRepository);
+        userService = mock(UserService.class);
+        // Real idp source (Stage 6a): the user's authenticating identity is LOCAL_PASSWORD in these tests.
+        when(userService.getAuthenticatingIdpType(any(), any())).thenReturn(Optional.of(IdpType.LOCAL_PASSWORD));
+        customizer = new CloseAuthTokenCustomizer(principalAuthorizationService, clientAuthRepo,
+                resourceServerRepository, userService);
 
         // The client is authorized for one Resource Server whose audience is a URI.
         ClientAuthorizedResourceServer link = new ClientAuthorizedResourceServer();

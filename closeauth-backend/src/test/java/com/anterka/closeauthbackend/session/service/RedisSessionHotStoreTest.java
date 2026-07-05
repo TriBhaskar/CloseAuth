@@ -32,7 +32,7 @@ class RedisSessionHotStoreTest {
 
     private final SessionHotState sample = new SessionHotState(
             UUID.randomUUID().toString(), "sess-key-abc", UUID.randomUUID().toString(), UUID.randomUUID().toString(),
-            true, 1_700_000_000_000L, 1_700_000_600_000L, 1_700_040_000_000L);
+            true, 1_700_000_000_000L, 1_700_000_600_000L, 1_700_040_000_000L, "pwd");
 
     @BeforeEach
     @SuppressWarnings("unchecked")

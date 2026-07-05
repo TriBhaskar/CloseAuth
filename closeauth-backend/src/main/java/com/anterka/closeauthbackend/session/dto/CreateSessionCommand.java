@@ -13,11 +13,15 @@ import java.util.UUID;
  * @param ipAddress  client IP for the ledger/audit (nullable)
  * @param userAgent  client user-agent for the ledger/audit (nullable)
  * @param rememberMe whether to extend the absolute cap to the remember-me window (subject to platform policy)
+ * @param amr        the OIDC authentication-method reference for THIS login (RFC 8176, e.g. {@code pwd},
+ *                   {@code magic_link}) — a plain String to keep the session module free of an auth-module type;
+ *                   the login flow supplies {@code AuthMethod.amrValue()}. Nullable (omits the amr claim).
  */
 public record CreateSessionCommand(
         @NotNull UUID userId,
         @NotNull UUID tenantId,
         String ipAddress,
         String userAgent,
-        boolean rememberMe) {
+        boolean rememberMe,
+        String amr) {
 }

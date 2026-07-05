@@ -93,7 +93,7 @@ class TokenIssuanceIntegrationTest {
         // requests that RS's scope in prefixed form so aud is inferred from the scope prefix.
         String rsScope = "m2m-client:read";
         ClientView client = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, "M2M Client", secret, List.of("client_credentials"), List.of(rsScope), null, false));
+                clientId, "M2M Client", secret, List.of("client_credentials"), List.of(rsScope), null, false, true));
 
         // the tenant-aware INSERT populated the tenant_id column (13-col path)
         String storedTenant = jdbcTemplate.queryForObject(

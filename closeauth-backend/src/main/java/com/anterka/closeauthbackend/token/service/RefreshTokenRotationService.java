@@ -40,18 +40,29 @@ public class RefreshTokenRotationService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenRevocationService tokenRevocationService;
 
-    /** Records the root of a new refresh-token family (a fresh login's first refresh token). */
+    /** Records the root of a new refresh-token family (a fresh login's first refresh token), unlinked to a session. */
     @Transactional
     public RefreshToken recordInitialToken(UUID userId, UUID tenantId, String clientRegisteredId,
                                            RefreshTokenIssuance issuance) {
-        return persist(userId, tenantId, clientRegisteredId, UUID.randomUUID(), null, issuance);
+        return recordInitialToken(userId, tenantId, clientRegisteredId, issuance, null);
     }
 
-    /** Records a rotated child in the parent's family. */
+    /**
+     * Records the root of a new refresh-token family, linked to the Auth Server session it belongs to (Stage 6a).
+     * The {@code sessionId} makes {@link #revokeSessionFamilies} (Stage 5's session-scoped refresh revocation) work:
+     * revoking the session cascades to this family. Rotated children inherit the same {@code session_id}.
+     */
+    @Transactional
+    public RefreshToken recordInitialToken(UUID userId, UUID tenantId, String clientRegisteredId,
+                                           RefreshTokenIssuance issuance, UUID sessionId) {
+        return persist(userId, tenantId, clientRegisteredId, UUID.randomUUID(), null, issuance, sessionId);
+    }
+
+    /** Records a rotated child in the parent's family, inheriting the parent's session linkage (Stage 6a). */
     @Transactional
     public RefreshToken recordRotatedToken(RefreshToken parent, RefreshTokenIssuance issuance) {
         return persist(parent.getUserId(), parent.getTenantId(), parent.getClientRegisteredId(),
-                parent.getFamilyId(), parent.getId(), issuance);
+                parent.getFamilyId(), parent.getId(), issuance, parent.getSessionId());
     }
 
     /**
@@ -124,7 +135,7 @@ public class RefreshTokenRotationService {
     }
 
     private RefreshToken persist(UUID userId, UUID tenantId, String clientRegisteredId, UUID familyId,
-                                 UUID parentTokenId, RefreshTokenIssuance issuance) {
+                                 UUID parentTokenId, RefreshTokenIssuance issuance, UUID sessionId) {
         RefreshToken token = new RefreshToken();
         token.setTokenHash(issuance.tokenHash());
         token.setUserId(userId);
@@ -134,7 +145,7 @@ public class RefreshTokenRotationService {
         token.setParentTokenId(parentTokenId);
         token.setStatus(RefreshTokenStatus.ACTIVE);
         token.setScopes(issuance.scopes());
-        token.setSessionId(null); // Stage 5 (session linkage); structured for later population
+        token.setSessionId(sessionId); // Stage 6a: links the family to its Auth Server session for revoke-cascade
         token.setIpAddress(issuance.ipAddress());
         token.setUserAgent(issuance.userAgent());
         token.setExpiresAt(issuance.expiresAt());

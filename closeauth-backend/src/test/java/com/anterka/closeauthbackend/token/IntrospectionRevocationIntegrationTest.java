@@ -70,7 +70,7 @@ class IntrospectionRevocationIntegrationTest {
         TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("acme-" + rnd(), "Acme"));
         tenantService.activateTenant(tenant.id());
         clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
-                clientId, "M2M Client", SECRET, List.of("client_credentials"), List.of(SCOPE), null, false));
+                clientId, "M2M Client", SECRET, List.of("client_credentials"), List.of(SCOPE), null, false, true));
         return tenant.id();
     }
 

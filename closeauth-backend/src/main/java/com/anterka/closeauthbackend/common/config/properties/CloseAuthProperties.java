@@ -32,6 +32,24 @@ public class CloseAuthProperties {
     private ResourceServer resourceServer = new ResourceServer();
     private Token token = new Token();
     private Session session = new Session();
+    private OneTimeToken oneTimeToken = new OneTimeToken();
+    private Branding branding = new Branding();
+
+    /**
+     * Platform-default hosted-page branding (§7.1, Stage 6b-ii). Fills null fields when a tenant hasn't set its own
+     * branding, so the resolution endpoint always returns renderable values. Sourced here (single place), not scattered.
+     */
+    @Getter
+    @Setter
+    public static class Branding {
+        private String primaryColor = "#4F46E5";
+        private String backgroundColor = "#FFFFFF";
+        private String accentColor = "#22D3EE";
+        /** Default logo (null → the UI renders no logo / its own placeholder). */
+        private String defaultLogoUrl = null;
+        /** Fallback company name (null → the UI renders a generic "Sign in"). Never the internal tenant name. */
+        private String companyNameFallback = null;
+    }
 
     /**
      * Token lifetimes (§7.3). Single source of truth: used both when configuring a client's {@code TokenSettings}
@@ -64,6 +82,24 @@ public class CloseAuthProperties {
         private boolean rememberMeAllowed = true;
         /** Redis key prefix for the session hot store ({@code {prefix}{sessionKey}}). Tenant-navigable by design. */
         private String redisKeyPrefix = "closeauth:authsession:";
+        /** The session cookie carrying the opaque {@code session_key} (Stage 6a). */
+        private Cookie cookie = new Cookie();
+
+        /**
+         * Session-cookie attributes (§7.5, Stage 6a). Defaults are the secure production posture; {@code secure} is
+         * overridable to {@code false} for plain-HTTP local/dev and tests. {@code SameSite=Lax} is correct for an
+         * Authorization Server session cookie: the OAuth flow uses top-level redirects (so the cookie is sent on the
+         * return to {@code /oauth2/authorize}), while Lax still blocks it on cross-site sub-requests (CSRF mitigation).
+         */
+        @Getter
+        @Setter
+        public static class Cookie {
+            private String name = "CLOSEAUTH_SESSION";
+            private boolean secure = true;
+            private boolean httpOnly = true;
+            private String sameSite = "Lax";
+            private String path = "/";
+        }
     }
 
     @Getter
@@ -115,6 +151,36 @@ public class CloseAuthProperties {
     public static class Registration {
         private int cacheTtlHours = 2;
         private int adminPendingTtlDays = 7;
+        /**
+         * Platform-default self-registration mode, used when a tenant has no {@code tenant_registration_config} row
+         * (e.g. tenants provisioned before Stage 6b-i). New tenants get a row at provisioning. One of
+         * {@code OPEN|EMAIL_VERIFIED|ADMIN_APPROVED|INVITE_ONLY}.
+         */
+        private String defaultMode = "EMAIL_VERIFIED";
+    }
+
+    /**
+     * One-time-token primitive config (§13.4, Stage 6b-i): purpose-specific lifetimes and the rate-limit / attempt-
+     * lockout pairing that protects low-entropy numeric codes. Single source for the {@code OneTimeTokenService} and
+     * the flows composed over it.
+     */
+    @Getter
+    @Setter
+    public static class OneTimeToken {
+        // Lifetimes (purpose-specific; short for low-entropy codes, longer for high-entropy links).
+        private Duration emailVerificationTtl = Duration.ofMinutes(15);
+        private int emailVerificationCodeLength = 6;
+        private Duration magicLinkTtl = Duration.ofMinutes(15);
+        private Duration passwordResetTtl = Duration.ofMinutes(30);
+        private Duration inviteTtl = Duration.ofDays(7);
+
+        // Issuance rate-limit (per tenant+purpose+target) — anti email-bombing / enumeration-via-issuance.
+        private int issuanceMaxPerWindow = 3;
+        private Duration issuanceWindow = Duration.ofMinutes(15);
+
+        // Consume attempt-lockout (per tenant+purpose+target) — the mandatory pairing for low-entropy numeric codes.
+        private int verifyMaxAttemptsPerWindow = 5;
+        private Duration verifyAttemptWindow = Duration.ofMinutes(15);
     }
 
     @Getter

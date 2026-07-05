@@ -16,6 +16,9 @@ import java.util.List;
  * @param scopes         requested scopes (may include {@code openid}, {@code profile}, ...).
  * @param redirectUris   required for {@code authorization_code}; ignored otherwise.
  * @param requireProofKey PKCE requirement (true for public clients).
+ * @param trusted        first-party / trusted client (Stage 6b-ii): when {@code true}, the OAuth consent screen is
+ *                       skipped ({@code requireAuthorizationConsent = false}); {@code false} → consent is required.
+ *                       A tenant's own auto-created apps are typically trusted; third-party clients are not.
  */
 public record RegisterClientCommand(
 
@@ -36,6 +39,8 @@ public record RegisterClientCommand(
 
         List<String> redirectUris,
 
-        boolean requireProofKey
+        boolean requireProofKey,
+
+        boolean trusted
 
 ) {}

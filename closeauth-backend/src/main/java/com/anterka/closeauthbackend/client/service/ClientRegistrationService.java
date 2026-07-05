@@ -81,7 +81,10 @@ public class ClientRegistrationService {
 
         ClientSettings.Builder clientSettings = ClientSettings.builder()
                 .requireProofKey(command.requireProofKey())
-                .requireAuthorizationConsent(false);
+                // Stage 6b-ii: trusted (first-party) clients skip consent; others require it. This is the per-client
+                // "skip consent" flag; `requires_consent` on individual RS scopes governs auto-grant WITHIN a shown
+                // consent screen (see ConsentScopeResolver / the consent auto-grant customizer).
+                .requireAuthorizationConsent(!command.trusted());
         CloseAuthClientSettings.withTenantId(clientSettings, context.tenantId());
         builder.clientSettings(clientSettings.build());
 

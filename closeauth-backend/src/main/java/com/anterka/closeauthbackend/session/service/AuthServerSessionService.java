@@ -109,7 +109,7 @@ public class AuthServerSessionService {
 
         SessionHotState state = new SessionHotState(saved.getId().toString(), sessionKey, userId.toString(),
                 tenantId.toString(), rememberMe, now.toEpochMilli(), idleExpiresAt.toEpochMilli(),
-                absoluteExpiresAt.toEpochMilli());
+                absoluteExpiresAt.toEpochMilli(), command.amr());
         hotStore.save(state, hotTtl(now, idleExpiresAt, absoluteExpiresAt));
 
         log.info("Auth Server session created id={} user={} tenant={} rememberMe={}",
@@ -233,6 +233,15 @@ public class AuthServerSessionService {
     @Transactional
     public void linkRefreshFamilyToSession(UUID familyId, UUID sessionId) {
         refreshTokenRotationService.linkFamilyToSession(familyId, sessionId);
+    }
+
+    /**
+     * Looks up a session by its ledger id (durable record, incl. ip/user-agent). Used by the Stage 6a auth-code flow
+     * to source the request context captured at login onto the refresh-token ledger. Not a hot-path validation.
+     */
+    @Transactional(readOnly = true)
+    public Optional<SessionView> getById(UUID sessionId) {
+        return sessionRepository.findById(sessionId).map(SessionView::from);
     }
 
     // ---- decision helpers (pure; unit-tested directly) ---------------------------------------------------------

@@ -60,8 +60,14 @@ class UserServiceTest {
         hasher = new PasswordHasher(encoder);
         CommandValidator commandValidator =
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
+        // 7b: last-admin guard + token revocation on deactivation. Mocks default to "not last admin" / no-op revoke,
+        // so existing status-transition tests are unaffected; dedicated 7b tests cover the wired behavior.
+        com.anterka.closeauthbackend.rbac.service.TenantRoleService tenantRoleService =
+                Mockito.mock(com.anterka.closeauthbackend.rbac.service.TenantRoleService.class);
+        com.anterka.closeauthbackend.token.service.TokenRevocationService tokenRevocationService =
+                Mockito.mock(com.anterka.closeauthbackend.token.service.TokenRevocationService.class);
         userService = new UserService(userRepository, tenantService, hasher, commandValidator,
-                new UserStateMachine(), List.of());
+                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService);
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             if (u.getId() == null) {

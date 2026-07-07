@@ -25,6 +25,8 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsent;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
@@ -77,7 +79,8 @@ public class AuthorizationServerConfig {
             TokenRevocationService tokenRevocationService,
             AuthServerSessionService sessionService,
             TenantSessionSsoFilter tenantSessionSsoFilter,
-            ConsentScopeResolver consentScopeResolver) throws Exception {
+            ConsentScopeResolver consentScopeResolver,
+            JwtDecoder jwtDecoder) throws Exception {
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                 .oidc(Customizer.withDefaults()) // OIDC discovery, UserInfo, ID tokens, RP-initiated logout endpoint
@@ -91,7 +94,7 @@ public class AuthorizationServerConfig {
                         rotationProviders(rotationService, authorizationService, sessionService)))
                 // 4b-ii: wrap the introspection provider to consult the Redis revocation list.
                 .tokenIntrospectionEndpoint(introspection -> introspection.authenticationProviders(
-                        introspectionProviders(tokenRevocationService)));
+                        introspectionProviders(tokenRevocationService, jwtDecoder)));
         http
                 // 6a: consult the tenant-scoped Auth Server session on /oauth2/authorize (SSO). Placed right after
                 // SecurityContextHolderFilter (which loads the — anonymous — context) so a recognized session
@@ -181,13 +184,18 @@ public class AuthorizationServerConfig {
         };
     }
 
-    /** Replaces SAS's introspection provider with a wrapper that consults the Redis revocation list (4b-ii). */
-    private Consumer<List<AuthenticationProvider>> introspectionProviders(TokenRevocationService tokenRevocationService) {
+    /**
+     * Replaces SAS's introspection provider with a wrapper that consults the Redis revocation list (4b-ii) and also
+     * recognizes directly-minted platform-admin tokens (7a — no SAS store record; the {@code jwtDecoder} lets the
+     * wrapper validate them by signature + claims + revocation).
+     */
+    private Consumer<List<AuthenticationProvider>> introspectionProviders(TokenRevocationService tokenRevocationService,
+                                                                          JwtDecoder jwtDecoder) {
         return providers -> {
             for (int i = 0; i < providers.size(); i++) {
                 if (providers.get(i) instanceof OAuth2TokenIntrospectionAuthenticationProvider provider) {
                     providers.set(i, new RevocationAwareTokenIntrospectionAuthenticationProvider(
-                            provider, tokenRevocationService));
+                            provider, tokenRevocationService, jwtDecoder));
                 }
             }
         };
@@ -265,9 +273,23 @@ public class AuthorizationServerConfig {
         }
     }
 
+    // @Primary: the platform-wide decoder used by the SAS/OIDC resource-server chains and everywhere a JwtDecoder is
+    // injected by type. The admin chain deliberately uses a SECOND decoder (adminApiJwtDecoder) that adds per-request
+    // platform-admin revocation; @Primary keeps that second bean from making this injection ambiguous.
     @Bean
+    @org.springframework.context.annotation.Primary
     public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
         return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
+    }
+
+    /**
+     * Signs directly-minted CloseAuth JWTs over the same platform key (7a: the platform-admin access token, minted
+     * outside SAS's grant flow because platform admins have no registered OAuth client — see STAGE_7A_REPORT.md). The
+     * resulting token validates against the same {@link #jwtDecoder} as any CloseAuth token.
+     */
+    @Bean
+    public JwtEncoder jwtEncoder(JWKSource<SecurityContext> jwkSource) {
+        return new NimbusJwtEncoder(jwkSource);
     }
 
     @Bean

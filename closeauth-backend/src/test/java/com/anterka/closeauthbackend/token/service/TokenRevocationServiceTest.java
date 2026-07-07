@@ -86,4 +86,30 @@ class TokenRevocationServiceTest {
         service.revokeAllTenantTokens(tenant);
         verify(markerStore).revokeTenant(eq(tenant), any(Instant.class), eq(Duration.ofMinutes(5)));
     }
+
+    // ---- platform-admin (tenant-less) revocation (§7.8) --------------------
+
+    @Test
+    void platformAdminTokenIssuedAtOrBeforeMarkerIsRevoked_safeBoundary() {
+        UUID adminId = UUID.randomUUID();
+        when(markerStore.platformAdminRevocationEpochSeconds(adminId)).thenReturn(OptionalLong.of(REVOCATION_TIME));
+        assertThat(service.isPlatformAdminRevoked(adminId, REVOCATION_TIME)).isTrue();      // iat == revoke → revoked
+        assertThat(service.isPlatformAdminRevoked(adminId, REVOCATION_TIME - 1)).isTrue();  // issued before → revoked
+        assertThat(service.isPlatformAdminRevoked(adminId, REVOCATION_TIME + 1)).isFalse(); // issued after → valid
+    }
+
+    @Test
+    void noPlatformAdminMarkerMeansNotRevoked() {
+        UUID adminId = UUID.randomUUID();
+        when(markerStore.platformAdminRevocationEpochSeconds(adminId)).thenReturn(OptionalLong.empty());
+        assertThat(service.isPlatformAdminRevoked(adminId, REVOCATION_TIME)).isFalse();
+    }
+
+    @Test
+    void revokePlatformAdminWritesSubKeyedMarkerWithPlatformAdminTokenTtl() {
+        UUID adminId = UUID.randomUUID();
+        service.revokePlatformAdminTokens(adminId);
+        // Marker TTL is the platform-admin token TTL (5m default) so it outlives every token it can suppress.
+        verify(markerStore).revokePlatformAdmin(eq(adminId), any(Instant.class), eq(Duration.ofMinutes(5)));
+    }
 }

@@ -129,6 +129,12 @@ public class TenantService {
         return TenantView.from(loadOrThrow(tenantId));
     }
 
+    /** All tenants (platform-scoped; §7.8 admin list). Not tenant-scoped — a cross-tenant, platform-admin operation. */
+    @Transactional(readOnly = true)
+    public List<TenantView> listTenants() {
+        return tenantRepository.findAll().stream().map(TenantView::from).toList();
+    }
+
     /** Tenant-unscoped by design: {@code slug} is globally unique (request-time resolution). */
     @Transactional(readOnly = true)
     public TenantView getTenantBySlug(String slug) {

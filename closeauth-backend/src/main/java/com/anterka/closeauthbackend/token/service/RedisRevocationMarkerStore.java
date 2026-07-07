@@ -18,6 +18,8 @@ import java.util.UUID;
  *   <li>User marker: {@code revoked:t:{tenantId}:user:{userId}} (tenant in the key keeps markers tenant-navigable)</li>
  *   <li>Tenant marker: {@code revoked:tenant:{tenantId}} (one write revokes the whole tenant, checked alongside the
  *       user marker — cheaper than fanning out a per-user marker for every user)</li>
+ *   <li>Platform-admin marker: {@code revoked:platform-admin:{adminId}} (tenant-less — the third token shape has no
+ *       {@code tenant_id}, so it is keyed by {@code sub} alone)</li>
  * </ul>
  * Value: the revocation time as epoch <b>seconds</b> (to compare directly with JWT {@code iat}). TTL: the max
  * access-token TTL — a marker only needs to outlive the tokens it suppresses (see report §TTL).
@@ -45,6 +47,11 @@ public class RedisRevocationMarkerStore implements RevocationMarkerStore {
     }
 
     @Override
+    public void revokePlatformAdmin(UUID platformAdminId, Instant at, Duration ttl) {
+        write(platformAdminKey(platformAdminId), at, ttl);
+    }
+
+    @Override
     public OptionalLong userRevocationEpochSeconds(UUID tenantId, UUID userId) {
         return read(userKey(tenantId, userId));
     }
@@ -52,6 +59,11 @@ public class RedisRevocationMarkerStore implements RevocationMarkerStore {
     @Override
     public OptionalLong tenantRevocationEpochSeconds(UUID tenantId) {
         return read(tenantKey(tenantId));
+    }
+
+    @Override
+    public OptionalLong platformAdminRevocationEpochSeconds(UUID platformAdminId) {
+        return read(platformAdminKey(platformAdminId));
     }
 
     private void write(String key, Instant at, Duration ttl) {
@@ -81,5 +93,10 @@ public class RedisRevocationMarkerStore implements RevocationMarkerStore {
 
     private String tenantKey(UUID tenantId) {
         return "revoked:tenant:" + tenantId;
+    }
+
+    private String platformAdminKey(UUID platformAdminId) {
+        // Tenant-less: platform admins have no tenant, so the marker is keyed by sub alone.
+        return "revoked:platform-admin:" + platformAdminId;
     }
 }

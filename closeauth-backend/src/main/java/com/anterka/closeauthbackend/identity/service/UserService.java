@@ -4,6 +4,7 @@ import com.anterka.closeauthbackend.common.exception.CloseAuthDomainException;
 import com.anterka.closeauthbackend.common.exception.EmailAlreadyExistsException;
 import com.anterka.closeauthbackend.common.exception.ErrorCategory;
 import com.anterka.closeauthbackend.common.exception.InvalidCredentialsException;
+import com.anterka.closeauthbackend.common.exception.LastTenantAdminException;
 import com.anterka.closeauthbackend.common.exception.LocalPasswordAlreadySetException;
 import com.anterka.closeauthbackend.common.exception.UserNotFoundException;
 import com.anterka.closeauthbackend.common.security.PasswordHasher;
@@ -20,7 +21,9 @@ import com.anterka.closeauthbackend.identity.entity.UserIdentity;
 import com.anterka.closeauthbackend.identity.enums.IdpType;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.repository.UserRepository;
+import com.anterka.closeauthbackend.rbac.service.TenantRoleService;
 import com.anterka.closeauthbackend.tenant.service.TenantService;
+import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +58,9 @@ public class UserService {
     private final UserStateMachine userStateMachine;
     /** Extension seam beans (empty in 3b; 3c adds default-role assignment). */
     private final List<UserProvisioningCallback> provisioningCallbacks;
+    /** 7b integration: the last-admin invariant (3c-ii) + token revocation (4b-ii) on deactivation/deletion. */
+    private final TenantRoleService tenantRoleService;
+    private final TokenRevocationService tokenRevocationService;
 
     /** Precomputed dummy hash for constant-ish-time verification on the user-not-found path. */
     private final String timingGuardHash;
@@ -64,13 +70,17 @@ public class UserService {
                        PasswordHasher passwordHasher,
                        CommandValidator commandValidator,
                        UserStateMachine userStateMachine,
-                       List<UserProvisioningCallback> provisioningCallbacks) {
+                       List<UserProvisioningCallback> provisioningCallbacks,
+                       TenantRoleService tenantRoleService,
+                       TokenRevocationService tokenRevocationService) {
         this.userRepository = userRepository;
         this.tenantService = tenantService;
         this.passwordHasher = passwordHasher;
         this.commandValidator = commandValidator;
         this.userStateMachine = userStateMachine;
         this.provisioningCallbacks = provisioningCallbacks;
+        this.tenantRoleService = tenantRoleService;
+        this.tokenRevocationService = tokenRevocationService;
         this.timingGuardHash = passwordHasher.hash(TIMING_GUARD_RAW).hash();
     }
 
@@ -256,7 +266,17 @@ public class UserService {
         tenantService.requireActiveTenant(context);
         User user = loadUserOrThrow(context, userId);
         userStateMachine.checkTransition(user.getStatus(), target);
+        boolean deactivating = target == UserStatus.SUSPENDED || target == UserStatus.DELETED;
+        if (deactivating && tenantRoleService.isLastTenantAdmin(context, userId)) {
+            // Last-admin invariant (3c-ii): refuse an operation that would orphan the tenant of its only TENANT_ADMIN.
+            throw new LastTenantAdminException(context.tenantId());
+        }
         user.setStatus(target);
+        if (deactivating) {
+            // 4b-ii: kill the user's live access tokens now, not merely at expiry (parallel to 7a's platform-admin path).
+            tokenRevocationService.revokeAllUserTokens(context.tenantId(), userId);
+            // TODO(stage-8): emit a USER_SUSPENDED / USER_DELETED audit event via the audit outbox (§7.11).
+        }
         return UserView.from(user);
     }
 

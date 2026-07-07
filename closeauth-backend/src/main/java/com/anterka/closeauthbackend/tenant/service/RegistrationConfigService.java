@@ -1,6 +1,8 @@
 package com.anterka.closeauthbackend.tenant.service;
 
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
+import com.anterka.closeauthbackend.tenant.dto.RegistrationConfigView;
+import com.anterka.closeauthbackend.tenant.entity.TenantRegistrationConfig;
 import com.anterka.closeauthbackend.tenant.enums.RegistrationMode;
 import com.anterka.closeauthbackend.tenant.repository.TenantRegistrationConfigRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,30 @@ public class RegistrationConfigService {
         return repository.findByTenantId(tenantId)
                 .map(config -> config.getMode())
                 .orElseGet(this::platformDefault);
+    }
+
+    /** The tenant's current registration config (mode), for the admin surface (§7.8). */
+    @Transactional(readOnly = true)
+    public RegistrationConfigView getConfig(UUID tenantId) {
+        return new RegistrationConfigView(tenantId, resolveMode(tenantId));
+    }
+
+    /**
+     * Sets the tenant's registration mode (§7.8). Upserts the {@code tenant_registration_config} row (a tenant
+     * provisioned before 6b-i may lack one). The mode is the policy: OPEN / EMAIL_VERIFIED / ADMIN_APPROVED / INVITE_ONLY.
+     */
+    @Transactional
+    public RegistrationConfigView updateMode(UUID tenantId, RegistrationMode mode) {
+        TenantRegistrationConfig config = repository.findByTenantId(tenantId)
+                .orElseGet(() -> {
+                    TenantRegistrationConfig fresh = new TenantRegistrationConfig();
+                    fresh.setTenantId(tenantId);
+                    return fresh;
+                });
+        config.setMode(mode);
+        repository.save(config);
+        // TODO(stage-8): emit a REGISTRATION_CONFIG_UPDATED audit event via the audit outbox (§7.11).
+        return new RegistrationConfigView(tenantId, mode);
     }
 
     /** The platform-default mode, parsed defensively (bad config → EMAIL_VERIFIED, the safe default). */

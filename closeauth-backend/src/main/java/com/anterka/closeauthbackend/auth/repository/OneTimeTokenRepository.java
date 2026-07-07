@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -51,4 +52,11 @@ public interface OneTimeTokenRepository extends JpaRepository<OneTimeToken, UUID
                             @Param("tenantId") UUID tenantId,
                             @Param("target") String target,
                             @Param("now") Instant now);
+
+    /** Outstanding (unused, unexpired) tokens of a purpose in a tenant — e.g. listing live invites (§7.8). */
+    List<OneTimeToken> findByTenantIdAndPurposeAndUsedFalseAndExpiresAtAfter(
+            UUID tenantId, OneTimeTokenPurpose purpose, Instant now);
+
+    /** Tenant-scoped lookup by id + purpose — e.g. revoking a specific invite (never crosses tenants). */
+    Optional<OneTimeToken> findByIdAndTenantIdAndPurpose(UUID id, UUID tenantId, OneTimeTokenPurpose purpose);
 }

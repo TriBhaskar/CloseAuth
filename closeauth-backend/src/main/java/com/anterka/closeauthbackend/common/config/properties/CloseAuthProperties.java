@@ -34,6 +34,29 @@ public class CloseAuthProperties {
     private Session session = new Session();
     private OneTimeToken oneTimeToken = new OneTimeToken();
     private Branding branding = new Branding();
+    private PlatformAdmin platformAdmin = new PlatformAdmin();
+
+    /**
+     * Platform-admin bootstrap + token config (§7.8, Stage 7a). The bootstrap credential creates the FIRST platform
+     * admin on an empty {@code platform_admins} table (idempotent thereafter); it MUST come from env/secret manager
+     * and be rotated immediately after first login (never hardcode; blank → bootstrap is skipped).
+     */
+    @Getter
+    @Setter
+    public static class PlatformAdmin {
+        /** Email of the initial platform admin (env). Blank → bootstrap skipped. */
+        private String bootstrapEmail = "";
+        /** Plaintext bootstrap password (env only). Blank → bootstrap skipped. ROTATE after first login. */
+        private String bootstrapPassword = "";
+        private String bootstrapFirstName = "Platform";
+        private String bootstrapLastName = "Admin";
+        /**
+         * Lifetime of a minted platform-admin access token (no refresh for platform admins in MVP). Kept SHORT (5 min,
+         * matching the regular access-token TTL) on purpose: the highest-privilege principal gets the shortest-lived
+         * credential, so even if the revocation list is degraded (fail-open) a compromised token self-expires quickly.
+         */
+        private Duration tokenTtl = Duration.ofMinutes(5);
+    }
 
     /**
      * Platform-default hosted-page branding (§7.1, Stage 6b-ii). Fills null fields when a tenant hasn't set its own

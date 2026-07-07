@@ -1,14 +1,17 @@
 package com.anterka.closeauthbackend.token.service;
 
+import com.anterka.closeauthbackend.token.dto.ConsentView;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.SqlParameterValue;
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsent;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Tenant-aware {@link org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService}
@@ -65,5 +68,46 @@ public class TenantAwareOAuth2AuthorizationConsentService extends JdbcOAuth2Auth
         List<Object> args = new ArrayList<>(sasParameters);
         args.add(tenantId); // bound to CAST(? AS uuid)
         jdbcTemplate.update(INSERT_SQL, args.toArray());
+    }
+
+    // ---- 7b admin consent management (§7.8) --------------------------------
+
+    private static final String LIST_CONSENTS_SQL = """
+            SELECT c.registered_client_id, rc.client_id, c.authorities
+              FROM oauth2_authorization_consent c
+              JOIN oauth2_registered_client rc ON rc.id = c.registered_client_id
+             WHERE c.tenant_id = CAST(? AS uuid) AND c.principal_name = ?""";
+
+    private static final String COUNT_CONSENT_SQL = """
+            SELECT count(*) FROM oauth2_authorization_consent
+             WHERE registered_client_id = ? AND principal_name = ? AND tenant_id = CAST(? AS uuid)""";
+
+    /** Lists a principal's granted consents within a tenant (tenant-scoped — never crosses tenants). */
+    @Transactional(readOnly = true)
+    public List<ConsentView> listConsents(UUID tenantId, String principalName) {
+        return jdbcTemplate.query(LIST_CONSENTS_SQL, (rs, i) -> {
+            String authorities = rs.getString("authorities");
+            List<String> scopes = (authorities == null || authorities.isBlank())
+                    ? List.of() : List.of(authorities.split(","));
+            return new ConsentView(rs.getString("registered_client_id"), rs.getString("client_id"), scopes);
+        }, tenantId.toString(), principalName);
+    }
+
+    /**
+     * Revokes a principal's consent for one client within a tenant. Tenant-scoped (defense in depth: the consent row
+     * must belong to {@code tenantId}); idempotent if absent.
+     */
+    @Transactional
+    public void revokeConsent(UUID tenantId, String registeredClientId, String principalName) {
+        Integer inTenant = jdbcTemplate.queryForObject(
+                COUNT_CONSENT_SQL, Integer.class, registeredClientId, principalName, tenantId.toString());
+        if (inTenant == null || inTenant == 0) {
+            return; // not found in this tenant — idempotent, and never touches another tenant's row
+        }
+        OAuth2AuthorizationConsent consent = findById(registeredClientId, principalName);
+        if (consent != null) {
+            remove(consent);
+        }
+        // TODO(stage-8): emit a CONSENT_REVOKED audit event via the audit outbox (§7.11).
     }
 }

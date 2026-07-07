@@ -46,6 +46,18 @@ public class TokenRevocationService {
     }
 
     /**
+     * Revokes all outstanding access tokens for a PLATFORM ADMIN (§7.8) — e.g. suspension or a detected credential
+     * theft. Platform-admin tokens are tenant-less (no {@code tenant_id}), so this uses the sub-only marker rather than
+     * the tenant-scoped ones. The marker TTL is the platform-admin token TTL, so the marker outlives every token it
+     * could suppress (then self-expires, keeping the list small).
+     */
+    public void revokePlatformAdminTokens(UUID platformAdminId) {
+        markerStore.revokePlatformAdmin(platformAdminId, Instant.now(), properties.getPlatformAdmin().getTokenTtl());
+        log.info("Access-token revocation marker written for platform admin {}", platformAdminId);
+        // TODO(stage-8): emit a TOKEN_REVOKED audit event via the audit outbox (§7.11).
+    }
+
+    /**
      * The revocation check consulted by introspection: is a token revoked given its subject and issued-at?
      *
      * <p>Boundary is {@code iat <= revocationTime} (SAFE direction): a token issued in the same second as the
@@ -69,5 +81,21 @@ public class TokenRevocationService {
             }
         }
         return false;
+    }
+
+    /**
+     * The revocation check for a PLATFORM-ADMIN token (§7.8): is a tenant-less platform-admin token revoked given its
+     * {@code sub} and {@code iat}? Same {@code iat <= revocationTime} (SAFE) boundary as {@link #isRevoked}. Consulted
+     * by both the admin resource-server chain (per-request) and {@code /oauth2/introspect}.
+     *
+     * @param platformAdminId the token's {@code sub} as a platform-admin UUID
+     * @param iatEpochSeconds the token's {@code iat} in epoch seconds
+     */
+    public boolean isPlatformAdminRevoked(UUID platformAdminId, long iatEpochSeconds) {
+        if (platformAdminId == null) {
+            return false;
+        }
+        OptionalLong revocation = markerStore.platformAdminRevocationEpochSeconds(platformAdminId);
+        return revocation.isPresent() && iatEpochSeconds <= revocation.getAsLong();
     }
 }

@@ -45,7 +45,8 @@ class TenantServiceTest {
         CommandValidator commandValidator =
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         tenantService = new TenantService(
-                tenantRepository, List.of(), new TenantStateMachine(), commandValidator);
+                tenantRepository, List.of(), new TenantStateMachine(), commandValidator,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
     }
 
     @ParameterizedTest

@@ -55,7 +55,8 @@ class UserDeactivationWiringTest {
         PasswordEncoder encoder = new DelegatingPasswordEncoder("bcrypt", Map.of("bcrypt", new BCryptPasswordEncoder(4)));
         CommandValidator validator = new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         userService = new UserService(userRepository, tenantService, new PasswordHasher(encoder), validator,
-                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService);
+                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
 
         User active = new User();
         active.setId(userId);

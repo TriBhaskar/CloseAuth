@@ -48,7 +48,8 @@ class PasswordResetServiceTest {
         userService = Mockito.mock(UserService.class);
         sessionService = Mockito.mock(AuthServerSessionService.class);
         service = new PasswordResetService(oneTimeTokenService, rateLimiter, notifier, userService, sessionService,
-                new CloseAuthProperties());
+                new CloseAuthProperties(),
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(rateLimiter.tryAcquire(any(), anyInt(), any())).thenReturn(true);
     }
 

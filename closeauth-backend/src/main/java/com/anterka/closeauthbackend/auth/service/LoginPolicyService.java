@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.auth.dto.LoginOutcome;
 import com.anterka.closeauthbackend.auth.dto.LoginOutcome.FailureReason;
 import com.anterka.closeauthbackend.common.security.TenantContext;
@@ -45,6 +47,7 @@ public class LoginPolicyService {
 
     private final TenantService tenantService;
     private final UserService userService;
+    private final AuditEmitter auditEmitter;
 
     /**
      * Authenticates {@code email}/{@code rawPassword} against {@code context}'s tenant, applying login policy.
@@ -57,27 +60,32 @@ public class LoginPolicyService {
             TenantView tenant = tenantService.getTenantById(context.tenantId());
             tenantStatus = tenant.status();
         } catch (RuntimeException tenantMissing) {
-            return audit(FailureReason.TENANT_NOT_ACTIVE, "tenant {} not resolvable", context.tenantId());
+            return audit(context.tenantId(), FailureReason.TENANT_NOT_ACTIVE, "tenant {} not resolvable",
+                    context.tenantId());
         }
         if (tenantStatus != TenantStatus.ACTIVE) {
-            return audit(FailureReason.TENANT_NOT_ACTIVE, "tenant {} status={}", context.tenantId(), tenantStatus);
+            return audit(context.tenantId(), FailureReason.TENANT_NOT_ACTIVE, "tenant {} status={}",
+                    context.tenantId(), tenantStatus);
         }
 
         // Credentials: 3b's enumeration-safe primitive (tenant-scoped user pool).
         PasswordVerificationResult verification = userService.verifyPassword(context, email, rawPassword);
         if (!verification.success()) {
-            return audit(FailureReason.INVALID_CREDENTIALS, "credential check failed for tenant {}", context.tenantId());
+            return audit(context.tenantId(), FailureReason.INVALID_CREDENTIALS,
+                    "credential check failed for tenant {}", context.tenantId());
         }
 
         // Policy 3: only ACTIVE users may complete login.
         UserView user = verification.user();
         if (user.status() != UserStatus.ACTIVE) {
-            return audit(FailureReason.USER_NOT_ACTIVE, "user {} status={}", user.id(), user.status());
+            return audit(context.tenantId(), FailureReason.USER_NOT_ACTIVE, "user {} status={}",
+                    user.id(), user.status());
         }
 
         // idp = the credential source actually used. 6a authenticates via the LOCAL_PASSWORD identity; when
         // federated identities arrive (Phase 2), the specific identity used becomes login-recorded here.
-        // TODO(stage-8): emit a LOGIN_SUCCEEDED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.loginSuccess(context.tenantId(), user.id(), null,
+                IdpType.LOCAL_PASSWORD.name(), null));
         return LoginOutcome.success(user.id(), IdpType.LOCAL_PASSWORD);
     }
 
@@ -112,10 +120,11 @@ public class LoginPolicyService {
         return true;
     }
 
-    private LoginOutcome audit(FailureReason reason, String message, Object... args) {
-        // Server-side audit signal only; the caller receives a uniform, enumeration-safe failure.
-        // TODO(stage-8): emit a LOGIN_FAILED audit event (reason={}) via the audit outbox (§7.11).
+    private LoginOutcome audit(UUID tenantId, FailureReason reason, String message, Object... args) {
+        // Server-side audit signal only; the caller receives a uniform, enumeration-safe failure (the specific
+        // FailureReason is recorded here for audit but never surfaced — preserving 3b's enumeration-safety).
         log.info("Login refused (" + reason + "): " + message, args);
+        auditEmitter.emit(AuditEvents.loginFailure(tenantId, reason.name()));
         return LoginOutcome.failure(reason);
     }
 }

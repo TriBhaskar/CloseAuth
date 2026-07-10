@@ -7,6 +7,8 @@ import com.anterka.closeauthbackend.common.exception.InvalidCredentialsException
 import com.anterka.closeauthbackend.common.exception.LastTenantAdminException;
 import com.anterka.closeauthbackend.common.exception.LocalPasswordAlreadySetException;
 import com.anterka.closeauthbackend.common.exception.UserNotFoundException;
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.security.PasswordHasher;
 import com.anterka.closeauthbackend.common.security.PasswordHasher.HashedPassword;
 import com.anterka.closeauthbackend.common.security.TenantContext;
@@ -61,6 +63,7 @@ public class UserService {
     /** 7b integration: the last-admin invariant (3c-ii) + token revocation (4b-ii) on deactivation/deletion. */
     private final TenantRoleService tenantRoleService;
     private final TokenRevocationService tokenRevocationService;
+    private final AuditEmitter auditEmitter;
 
     /** Precomputed dummy hash for constant-ish-time verification on the user-not-found path. */
     private final String timingGuardHash;
@@ -72,7 +75,8 @@ public class UserService {
                        UserStateMachine userStateMachine,
                        List<UserProvisioningCallback> provisioningCallbacks,
                        TenantRoleService tenantRoleService,
-                       TokenRevocationService tokenRevocationService) {
+                       TokenRevocationService tokenRevocationService,
+                       AuditEmitter auditEmitter) {
         this.userRepository = userRepository;
         this.tenantService = tenantService;
         this.passwordHasher = passwordHasher;
@@ -81,6 +85,7 @@ public class UserService {
         this.provisioningCallbacks = provisioningCallbacks;
         this.tenantRoleService = tenantRoleService;
         this.tokenRevocationService = tokenRevocationService;
+        this.auditEmitter = auditEmitter;
         this.timingGuardHash = passwordHasher.hash(TIMING_GUARD_RAW).hash();
     }
 
@@ -125,6 +130,9 @@ public class UserService {
             callback.onUserProvisioned(saved, context);
         }
 
+        // createdBy is left to actor-enrichment: an admin JWT → actor set (admin-created); no principal (a public
+        // self-registration endpoint) → no actor (self-registered). The actor field itself distinguishes the two.
+        auditEmitter.emit(AuditEvents.userCreated(context.tenantId(), saved.getId(), null));
         return UserView.from(saved);
     }
 
@@ -275,8 +283,13 @@ public class UserService {
         if (deactivating) {
             // 4b-ii: kill the user's live access tokens now, not merely at expiry (parallel to 7a's platform-admin path).
             tokenRevocationService.revokeAllUserTokens(context.tenantId(), userId);
-            // TODO(stage-8): emit a USER_SUSPENDED / USER_DELETED audit event via the audit outbox (§7.11).
         }
+        auditEmitter.emit(switch (target) {
+            case SUSPENDED -> AuditEvents.userSuspended(context.tenantId(), userId);
+            case DELETED -> AuditEvents.userDeleted(context.tenantId(), userId);
+            case ACTIVE -> AuditEvents.userActivated(context.tenantId(), userId);
+            default -> throw new IllegalStateException("Unexpected user transition target: " + target);
+        });
         return UserView.from(user);
     }
 

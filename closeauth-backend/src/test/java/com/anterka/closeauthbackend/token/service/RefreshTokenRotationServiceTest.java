@@ -34,7 +34,8 @@ class RefreshTokenRotationServiceTest {
     void setUp() {
         repository = Mockito.mock(RefreshTokenRepository.class);
         tokenRevocationService = Mockito.mock(TokenRevocationService.class);
-        service = new RefreshTokenRotationService(repository, tokenRevocationService);
+        service = new RefreshTokenRotationService(repository, tokenRevocationService,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
     }
 
     private RefreshToken token(RefreshTokenStatus status, UUID familyId, Instant expiresAt) {

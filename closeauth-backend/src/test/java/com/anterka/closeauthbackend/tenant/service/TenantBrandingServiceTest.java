@@ -37,7 +37,8 @@ class TenantBrandingServiceTest {
         repository = Mockito.mock(TenantBrandingRepository.class);
         CommandValidator validator = Mockito.mock(CommandValidator.class); // color @Pattern is defense-in-depth; no-op here
         properties = new CloseAuthProperties();
-        service = new TenantBrandingService(repository, validator, properties);
+        service = new TenantBrandingService(repository, validator, properties,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(repository.save(any(TenantBranding.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 

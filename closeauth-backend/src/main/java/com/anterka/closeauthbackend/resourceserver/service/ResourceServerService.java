@@ -7,6 +7,8 @@ import com.anterka.closeauthbackend.common.exception.ResourceServerNotFoundExcep
 import com.anterka.closeauthbackend.common.exception.ResourceServerSlugConflictException;
 import com.anterka.closeauthbackend.common.exception.ScopeNameConflictException;
 import com.anterka.closeauthbackend.common.exception.ScopeNotFoundException;
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -54,6 +56,7 @@ public class ResourceServerService {
     private final TenantService tenantService;
     private final CommandValidator commandValidator;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     // ---------------------------------------------------------------------
     // Resource Server CRUD
@@ -73,7 +76,9 @@ public class ResourceServerService {
         rs.setName(command.name());
         rs.setAudienceIdentifier(command.audienceIdentifier());
         rs.setAutoCreated(false);
-        return ResourceServerView.from(resourceServerRepository.save(rs));
+        ResourceServer saved = resourceServerRepository.save(rs);
+        auditEmitter.emit(AuditEvents.resourceServerCreated(context.tenantId(), saved.getId(), saved.getName()));
+        return ResourceServerView.from(saved);
     }
 
     /** Updates the mutable fields (name, slug). Audience is immutable (not in the command). */
@@ -198,6 +203,7 @@ public class ResourceServerService {
         }
         ResourceServerScope scope = persistScope(rs, command.scopeName(), command.description(),
                 command.isDefault(), command.requiresConsent());
+        auditEmitter.emit(AuditEvents.scopeDefined(context.tenantId(), resourceServerId, command.scopeName()));
         return ScopeView.from(scope, resourceServerId);
     }
 
@@ -221,6 +227,7 @@ public class ResourceServerService {
         // Note: once 3c-ii's application_role_scopes reference scopes, removing an in-use scope will be
         // constrained by that FK; for now this is a straightforward removal.
         scopeRepository.delete(scope);
+        auditEmitter.emit(AuditEvents.scopeRemoved(context.tenantId(), resourceServerId, scopeId));
     }
 
     @Transactional(readOnly = true)

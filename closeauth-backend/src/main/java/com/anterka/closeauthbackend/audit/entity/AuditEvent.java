@@ -54,6 +54,14 @@ public class AuditEvent {
     @Column(name = "actor_user_id")
     private UUID actorUserId;
 
+    /**
+     * Platform-admin actor (§7.8, Stage 8). Set when the actor is CloseAuth staff acting across tenants — a distinct
+     * principal type from {@code users}, so it gets its own column rather than overloading {@link #actorUserId}
+     * (V7 migration; consistent with 7a keeping platform admins type-distinct everywhere).
+     */
+    @Column(name = "actor_platform_admin_id")
+    private UUID actorPlatformAdminId;
+
     /** M2M actor — references the SAS {@code oauth2_registered_client(id)} PK (plain String). */
     @Column(name = "actor_client_id", length = 100)
     private String actorClientRegisteredId;

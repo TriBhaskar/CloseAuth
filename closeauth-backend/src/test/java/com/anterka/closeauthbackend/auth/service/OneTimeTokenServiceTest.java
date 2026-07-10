@@ -49,7 +49,8 @@ class OneTimeTokenServiceTest {
         repository = Mockito.mock(OneTimeTokenRepository.class);
         generator = new OneTimeTokenGenerator(); // real: deterministic hashing
         service = new OneTimeTokenService(repository, generator, new CloseAuthProperties(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(repository.save(any(OneTimeToken.class))).thenAnswer(inv -> {
             OneTimeToken t = inv.getArgument(0);
             if (t.getId() == null) {

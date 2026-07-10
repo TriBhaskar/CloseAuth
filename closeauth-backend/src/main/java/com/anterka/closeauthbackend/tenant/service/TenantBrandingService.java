@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.tenant.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.exception.CloseAuthDomainException;
 import com.anterka.closeauthbackend.common.exception.ErrorCategory;
@@ -32,6 +34,7 @@ public class TenantBrandingService {
     private final TenantBrandingRepository repository;
     private final CommandValidator commandValidator;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     /** Public resolution: a tenant's branding with platform defaults for null fields (never any tenant internals). */
     @Transactional(readOnly = true)
@@ -68,7 +71,9 @@ public class TenantBrandingService {
         branding.setBackgroundColor(blankToNull(command.backgroundColor()));
         branding.setAccentColor(blankToNull(command.accentColor()));
         branding.setCompanyName(blankToNull(command.companyName()));
-        return toView(repository.save(branding));
+        BrandingView view = toView(repository.save(branding));
+        auditEmitter.emit(AuditEvents.tenantBrandingChanged(context.tenantId()));
+        return view;
     }
 
     private BrandingView toView(TenantBranding b) {

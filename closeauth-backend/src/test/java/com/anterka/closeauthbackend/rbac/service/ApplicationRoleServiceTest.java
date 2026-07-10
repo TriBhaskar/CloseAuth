@@ -51,7 +51,8 @@ class ApplicationRoleServiceTest {
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         service = new ApplicationRoleService(applicationRoleRepository, applicationRoleScopeRepository,
                 userApplicationRoleRepository, resourceServerRepository, resourceServerScopeRepository,
-                tenantService, commandValidator);
+                tenantService, commandValidator,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(applicationRoleScopeRepository.save(any(ApplicationRoleScope.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 

@@ -13,7 +13,10 @@
  *       ({@code idp_type = AGENT_KEY}); no parallel credential system.</li>
  * </ul>
  *
- * <p>TODO(stage-8): audit outbox wiring + agent schema seeding.
+ * <p>Phase 4 (NOT Stage 8): agent audit events ({@code AGENT_REGISTERED}/{@code AGENT_REVOKED}/
+ * {@code AGENT_CONSENT_GRANTED}/{@code AGENT_TOKEN_EXCHANGED}) and agent schema seeding land with the
+ * feature itself. Stage 8 deliberately wires NO agent audit events — the {@code agents} table is schema-only,
+ * so those taxonomy values are excluded from the Stage-8 coverage enforcement until the entities exist.
  *
  * <p>References: Sections 7.10 and 7.7 (Token Exchange) of CLOSEAUTH_PRODUCT_VISION_V2.md.
  */

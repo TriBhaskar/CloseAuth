@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.token.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.token.entity.RefreshToken;
 import com.anterka.closeauthbackend.token.enums.RefreshTokenStatus;
 import com.anterka.closeauthbackend.token.repository.RefreshTokenRepository;
@@ -39,6 +41,7 @@ public class RefreshTokenRotationService {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenRevocationService tokenRevocationService;
+    private final AuditEmitter auditEmitter;
 
     /** Records the root of a new refresh-token family (a fresh login's first refresh token), unlinked to a session. */
     @Transactional
@@ -100,7 +103,8 @@ public class RefreshTokenRotationService {
                                 + "familyTokensRevoked={}",
                         token.getFamilyId(), token.getTenantId(), token.getUserId(),
                         token.getClientRegisteredId(), token.getStatus(), revoked);
-                // TODO(stage-8): emit a REFRESH_TOKEN_REPLAY_DETECTED audit event via the audit outbox (§7.11).
+                auditEmitter.emit(AuditEvents.refreshTokenReplayDetected(token.getTenantId(), token.getUserId(),
+                        token.getClientRegisteredId(), token.getFamilyId(), revoked));
                 yield RotationOutcome.replay();
             }
             case EXPIRED -> RotationOutcome.expired();
@@ -149,6 +153,12 @@ public class RefreshTokenRotationService {
         token.setIpAddress(issuance.ipAddress());
         token.setUserAgent(issuance.userAgent());
         token.setExpiresAt(issuance.expiresAt());
-        return refreshTokenRepository.save(token);
+        RefreshToken saved = refreshTokenRepository.save(token);
+        if (parentTokenId == null) {
+            auditEmitter.emit(AuditEvents.tokenIssued(tenantId, userId, clientRegisteredId, familyId, sessionId));
+        } else {
+            auditEmitter.emit(AuditEvents.refreshTokenRotated(tenantId, userId, clientRegisteredId, familyId));
+        }
+        return saved;
     }
 }

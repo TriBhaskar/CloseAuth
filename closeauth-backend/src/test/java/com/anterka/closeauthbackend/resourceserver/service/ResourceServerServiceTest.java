@@ -60,7 +60,8 @@ class ResourceServerServiceTest {
         // Default audienceHostBase = "rs.closeauth.io".
         CloseAuthProperties properties = new CloseAuthProperties();
         service = new ResourceServerService(
-                rsRepo, scopeRepo, clientAuthRepo, tenantService, commandValidator, properties);
+                rsRepo, scopeRepo, clientAuthRepo, tenantService, commandValidator, properties,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
 
         // requireActiveTenant returns a live tenant view (autoCreate reads its slug).
         when(tenantService.requireActiveTenant(any())).thenReturn(

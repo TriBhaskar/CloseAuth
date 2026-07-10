@@ -43,7 +43,8 @@ class LoginPolicyServiceTest {
     void setUp() {
         tenantService = Mockito.mock(TenantService.class);
         userService = Mockito.mock(UserService.class);
-        service = new LoginPolicyService(tenantService, userService);
+        service = new LoginPolicyService(tenantService, userService,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(tenantService.getTenantById(tenantId)).thenReturn(tenant(TenantStatus.ACTIVE));
     }
 

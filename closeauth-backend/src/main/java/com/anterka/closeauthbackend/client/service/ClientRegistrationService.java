@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.client.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
@@ -44,6 +46,7 @@ public class ClientRegistrationService {
     private final CommandValidator commandValidator;
     private final PasswordEncoder passwordEncoder;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     @Transactional
     public ClientView registerClient(TenantContext context, RegisterClientCommand command) {
@@ -56,6 +59,8 @@ public class ClientRegistrationService {
         // Trigger the 3c-i capability: create the client's 1:1 Resource Server (same transaction → atomic).
         resourceServerService.autoCreateForClient(context, registeredClient.getId(), registeredClient.getClientName());
 
+        auditEmitter.emit(AuditEvents.clientRegistered(context.tenantId(), registeredClient.getId(),
+                registeredClient.getClientId()));
         return ClientView.from(registeredClient);
     }
 

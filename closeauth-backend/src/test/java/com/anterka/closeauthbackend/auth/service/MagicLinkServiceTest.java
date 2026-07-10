@@ -47,7 +47,8 @@ class MagicLinkServiceTest {
         userService = Mockito.mock(UserService.class);
         loginPolicyService = Mockito.mock(LoginPolicyService.class);
         service = new MagicLinkService(oneTimeTokenService, rateLimiter, notifier, userService, loginPolicyService,
-                new CloseAuthProperties());
+                new CloseAuthProperties(),
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(rateLimiter.tryAcquire(any(), anyInt(), any())).thenReturn(true);
     }
 

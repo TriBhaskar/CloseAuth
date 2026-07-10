@@ -44,7 +44,8 @@ class ClientRegistrationServiceTest {
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         service = new ClientRegistrationService(registeredClientRepository, resourceServerService,
                 tenantService, commandValidator, passwordEncoder,
-                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties());
+                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
     }
 
     @Test

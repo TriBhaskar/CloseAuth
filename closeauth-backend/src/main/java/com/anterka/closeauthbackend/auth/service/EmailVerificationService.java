@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.auth.dto.ConsumeResult;
 import com.anterka.closeauthbackend.auth.dto.IssueTokenCommand;
 import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
@@ -39,6 +41,7 @@ public class EmailVerificationService {
     private final AuthNotificationSender notifier;
     private final UserService userService;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     /** Issues (and delivers) a fresh email-verification code, invalidating any prior unused one. Rate-limited. */
     @Transactional
@@ -54,7 +57,7 @@ public class EmailVerificationService {
                 OneTimeTokenPurpose.EMAIL_VERIFICATION, context.tenantId(), userId, target, null,
                 OneTimeTokenFormat.NUMERIC_CODE, cfg.getEmailVerificationTtl()));
         notifier.sendEmailVerificationCode(target, raw.rawSecret());
-        // TODO(stage-8): emit EMAIL_VERIFICATION_ISSUED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.emailVerificationIssued(context.tenantId(), userId, target));
     }
 
     /**
@@ -82,7 +85,7 @@ public class EmailVerificationService {
         if (user.status() == UserStatus.PENDING) {
             userService.activateUser(context, userId); // email-verified mode gates activation on this
         }
-        // TODO(stage-8): emit EMAIL_VERIFIED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.emailVerified(context.tenantId(), userId));
         return VerificationOutcome.VERIFIED;
     }
 

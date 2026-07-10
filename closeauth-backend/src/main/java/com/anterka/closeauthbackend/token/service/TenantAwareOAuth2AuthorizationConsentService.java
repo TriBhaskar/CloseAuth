@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.token.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.token.dto.ConsentView;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.SqlParameterValue;
@@ -36,11 +38,14 @@ public class TenantAwareOAuth2AuthorizationConsentService extends JdbcOAuth2Auth
             "SELECT tenant_id FROM oauth2_registered_client WHERE id = ?";
 
     private final JdbcTemplate jdbcTemplate;
+    private final AuditEmitter auditEmitter;
 
     public TenantAwareOAuth2AuthorizationConsentService(JdbcTemplate jdbcTemplate,
-                                                        RegisteredClientRepository registeredClientRepository) {
+                                                        RegisteredClientRepository registeredClientRepository,
+                                                        AuditEmitter auditEmitter) {
         super(jdbcTemplate, registeredClientRepository);
         this.jdbcTemplate = jdbcTemplate;
+        this.auditEmitter = auditEmitter;
     }
 
     @Override
@@ -68,6 +73,10 @@ public class TenantAwareOAuth2AuthorizationConsentService extends JdbcOAuth2Auth
         List<Object> args = new ArrayList<>(sasParameters);
         args.add(tenantId); // bound to CAST(? AS uuid)
         jdbcTemplate.update(INSERT_SQL, args.toArray());
+
+        auditEmitter.emit(AuditEvents.consentGranted(UUID.fromString(tenantId),
+                authorizationConsent.getPrincipalName(), authorizationConsent.getRegisteredClientId(),
+                List.copyOf(authorizationConsent.getScopes())));
     }
 
     // ---- 7b admin consent management (§7.8) --------------------------------
@@ -108,6 +117,6 @@ public class TenantAwareOAuth2AuthorizationConsentService extends JdbcOAuth2Auth
         if (consent != null) {
             remove(consent);
         }
-        // TODO(stage-8): emit a CONSENT_REVOKED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.consentRevoked(tenantId, principalName, registeredClientId));
     }
 }

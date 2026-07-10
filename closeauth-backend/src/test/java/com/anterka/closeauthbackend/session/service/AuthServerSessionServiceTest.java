@@ -56,7 +56,8 @@ class AuthServerSessionServiceTest {
         properties = new CloseAuthProperties(); // idle 1h, absolute 12h, remember 30d, allowed=true
         clock = new MutableClock(Instant.parse("2026-07-04T10:00:00Z"));
         service = new AuthServerSessionService(hotStore, sessionRepository, rotationService,
-                tokenRevocationService, properties, clock);
+                tokenRevocationService, properties, clock,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         // save() echoes the row back with a generated id (JPA would).
         when(sessionRepository.save(any(AuthServerSession.class))).thenAnswer(inv -> {
             AuthServerSession s = inv.getArgument(0);

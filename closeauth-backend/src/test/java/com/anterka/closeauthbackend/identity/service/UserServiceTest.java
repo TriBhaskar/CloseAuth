@@ -67,7 +67,8 @@ class UserServiceTest {
         com.anterka.closeauthbackend.token.service.TokenRevocationService tokenRevocationService =
                 Mockito.mock(com.anterka.closeauthbackend.token.service.TokenRevocationService.class);
         userService = new UserService(userRepository, tenantService, hasher, commandValidator,
-                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService);
+                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             if (u.getId() == null) {

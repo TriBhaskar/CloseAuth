@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.token.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,19 +32,20 @@ public class TokenRevocationService {
 
     private final RevocationMarkerStore markerStore;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     /** Revokes all outstanding access tokens for a user (e.g. user suspension/deletion, or a detected token theft). */
     public void revokeAllUserTokens(UUID tenantId, UUID userId) {
         markerStore.revokeUser(tenantId, userId, Instant.now(), properties.getToken().getAccessTokenTtl());
         log.info("Access-token revocation marker written for user {} in tenant {}", userId, tenantId);
-        // TODO(stage-8): emit a TOKEN_REVOKED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.userTokensRevoked(tenantId, userId));
     }
 
     /** Revokes all outstanding access tokens for every user in a tenant (e.g. tenant suspension). */
     public void revokeAllTenantTokens(UUID tenantId) {
         markerStore.revokeTenant(tenantId, Instant.now(), properties.getToken().getAccessTokenTtl());
         log.info("Access-token revocation marker written for ALL users in tenant {}", tenantId);
-        // TODO(stage-8): emit a TOKEN_REVOKED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.tenantTokensRevoked(tenantId));
     }
 
     /**
@@ -54,7 +57,7 @@ public class TokenRevocationService {
     public void revokePlatformAdminTokens(UUID platformAdminId) {
         markerStore.revokePlatformAdmin(platformAdminId, Instant.now(), properties.getPlatformAdmin().getTokenTtl());
         log.info("Access-token revocation marker written for platform admin {}", platformAdminId);
-        // TODO(stage-8): emit a TOKEN_REVOKED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.platformAdminTokensRevoked(platformAdminId));
     }
 
     /**

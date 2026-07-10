@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.tenant.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.tenant.dto.RegistrationConfigView;
 import com.anterka.closeauthbackend.tenant.entity.TenantRegistrationConfig;
@@ -25,6 +27,7 @@ public class RegistrationConfigService {
 
     private final TenantRegistrationConfigRepository repository;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     @Transactional(readOnly = true)
     public RegistrationMode resolveMode(UUID tenantId) {
@@ -53,7 +56,7 @@ public class RegistrationConfigService {
                 });
         config.setMode(mode);
         repository.save(config);
-        // TODO(stage-8): emit a REGISTRATION_CONFIG_UPDATED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.tenantRegistrationPolicyChanged(tenantId, mode.name()));
         return new RegistrationConfigView(tenantId, mode);
     }
 

@@ -53,7 +53,8 @@ class PlatformAdminServiceTest {
         // The constructor pre-computes a timing-guard hash from the hasher.
         lenient().when(passwordHasher.hash(anyString())).thenReturn(new HashedPassword("$2a$guard", "bcrypt"));
         service = new PlatformAdminService(platformAdminRepository, platformAdminRoleRepository,
-                platformRoleRepository, passwordHasher, commandValidator, tokenRevocationService);
+                platformRoleRepository, passwordHasher, commandValidator, tokenRevocationService,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
     }
 
     // ---- authenticate: enumeration-safe -----------------------------------

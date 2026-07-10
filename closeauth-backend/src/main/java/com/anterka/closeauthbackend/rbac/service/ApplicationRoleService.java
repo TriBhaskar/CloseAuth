@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.rbac.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.exception.ApplicationRoleConflictException;
 import com.anterka.closeauthbackend.common.exception.ApplicationRoleNotFoundException;
 import com.anterka.closeauthbackend.common.exception.ResourceServerNotFoundException;
@@ -49,6 +51,7 @@ public class ApplicationRoleService {
     private final ResourceServerScopeRepository resourceServerScopeRepository;
     private final TenantService tenantService;
     private final CommandValidator commandValidator;
+    private final AuditEmitter auditEmitter;
 
     // ---- CRUD (RS-scoped) -------------------------------------------------
 
@@ -179,6 +182,8 @@ public class ApplicationRoleService {
         assignment.setTenantId(context.tenantId());
         assignment.setAssignedByUserId(assignedByUserId);
         userApplicationRoleRepository.save(assignment);
+        auditEmitter.emit(AuditEvents.roleAssigned(context.tenantId(), userId, "APPLICATION", applicationRoleId,
+                assignedByUserId));
     }
 
     /** Idempotent: revoking a role the user does not hold is a no-op. */
@@ -187,7 +192,11 @@ public class ApplicationRoleService {
         tenantService.requireActiveTenant(context);
         loadRoleInTenant(context, applicationRoleId); // ensures role ∈ tenant
         userApplicationRoleRepository.findByUserIdAndApplicationRoleId(userId, applicationRoleId)
-                .ifPresent(userApplicationRoleRepository::delete);
+                .ifPresent(existing -> {
+                    userApplicationRoleRepository.delete(existing);
+                    auditEmitter.emit(AuditEvents.roleRevoked(context.tenantId(), userId, "APPLICATION",
+                            applicationRoleId));
+                });
     }
 
     @Transactional(readOnly = true)

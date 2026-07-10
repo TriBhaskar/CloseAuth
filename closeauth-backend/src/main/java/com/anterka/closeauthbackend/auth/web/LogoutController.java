@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.auth.web;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.auth.service.AuthFlowTenantResolver;
 import com.anterka.closeauthbackend.session.service.AuthServerSessionService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -38,6 +40,7 @@ public class LogoutController {
     private final AuthServerSessionService sessionService;
     private final SessionCookieManager cookieManager;
     private final AuthFlowTenantResolver tenantResolver;
+    private final AuditEmitter auditEmitter;
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
@@ -46,11 +49,11 @@ public class LogoutController {
             HttpServletRequest request,
             HttpServletResponse response) {
 
-        cookieManager.readSessionKey(request).ifPresent(sessionKey -> {
-            sessionService.revokeSession(sessionKey); // Stage 5 four-leg cascade
-            log.info("Logout: session revoked (cascade applied)");
-            // TODO(stage-8): emit a LOGOUT audit event via the audit outbox (§7.11).
-        });
+        cookieManager.readSessionKey(request).ifPresent(sessionKey ->
+                sessionService.revokeSession(sessionKey).ifPresent(revoked -> { // Stage 5 four-leg cascade
+                    log.info("Logout: session revoked (cascade applied)");
+                    auditEmitter.emit(AuditEvents.logout(revoked.tenantId(), revoked.userId()));
+                }));
         cookieManager.clear(response);
 
         Optional<URI> target = validatedRedirect(clientId, postLogoutRedirectUri);

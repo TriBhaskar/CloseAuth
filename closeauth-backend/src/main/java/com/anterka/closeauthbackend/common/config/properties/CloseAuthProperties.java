@@ -35,6 +35,41 @@ public class CloseAuthProperties {
     private OneTimeToken oneTimeToken = new OneTimeToken();
     private Branding branding = new Branding();
     private PlatformAdmin platformAdmin = new PlatformAdmin();
+    private Audit audit = new Audit();
+
+    /**
+     * Audit outbox + retention config (§7.11, Stage 8). Single source for the drain worker's cadence/batching/retry
+     * budget and the retention policy. The retention value (90 days) is config-driven so per-tenant retention (Phase 2)
+     * has a clean landing spot; automated deletion is opt-in ({@code enabled=false}) — the mechanism ships, but MVP
+     * does not silently delete history.
+     */
+    @Getter
+    @Setter
+    public static class Audit {
+        /** Drain worker poll interval (ms) — how often undrained outbox rows are swept to {@code audit_events}. */
+        private long drainIntervalMs = 2000;
+        /** Max rows drained per poll (bounds the per-tick work; the backlog just waits for the next tick). */
+        private int drainBatchSize = 100;
+        /** Retry budget per outbox row before it is dead-lettered (left in place, logged loudly, excluded from drain). */
+        private int maxAttempts = 5;
+        private Retention retention = new Retention();
+
+        /**
+         * Retention policy (§7.11). The {@code days} value is platform-wide in MVP (per-tenant is Phase 2). Deletion is
+         * OFF by default: enabling it turns on the scheduled cleanup job that removes {@code audit_events} older than
+         * the window (and only those rows — never anything they reference).
+         */
+        @Getter
+        @Setter
+        public static class Retention {
+            /** Whether the scheduled retention-cleanup job actually deletes. Off in MVP (policy documented, not enforced). */
+            private boolean enabled = false;
+            /** Hot-retention window in days (default 90, §7.11). Config-driven so per-tenant override lands cleanly later. */
+            private int days = 90;
+            /** Cron for the cleanup job (default 03:30 daily). Only runs when {@code enabled=true}. */
+            private String cleanupCron = "0 30 3 * * *";
+        }
+    }
 
     /**
      * Platform-admin bootstrap + token config (§7.8, Stage 7a). The bootstrap credential creates the FIRST platform

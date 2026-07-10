@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.auth.dto.ConsumeResult;
 import com.anterka.closeauthbackend.auth.dto.IssueTokenCommand;
 import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
@@ -49,6 +51,7 @@ public class PasswordResetService {
     private final UserService userService;
     private final AuthServerSessionService sessionService;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     /** Requests a reset link. Externally identical for existing / non-existing emails (no account enumeration). */
     @Transactional
@@ -70,7 +73,7 @@ public class PasswordResetService {
                 OneTimeTokenPurpose.PASSWORD_RESET, context.tenantId(), user.id(), target, null,
                 OneTimeTokenFormat.OPAQUE_LINK, cfg.getPasswordResetTtl()));
         notifier.sendPasswordResetLink(target, resetUrl(raw.rawSecret(), clientId));
-        // TODO(stage-8): emit PASSWORD_RESET_REQUESTED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.passwordResetRequested(context.tenantId(), user.id(), target));
     }
 
     /** Consumes a reset token, sets the new password, and revokes every existing session/token (post-reset cascade). */
@@ -86,7 +89,8 @@ public class PasswordResetService {
         int revokedSessions = sessionService.revokeAllUserSessions(context.tenantId(), userId);
         log.info("Password reset for user {} in tenant {}; revoked {} session(s) + token cascade",
                 userId, context.tenantId(), revokedSessions);
-        // TODO(stage-8): emit PASSWORD_RESET_COMPLETED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.passwordChanged(context.tenantId(), userId, "PASSWORD_RESET"));
+        auditEmitter.emit(AuditEvents.passwordResetCompleted(context.tenantId(), userId, revokedSessions));
         return ResetOutcome.RESET;
     }
 

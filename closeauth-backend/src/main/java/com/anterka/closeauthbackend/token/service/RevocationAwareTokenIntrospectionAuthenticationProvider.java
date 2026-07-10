@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.token.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -33,13 +35,16 @@ public class RevocationAwareTokenIntrospectionAuthenticationProvider implements 
     private final AuthenticationProvider delegate;
     private final TokenRevocationService tokenRevocationService;
     private final JwtDecoder jwtDecoder;
+    private final AuditEmitter auditEmitter;
 
     public RevocationAwareTokenIntrospectionAuthenticationProvider(AuthenticationProvider delegate,
                                                                    TokenRevocationService tokenRevocationService,
-                                                                   JwtDecoder jwtDecoder) {
+                                                                   JwtDecoder jwtDecoder,
+                                                                   AuditEmitter auditEmitter) {
         this.delegate = delegate;
         this.tokenRevocationService = tokenRevocationService;
         this.jwtDecoder = jwtDecoder;
+        this.auditEmitter = auditEmitter;
     }
 
     @Override
@@ -61,6 +66,7 @@ public class RevocationAwareTokenIntrospectionAuthenticationProvider implements 
         UUID tenantId = parseUuid(claims.getClaims().get("tenant_id"));
         UUID userId = parseUuid(claims.getSubject()); // null for machine (client-credentials) tokens
         if (tokenRevocationService.isRevoked(tenantId, userId, issuedAt.getEpochSecond())) {
+            auditEmitter.emit(AuditEvents.tokenIntrospectedRevoked(tenantId, userId, "USER"));
             return inactive(introspection);
         }
         return result;
@@ -91,6 +97,7 @@ public class RevocationAwareTokenIntrospectionAuthenticationProvider implements 
             return original;
         }
         if (tokenRevocationService.isPlatformAdminRevoked(adminId, issuedAt.getEpochSecond())) {
+            auditEmitter.emit(AuditEvents.tokenIntrospectedRevoked(null, null, "PLATFORM_ADMIN"));
             return inactive(introspection); // revoked ⇒ active:false, no claim leakage
         }
         OAuth2TokenIntrospection active = OAuth2TokenIntrospection.builder(true)

@@ -23,7 +23,8 @@ import java.util.UUID;
 /**
  * Platform-scoped tenant management (§7.8) — cross-tenant operations, so {@link RequiresPlatformAdmin} (a tenant admin
  * cannot reach these). Thin HTTP surface over {@link TenantService} (3a); the state machine + soft-delete already exist.
- * All mutations are audit seams ({@code TODO(stage-8)} in the services).
+ * All mutations are audited in the service ({@code TENANT_CREATED}/{@code TENANT_ACTIVATED}/
+ * {@code TENANT_SUSPENDED}/{@code TENANT_DELETED} via the Stage-8 audit outbox).
  *
  * <h2>HTTP contract</h2>
  * {@code POST /v1/platform/tenants} (provision, 201) · {@code GET /v1/platform/tenants?page&size} (paginated) ·

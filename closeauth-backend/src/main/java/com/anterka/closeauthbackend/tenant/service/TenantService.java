@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.tenant.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.exception.TenantNotFoundException;
 import com.anterka.closeauthbackend.common.exception.TenantSlugConflictException;
 import com.anterka.closeauthbackend.common.exception.TenantSuspendedException;
@@ -44,6 +46,7 @@ public class TenantService {
     private final List<TenantProvisioningCallback> provisioningCallbacks;
     private final TenantStateMachine stateMachine;
     private final CommandValidator commandValidator;
+    private final AuditEmitter auditEmitter;
 
     // ---------------------------------------------------------------------
     // Provisioning
@@ -80,6 +83,7 @@ public class TenantService {
             callback.onTenantProvisioned(saved, context);
         }
 
+        auditEmitter.emit(AuditEvents.tenantCreated(saved.getId(), saved.getSlug(), saved.getName()));
         return TenantView.from(saved);
     }
 
@@ -110,6 +114,7 @@ public class TenantService {
         tenant.setStatus(TenantStatus.DELETED);
         tenant.setDeletedAt(Instant.now());
         // Managed entity: the change flushes on commit (dirty checking); no explicit save.
+        auditEmitter.emit(AuditEvents.tenantDeleted(tenantId));
         return TenantView.from(tenant);
     }
 
@@ -117,6 +122,9 @@ public class TenantService {
         Tenant tenant = loadOrThrow(tenantId);
         stateMachine.checkTransition(tenant.getStatus(), target);
         tenant.setStatus(target);
+        auditEmitter.emit(target == TenantStatus.ACTIVE
+                ? AuditEvents.tenantActivated(tenantId)
+                : AuditEvents.tenantSuspended(tenantId));
         return TenantView.from(tenant);
     }
 

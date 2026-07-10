@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.rbac.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.exception.LastTenantAdminException;
 import com.anterka.closeauthbackend.common.exception.SystemRoleModificationException;
 import com.anterka.closeauthbackend.common.exception.TenantRoleConflictException;
@@ -37,6 +39,7 @@ public class TenantRoleService {
     private final UserTenantRoleRepository userTenantRoleRepository;
     private final TenantService tenantService;
     private final CommandValidator commandValidator;
+    private final AuditEmitter auditEmitter;
 
     // ---- CRUD -------------------------------------------------------------
 
@@ -109,6 +112,7 @@ public class TenantRoleService {
         assignment.setTenantRoleId(tenantRoleId);
         assignment.setAssignedByUserId(assignedByUserId);
         userTenantRoleRepository.save(assignment);
+        auditEmitter.emit(AuditEvents.roleAssigned(context.tenantId(), userId, "TENANT", tenantRoleId, assignedByUserId));
     }
 
     /**
@@ -139,6 +143,7 @@ public class TenantRoleService {
             }
         }
         userTenantRoleRepository.delete(assignment.get());
+        auditEmitter.emit(AuditEvents.roleRevoked(context.tenantId(), userId, "TENANT", tenantRoleId));
     }
 
     @Transactional(readOnly = true)

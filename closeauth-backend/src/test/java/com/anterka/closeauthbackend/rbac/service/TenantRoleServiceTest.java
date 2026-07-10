@@ -43,7 +43,8 @@ class TenantRoleServiceTest {
         TenantService tenantService = Mockito.mock(TenantService.class);
         CommandValidator commandValidator =
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
-        service = new TenantRoleService(tenantRoleRepository, userTenantRoleRepository, tenantService, commandValidator);
+        service = new TenantRoleService(tenantRoleRepository, userTenantRoleRepository, tenantService, commandValidator,
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(tenantRoleRepository.save(any(TenantRole.class))).thenAnswer(inv -> {
             TenantRole r = inv.getArgument(0);
             if (r.getId() == null) {

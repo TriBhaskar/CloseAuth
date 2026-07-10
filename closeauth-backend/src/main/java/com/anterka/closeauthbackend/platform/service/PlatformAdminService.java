@@ -16,6 +16,8 @@ import com.anterka.closeauthbackend.platform.repository.PlatformAdminRepository;
 import com.anterka.closeauthbackend.platform.repository.PlatformAdminRoleRepository;
 import com.anterka.closeauthbackend.rbac.entity.PlatformRole;
 import com.anterka.closeauthbackend.rbac.repository.PlatformRoleRepository;
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,6 +49,7 @@ public class PlatformAdminService {
     private final PasswordHasher passwordHasher;
     private final CommandValidator commandValidator;
     private final TokenRevocationService tokenRevocationService;
+    private final AuditEmitter auditEmitter;
     private final String timingGuardHash;
 
     public PlatformAdminService(PlatformAdminRepository platformAdminRepository,
@@ -54,13 +57,15 @@ public class PlatformAdminService {
                                 PlatformRoleRepository platformRoleRepository,
                                 PasswordHasher passwordHasher,
                                 CommandValidator commandValidator,
-                                TokenRevocationService tokenRevocationService) {
+                                TokenRevocationService tokenRevocationService,
+                                AuditEmitter auditEmitter) {
         this.platformAdminRepository = platformAdminRepository;
         this.platformAdminRoleRepository = platformAdminRoleRepository;
         this.platformRoleRepository = platformRoleRepository;
         this.passwordHasher = passwordHasher;
         this.commandValidator = commandValidator;
         this.tokenRevocationService = tokenRevocationService;
+        this.auditEmitter = auditEmitter;
         this.timingGuardHash = passwordHasher.hash(TIMING_GUARD_RAW).hash();
     }
 
@@ -82,7 +87,9 @@ public class PlatformAdminService {
         admin.setLastName(command.lastName());
         admin.setPasswordHash(hashed.hash());
         admin.setPasswordAlgo(hashed.algorithm());
-        return PlatformAdminView.from(platformAdminRepository.save(admin));
+        PlatformAdmin saved = platformAdminRepository.save(admin);
+        auditEmitter.emit(AuditEvents.platformConfigurationChanged("PLATFORM_ADMIN_CREATED", saved.getId()));
+        return PlatformAdminView.from(saved);
     }
 
     @Transactional(readOnly = true)
@@ -106,7 +113,8 @@ public class PlatformAdminService {
     public PlatformAdminView suspend(UUID id) {
         PlatformAdmin admin = loadOrThrow(id);
         admin.setStatus(PlatformAdminStatus.SUSPENDED);
-        tokenRevocationService.revokePlatformAdminTokens(id);
+        tokenRevocationService.revokePlatformAdminTokens(id); // also emits TOKEN_REVOKED (scope=PLATFORM_ADMIN)
+        auditEmitter.emit(AuditEvents.platformConfigurationChanged("PLATFORM_ADMIN_SUSPENDED", id));
         return PlatformAdminView.from(admin);
     }
 
@@ -115,6 +123,7 @@ public class PlatformAdminService {
     public PlatformAdminView activate(UUID id) {
         PlatformAdmin admin = loadOrThrow(id);
         admin.setStatus(PlatformAdminStatus.ACTIVE);
+        auditEmitter.emit(AuditEvents.platformConfigurationChanged("PLATFORM_ADMIN_ACTIVATED", id));
         return PlatformAdminView.from(admin);
     }
 
@@ -177,7 +186,7 @@ public class PlatformAdminService {
             return audit(FailureReason.BAD_PASSWORD);
         }
         admin.setLastLoginAt(Instant.now());
-        // TODO(stage-8): emit a PLATFORM_ADMIN_LOGIN audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.platformAdminLoginSuccess(admin.getId()));
         return PlatformAdminAuthResult.success(admin.getId());
     }
 
@@ -189,8 +198,8 @@ public class PlatformAdminService {
 
     private PlatformAdminAuthResult audit(FailureReason reason) {
         // Server-side audit signal only; the caller surfaces a uniform, enumeration-safe failure.
-        // TODO(stage-8): emit a PLATFORM_ADMIN_LOGIN_FAILED audit event (reason={}) via the audit outbox (§7.11).
         log.info("Platform-admin authentication failed ({})", reason);
+        auditEmitter.emit(AuditEvents.platformAdminLoginFailure(reason.name()));
         return PlatformAdminAuthResult.failure(reason);
     }
 

@@ -80,7 +80,8 @@ public class AuthorizationServerConfig {
             AuthServerSessionService sessionService,
             TenantSessionSsoFilter tenantSessionSsoFilter,
             ConsentScopeResolver consentScopeResolver,
-            JwtDecoder jwtDecoder) throws Exception {
+            JwtDecoder jwtDecoder,
+            com.anterka.closeauthbackend.audit.service.AuditEmitter auditEmitter) throws Exception {
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                 .oidc(Customizer.withDefaults()) // OIDC discovery, UserInfo, ID tokens, RP-initiated logout endpoint
@@ -94,7 +95,7 @@ public class AuthorizationServerConfig {
                         rotationProviders(rotationService, authorizationService, sessionService)))
                 // 4b-ii: wrap the introspection provider to consult the Redis revocation list.
                 .tokenIntrospectionEndpoint(introspection -> introspection.authenticationProviders(
-                        introspectionProviders(tokenRevocationService, jwtDecoder)));
+                        introspectionProviders(tokenRevocationService, jwtDecoder, auditEmitter)));
         http
                 // 6a: consult the tenant-scoped Auth Server session on /oauth2/authorize (SSO). Placed right after
                 // SecurityContextHolderFilter (which loads the — anonymous — context) so a recognized session
@@ -190,12 +191,13 @@ public class AuthorizationServerConfig {
      * wrapper validate them by signature + claims + revocation).
      */
     private Consumer<List<AuthenticationProvider>> introspectionProviders(TokenRevocationService tokenRevocationService,
-                                                                          JwtDecoder jwtDecoder) {
+                                                                          JwtDecoder jwtDecoder,
+                                                                          com.anterka.closeauthbackend.audit.service.AuditEmitter auditEmitter) {
         return providers -> {
             for (int i = 0; i < providers.size(); i++) {
                 if (providers.get(i) instanceof OAuth2TokenIntrospectionAuthenticationProvider provider) {
                     providers.set(i, new RevocationAwareTokenIntrospectionAuthenticationProvider(
-                            provider, tokenRevocationService, jwtDecoder));
+                            provider, tokenRevocationService, jwtDecoder, auditEmitter));
                 }
             }
         };

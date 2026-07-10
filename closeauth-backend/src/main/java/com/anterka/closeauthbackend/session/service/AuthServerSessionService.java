@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.session.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.session.dto.CreateSessionCommand;
 import com.anterka.closeauthbackend.session.dto.SessionView;
@@ -60,19 +62,22 @@ public class AuthServerSessionService {
     private final TokenRevocationService tokenRevocationService;
     private final CloseAuthProperties properties;
     private final Clock clock;
+    private final AuditEmitter auditEmitter;
 
     public AuthServerSessionService(SessionHotStore hotStore,
                                     AuthServerSessionRepository sessionRepository,
                                     RefreshTokenRotationService refreshTokenRotationService,
                                     TokenRevocationService tokenRevocationService,
                                     CloseAuthProperties properties,
-                                    Clock clock) {
+                                    Clock clock,
+                                    AuditEmitter auditEmitter) {
         this.hotStore = hotStore;
         this.sessionRepository = sessionRepository;
         this.refreshTokenRotationService = refreshTokenRotationService;
         this.tokenRevocationService = tokenRevocationService;
         this.properties = properties;
         this.clock = clock;
+        this.auditEmitter = auditEmitter;
     }
 
     /**
@@ -114,7 +119,7 @@ public class AuthServerSessionService {
 
         log.info("Auth Server session created id={} user={} tenant={} rememberMe={}",
                 saved.getId(), userId, tenantId, rememberMe);
-        // TODO(stage-8): emit a SESSION_CREATED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.sessionCreated(tenantId, userId, saved.getId(), rememberMe));
         return SessionView.from(saved);
     }
 
@@ -159,16 +164,18 @@ public class AuthServerSessionService {
     /**
      * Full instant-kill for a single session (logout / admin action / replay fallout). Cascades to: Redis hot entry,
      * ledger row, this session's refresh-token families (4b-i), and the user's access-token revocation marker (4b-ii).
+     * Returns the revoked session (empty if no ledger row existed) so callers can attribute a higher-level event
+     * (e.g. the logout controller's {@code USER_LOGOUT}) to the right tenant/user.
      */
     @Transactional
-    public void revokeSession(String sessionKey) {
+    public Optional<SessionView> revokeSession(String sessionKey) {
         Objects.requireNonNull(sessionKey, "sessionKey must not be null");
         hotStore.delete(sessionKey);
 
         AuthServerSession row = sessionRepository.findBySessionKey(sessionKey).orElse(null);
         if (row == null) {
             log.info("revokeSession: no ledger row for the presented session key (already gone); hot entry deleted");
-            return;
+            return Optional.empty();
         }
         if (row.getRevokedAt() == null) {
             row.setRevokedAt(Instant.now(clock));
@@ -184,7 +191,8 @@ public class AuthServerSessionService {
 
         log.info("Auth Server session revoked id={} user={} tenant={} refreshFamiliesRevoked={}",
                 row.getId(), row.getUserId(), row.getTenantId(), refreshFamiliesRevoked);
-        // TODO(stage-8): emit a SESSION_REVOKED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.sessionRevoked(row.getTenantId(), row.getUserId(), row.getId(), "logout"));
+        return Optional.of(SessionView.from(row));
     }
 
     /**
@@ -208,7 +216,7 @@ public class AuthServerSessionService {
         tokenRevocationService.revokeAllUserTokens(tenantId, userId);         // access-token marker
 
         log.info("Revoked all {} active session(s) for user={} tenant={}", active.size(), userId, tenantId);
-        // TODO(stage-8): emit SESSION_REVOKED audit events via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.sessionRevoked(tenantId, userId, null, "revoke_all"));
         return active.size();
     }
 

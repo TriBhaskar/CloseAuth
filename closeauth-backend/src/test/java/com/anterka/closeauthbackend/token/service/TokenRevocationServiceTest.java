@@ -34,7 +34,8 @@ class TokenRevocationServiceTest {
     @BeforeEach
     void setUp() {
         markerStore = Mockito.mock(RevocationMarkerStore.class);
-        service = new TokenRevocationService(markerStore, new CloseAuthProperties()); // default access TTL = 5m
+        service = new TokenRevocationService(markerStore, new CloseAuthProperties(),
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class)); // default access TTL = 5m
         when(markerStore.tenantRevocationEpochSeconds(any())).thenReturn(OptionalLong.empty());
         when(markerStore.userRevocationEpochSeconds(any(), any())).thenReturn(OptionalLong.empty());
     }

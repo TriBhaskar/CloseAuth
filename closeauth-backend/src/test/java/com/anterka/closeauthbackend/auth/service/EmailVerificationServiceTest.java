@@ -45,7 +45,8 @@ class EmailVerificationServiceTest {
         notifier = Mockito.mock(AuthNotificationSender.class);
         userService = Mockito.mock(UserService.class);
         service = new EmailVerificationService(oneTimeTokenService, rateLimiter, notifier, userService,
-                new CloseAuthProperties());
+                new CloseAuthProperties(),
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(rateLimiter.tryAcquire(any(), anyInt(), any())).thenReturn(true);
     }
 

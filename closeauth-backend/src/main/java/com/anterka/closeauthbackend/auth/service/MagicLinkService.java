@@ -1,5 +1,7 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.auth.dto.ConsumeResult;
 import com.anterka.closeauthbackend.auth.dto.IssueTokenCommand;
 import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
@@ -52,6 +54,7 @@ public class MagicLinkService {
     private final UserService userService;
     private final LoginPolicyService loginPolicyService;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     /** Issues + delivers a magic link if the email belongs to a user; a no-op otherwise (enumeration-safe). */
     @Transactional
@@ -71,7 +74,7 @@ public class MagicLinkService {
                 OneTimeTokenPurpose.MAGIC_LINK, context.tenantId(), user.id(), target, null,
                 OneTimeTokenFormat.OPAQUE_LINK, cfg.getMagicLinkTtl()));
         notifier.sendMagicLink(target, magicLinkUrl(raw.rawSecret(), clientId));
-        // TODO(stage-8): emit MAGIC_LINK_ISSUED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.magicLinkIssued(context.tenantId(), user.id(), target));
     }
 
     /** Consumes a magic link and applies login policy. Returns whether the user may complete login. */
@@ -84,7 +87,7 @@ public class MagicLinkService {
         if (!loginPolicyService.isLoginAllowed(tenantId, result.userId())) {
             return MagicLinkAuthResult.denied(tenantId); // suspended tenant/user cannot magic-link in
         }
-        // TODO(stage-8): emit LOGIN_SUCCEEDED (amr=magic_link) audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.loginSuccess(tenantId, result.userId(), null, null, "magic_link"));
         return new MagicLinkAuthResult(true, result.userId(), tenantId);
     }
 

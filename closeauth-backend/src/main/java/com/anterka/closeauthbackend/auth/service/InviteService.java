@@ -7,6 +7,8 @@ import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenFormat;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenPurpose;
 import com.anterka.closeauthbackend.auth.repository.OneTimeTokenRepository;
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -39,6 +41,7 @@ public class InviteService {
     private final AuthNotificationSender notifier;
     private final CommandValidator commandValidator;
     private final CloseAuthProperties properties;
+    private final AuditEmitter auditEmitter;
 
     /** Issues an invite: invalidates prior outstanding invites to the same email, mints a fresh INVITE OTT, emails it. */
     @Transactional
@@ -51,7 +54,7 @@ public class InviteService {
                 OneTimeTokenPurpose.INVITE, context.tenantId(), null, email, null,
                 OneTimeTokenFormat.OPAQUE_LINK, properties.getOneTimeToken().getInviteTtl()));
         notifier.sendInviteLink(email, inviteUrl(raw.rawSecret()));
-        // TODO(stage-8): emit an INVITE_ISSUED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.inviteIssued(context.tenantId(), email, raw.tokenId()));
         log.info("Invite issued tenant={} email={} expiresAt={} (raw NOT logged)",
                 context.tenantId(), email, raw.expiresAt());
         return new InviteView(raw.tokenId(), email, raw.expiresAt(), Instant.now());
@@ -76,7 +79,7 @@ public class InviteService {
                     token.setUsed(true);
                     token.setUsedAt(Instant.now());
                 });
-        // TODO(stage-8): emit an INVITE_REVOKED audit event via the audit outbox (§7.11).
+        auditEmitter.emit(AuditEvents.inviteRevoked(context.tenantId(), inviteId));
     }
 
     private String inviteUrl(String rawSecret) {

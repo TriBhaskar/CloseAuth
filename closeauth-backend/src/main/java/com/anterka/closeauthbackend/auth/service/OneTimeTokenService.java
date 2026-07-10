@@ -8,6 +8,8 @@ import com.anterka.closeauthbackend.auth.entity.OneTimeToken;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenFormat;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenPurpose;
 import com.anterka.closeauthbackend.auth.repository.OneTimeTokenRepository;
+import com.anterka.closeauthbackend.audit.event.AuditEvents;
+import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -57,13 +59,15 @@ public class OneTimeTokenService {
     private final OneTimeTokenGenerator generator;
     private final CloseAuthProperties properties;
     private final Clock clock;
+    private final AuditEmitter auditEmitter;
 
     public OneTimeTokenService(OneTimeTokenRepository repository, OneTimeTokenGenerator generator,
-                               CloseAuthProperties properties, Clock clock) {
+                               CloseAuthProperties properties, Clock clock, AuditEmitter auditEmitter) {
         this.repository = repository;
         this.generator = generator;
         this.properties = properties;
         this.clock = clock;
+        this.auditEmitter = auditEmitter;
     }
 
     /**
@@ -97,7 +101,7 @@ public class OneTimeTokenService {
     @Transactional
     public ConsumeResult consume(String rawToken, OneTimeTokenPurpose expectedPurpose, UUID expectedTenantId) {
         if (rawToken == null || rawToken.isBlank()) {
-            return reject(FailureReason.NOT_FOUND);
+            return reject(FailureReason.NOT_FOUND, expectedTenantId, expectedPurpose);
         }
         return finishConsume(generator.hash(rawToken), expectedPurpose, expectedTenantId);
     }
@@ -107,7 +111,7 @@ public class OneTimeTokenService {
     public ConsumeResult consumeCode(String code, OneTimeTokenPurpose expectedPurpose, UUID expectedTenantId,
                                      String target) {
         if (code == null || code.isBlank()) {
-            return reject(FailureReason.NOT_FOUND);
+            return reject(FailureReason.NOT_FOUND, expectedTenantId, expectedPurpose);
         }
         return finishConsume(numericHash(expectedTenantId, expectedPurpose, target, code), expectedPurpose, expectedTenantId);
     }
@@ -123,24 +127,24 @@ public class OneTimeTokenService {
     private ConsumeResult finishConsume(String tokenHash, OneTimeTokenPurpose expectedPurpose, UUID expectedTenantId) {
         OneTimeToken token = repository.findByTokenHash(tokenHash).orElse(null);
         if (token == null) {
-            return reject(FailureReason.NOT_FOUND);
+            return reject(FailureReason.NOT_FOUND, expectedTenantId, expectedPurpose);
         }
         // Defense-in-depth: purpose/tenant are already baked into a numeric hash and checked here for opaque tokens.
         if (token.getPurpose() != expectedPurpose) {
-            return reject(FailureReason.WRONG_PURPOSE);
+            return reject(FailureReason.WRONG_PURPOSE, expectedTenantId, expectedPurpose);
         }
         if (!token.getTenantId().equals(expectedTenantId)) {
-            return reject(FailureReason.WRONG_TENANT);
+            return reject(FailureReason.WRONG_TENANT, expectedTenantId, expectedPurpose);
         }
         if (token.getExpiresAt().isBefore(Instant.now(clock))) {
-            return reject(FailureReason.EXPIRED);
+            return reject(FailureReason.EXPIRED, expectedTenantId, expectedPurpose);
         }
         if (token.isUsed()) {
-            return reject(FailureReason.ALREADY_USED);
+            return reject(FailureReason.ALREADY_USED, expectedTenantId, expectedPurpose);
         }
         int affected = repository.markUsedIfUnused(token.getId(), Instant.now(clock));
         if (affected == 0) {
-            return reject(FailureReason.ALREADY_USED); // lost the atomic race to a concurrent consume
+            return reject(FailureReason.ALREADY_USED, expectedTenantId, expectedPurpose); // lost the atomic race to a concurrent consume
         }
         return ConsumeResult.success(token.getId(), token.getPurpose(), token.getTenantId(),
                 token.getUserId(), token.getTarget(), token.getPayload());
@@ -159,10 +163,12 @@ public class OneTimeTokenService {
         return generator.hash(tenantId + "|" + purpose.name() + "|" + normalizedTarget + "|" + code);
     }
 
-    private ConsumeResult reject(FailureReason reason) {
-        // Audit-only signal; the flow collapses every failure to a single generic message (enumeration-safety).
-        // TODO(stage-8): emit a ONE_TIME_TOKEN_CONSUME_FAILED audit event (reason={}) via the audit outbox (§7.11).
+    private ConsumeResult reject(FailureReason reason, UUID tenantId, OneTimeTokenPurpose purpose) {
+        // Audit-only signal; the flow collapses every failure to a single generic message (enumeration-safety). The
+        // specific reason/purpose is security-relevant (replay/expired/wrong-tenant/wrong-purpose) and recorded here.
         log.info("One-time token consume rejected: {}", reason);
+        auditEmitter.emit(AuditEvents.oneTimeTokenConsumeFailed(tenantId, purpose == null ? null : purpose.name(),
+                reason.name()));
         return ConsumeResult.failure(reason);
     }
 }

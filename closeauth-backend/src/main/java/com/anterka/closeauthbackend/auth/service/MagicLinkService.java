@@ -13,6 +13,7 @@ import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.identity.dto.UserView;
 import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.notification.service.NotificationDeliveryException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -73,7 +74,15 @@ public class MagicLinkService {
         RawOneTimeToken raw = oneTimeTokenService.issue(new IssueTokenCommand(
                 OneTimeTokenPurpose.MAGIC_LINK, context.tenantId(), user.id(), target, null,
                 OneTimeTokenFormat.OPAQUE_LINK, cfg.getMagicLinkTtl()));
-        notifier.sendMagicLink(target, magicLinkUrl(raw.rawSecret(), clientId));
+        try {
+            notifier.sendMagicLink(target, magicLinkUrl(raw.rawSecret(), clientId));
+        } catch (NotificationDeliveryException deliveryFailure) {
+            // Enumeration-safety: the response must be identical whether or not the account exists AND whether or not
+            // SMTP is up. Swallow + log (recipient + event only, never the link) — an outage is an ops/log concern,
+            // never a per-request signal an unauthenticated caller could use to enumerate accounts.
+            log.warn("[notification] MAGIC_LINK delivery failed to {} (link not logged); returning uniform response",
+                    target);
+        }
         auditEmitter.emit(AuditEvents.magicLinkIssued(context.tenantId(), user.id(), target));
     }
 

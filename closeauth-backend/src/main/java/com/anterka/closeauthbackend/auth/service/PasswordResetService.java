@@ -13,6 +13,7 @@ import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.identity.dto.UserView;
 import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.notification.service.NotificationDeliveryException;
 import com.anterka.closeauthbackend.session.service.AuthServerSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,7 +73,15 @@ public class PasswordResetService {
         RawOneTimeToken raw = oneTimeTokenService.issue(new IssueTokenCommand(
                 OneTimeTokenPurpose.PASSWORD_RESET, context.tenantId(), user.id(), target, null,
                 OneTimeTokenFormat.OPAQUE_LINK, cfg.getPasswordResetTtl()));
-        notifier.sendPasswordResetLink(target, resetUrl(raw.rawSecret(), clientId));
+        try {
+            notifier.sendPasswordResetLink(target, resetUrl(raw.rawSecret(), clientId));
+        } catch (NotificationDeliveryException deliveryFailure) {
+            // Enumeration-safety: the response must be identical whether or not the account exists AND whether or not
+            // SMTP is up. Swallow + log (recipient + event only, never the link) — an outage is an ops/log concern,
+            // never a per-request signal an unauthenticated caller could use to enumerate accounts.
+            log.warn("[notification] PASSWORD_RESET delivery failed to {} (link not logged); returning uniform response",
+                    target);
+        }
         auditEmitter.emit(AuditEvents.passwordResetRequested(context.tenantId(), user.id(), target));
     }
 

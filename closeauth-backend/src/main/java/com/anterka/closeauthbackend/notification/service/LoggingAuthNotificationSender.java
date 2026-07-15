@@ -1,17 +1,20 @@
 package com.anterka.closeauthbackend.notification.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Placeholder {@link AuthNotificationSender} for Stage 6b-i: records that a delivery happened (purpose + target) but
- * NEVER logs the code/link — the raw secret must not appear in logs (the whole point of hash-at-rest storage). A real
- * templated {@code EmailService} (via {@code JavaMailSender}) replaces this; a test supplies a {@code @Primary}
- * capturing sender to assert the delivered secret without touching callers.
+ * Log-only {@link AuthNotificationSender}: records that a delivery happened (purpose + target) but NEVER logs the
+ * code/link — the raw secret must not appear in logs (the whole point of hash-at-rest storage). Useful for local dev
+ * without a real SMTP relay, and the default for the backend's own test suite.
  *
- * <p>TODO(notification): implement SMTP delivery with per-purpose templates in the notification module.
+ * <p><b>Opt-in.</b> {@link SmtpAuthNotificationSender} (real delivery) is the production default; this sender is
+ * selected only when {@code closeauth.notification.email.transport=logging}. A test may still substitute a
+ * {@code @Primary} capturing sender to assert the delivered secret, which overrides whichever transport is active.
  */
 @Component
+@ConditionalOnProperty(prefix = "closeauth.notification.email", name = "transport", havingValue = "logging")
 @Slf4j
 public class LoggingAuthNotificationSender implements AuthNotificationSender {
 

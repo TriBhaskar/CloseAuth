@@ -14,6 +14,7 @@ import com.anterka.closeauthbackend.identity.dto.UserView;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.notification.service.NotificationDeliveryException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,7 +57,15 @@ public class EmailVerificationService {
         RawOneTimeToken raw = oneTimeTokenService.issue(new IssueTokenCommand(
                 OneTimeTokenPurpose.EMAIL_VERIFICATION, context.tenantId(), userId, target, null,
                 OneTimeTokenFormat.NUMERIC_CODE, cfg.getEmailVerificationTtl()));
-        notifier.sendEmailVerificationCode(target, raw.rawSecret());
+        try {
+            notifier.sendEmailVerificationCode(target, raw.rawSecret());
+        } catch (NotificationDeliveryException deliveryFailure) {
+            // Enumeration-safety: the response must be identical whether or not the account exists AND whether or not
+            // SMTP is up. Swallow + log (recipient + event only, never the code) — an outage is an ops/log concern,
+            // never a per-request signal an unauthenticated caller could use to enumerate accounts.
+            log.warn("[notification] EMAIL_VERIFICATION delivery failed to {} (code not logged); "
+                    + "returning uniform response", target);
+        }
         auditEmitter.emit(AuditEvents.emailVerificationIssued(context.tenantId(), userId, target));
     }
 

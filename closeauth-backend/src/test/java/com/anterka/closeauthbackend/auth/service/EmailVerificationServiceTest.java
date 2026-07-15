@@ -1,6 +1,10 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.anterka.closeauthbackend.auth.dto.ConsumeResult;
+import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenPurpose;
 import com.anterka.closeauthbackend.auth.service.EmailVerificationService.VerificationOutcome;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
@@ -10,18 +14,22 @@ import com.anterka.closeauthbackend.identity.dto.UserView;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.notification.service.NotificationDeliveryException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -95,6 +103,30 @@ class EmailVerificationServiceTest {
         service.requestVerification(ctx, userId, "a@x.com");
         verify(oneTimeTokenService, never()).issue(any());
         verify(notifier, never()).sendEmailVerificationCode(any(), any());
+    }
+
+    @Test
+    void deliveryFailureStillReturnsUniformlyAndNeverLogsTheCode() {
+        // Enumeration-safety under SMTP outage: an existing-account request whose email send FAILS must behave
+        // identically to the non-existent-account case (no exception escapes → the controller returns a uniform 200).
+        String code = "424242";
+        when(oneTimeTokenService.issue(any()))
+                .thenReturn(new RawOneTimeToken(code, UUID.randomUUID(), Instant.now().plus(Duration.ofMinutes(10))));
+        doThrow(new NotificationDeliveryException("EMAIL_VERIFICATION", "a@x.com", new RuntimeException("smtp down")))
+                .when(notifier).sendEmailVerificationCode(any(), eq(code));
+
+        Logger logger = (Logger) LoggerFactory.getLogger(EmailVerificationService.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            assertThatCode(() -> service.requestVerification(ctx, userId, "a@x.com")).doesNotThrowAnyException();
+        } finally {
+            logger.detachAppender(logs);
+        }
+
+        verify(notifier).sendEmailVerificationCode(any(), eq(code)); // delivery WAS attempted (token still issued)
+        assertThat(logs.list).noneMatch(e -> e.getFormattedMessage().contains(code)); // but the code is never logged
     }
 
     private UserView user(UserStatus status) {

@@ -1,5 +1,8 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.anterka.closeauthbackend.auth.dto.ConsumeResult;
 import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenPurpose;
@@ -11,18 +14,22 @@ import com.anterka.closeauthbackend.identity.dto.UserView;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.notification.service.NotificationDeliveryException;
 import com.anterka.closeauthbackend.session.service.AuthServerSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -94,6 +101,31 @@ class PasswordResetServiceTest {
         assertThat(service.resetPassword(ctx, "bad", "new-password-123")).isEqualTo(ResetOutcome.INVALID);
         verify(userService, never()).resetLocalPassword(any(), any(), any());
         verify(sessionService, never()).revokeAllUserSessions(any(), any());
+    }
+
+    @Test
+    void deliveryFailureStillReturnsUniformlyAndNeverLogsTheLink() {
+        // Enumeration-safety under SMTP outage: an existing-account request whose email send FAILS must behave
+        // identically to the unknown-email case (no exception escapes → the controller returns a uniform 200).
+        String secret = "RESET-LINK-SECRET-def";
+        when(userService.existsByEmail(ctx, "a@x.com")).thenReturn(true);
+        when(userService.getUserByEmail(ctx, "a@x.com")).thenReturn(user());
+        when(oneTimeTokenService.issue(any())).thenReturn(new RawOneTimeToken(secret, UUID.randomUUID(), Instant.now()));
+        doThrow(new NotificationDeliveryException("PASSWORD_RESET", "a@x.com", new RuntimeException("smtp down")))
+                .when(notifier).sendPasswordResetLink(any(), any());
+
+        Logger logger = (Logger) LoggerFactory.getLogger(PasswordResetService.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            assertThatCode(() -> service.requestReset(ctx, "a@x.com", "client-1")).doesNotThrowAnyException();
+        } finally {
+            logger.detachAppender(logs);
+        }
+
+        verify(notifier).sendPasswordResetLink(eq("a@x.com"), any()); // delivery WAS attempted
+        assertThat(logs.list).noneMatch(e -> e.getFormattedMessage().contains(secret)); // link/token never logged
     }
 
     private UserView user() {

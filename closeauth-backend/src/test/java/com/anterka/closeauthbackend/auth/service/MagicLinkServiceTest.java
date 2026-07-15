@@ -1,5 +1,8 @@
 package com.anterka.closeauthbackend.auth.service;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.anterka.closeauthbackend.auth.dto.ConsumeResult;
 import com.anterka.closeauthbackend.auth.dto.RawOneTimeToken;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenPurpose;
@@ -11,17 +14,21 @@ import com.anterka.closeauthbackend.identity.dto.UserView;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.notification.service.NotificationDeliveryException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -98,6 +105,31 @@ class MagicLinkServiceTest {
                 .thenReturn(ConsumeResult.failure(ConsumeResult.FailureReason.EXPIRED));
         assertThat(service.consume("tok", tenantId).authenticated()).isFalse();
         verify(loginPolicyService, never()).isLoginAllowed(any(), any());
+    }
+
+    @Test
+    void deliveryFailureStillReturnsUniformlyAndNeverLogsTheLink() {
+        // Enumeration-safety under SMTP outage: an existing-account request whose email send FAILS must behave
+        // identically to the unknown-email case (no exception escapes → the controller returns a uniform 200).
+        String secret = "MAGIC-LINK-SECRET-abc";
+        when(userService.existsByEmail(ctx, "a@x.com")).thenReturn(true);
+        when(userService.getUserByEmail(ctx, "a@x.com")).thenReturn(user());
+        when(oneTimeTokenService.issue(any())).thenReturn(new RawOneTimeToken(secret, UUID.randomUUID(), Instant.now()));
+        doThrow(new NotificationDeliveryException("MAGIC_LINK", "a@x.com", new RuntimeException("smtp down")))
+                .when(notifier).sendMagicLink(any(), any());
+
+        Logger logger = (Logger) LoggerFactory.getLogger(MagicLinkService.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            assertThatCode(() -> service.requestMagicLink(ctx, "a@x.com", "client-1")).doesNotThrowAnyException();
+        } finally {
+            logger.detachAppender(logs);
+        }
+
+        verify(notifier).sendMagicLink(eq("a@x.com"), any()); // delivery WAS attempted
+        assertThat(logs.list).noneMatch(e -> e.getFormattedMessage().contains(secret)); // link/token never logged
     }
 
     private UserView user() {

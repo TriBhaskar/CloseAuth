@@ -14,6 +14,7 @@
     <modules>
         <module>closeauth-backend</module>
         <module>closeauth-frontend</module>
+        <module>closeauth-integration-tests</module>
     </modules>
 
     <properties>

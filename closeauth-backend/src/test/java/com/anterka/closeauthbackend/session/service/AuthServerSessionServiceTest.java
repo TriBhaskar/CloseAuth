@@ -5,6 +5,8 @@ import com.anterka.closeauthbackend.session.dto.CreateSessionCommand;
 import com.anterka.closeauthbackend.session.dto.SessionView;
 import com.anterka.closeauthbackend.session.entity.AuthServerSession;
 import com.anterka.closeauthbackend.session.repository.AuthServerSessionRepository;
+import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import com.anterka.closeauthbackend.token.service.RefreshTokenRotationService;
 import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +45,7 @@ class AuthServerSessionServiceTest {
     private AuthServerSessionRepository sessionRepository;
     private RefreshTokenRotationService rotationService;
     private TokenRevocationService tokenRevocationService;
+    private TenantRepository tenantRepository;
     private CloseAuthProperties properties;
     private MutableClock clock;
     private AuthServerSessionService service;
@@ -53,10 +56,13 @@ class AuthServerSessionServiceTest {
         sessionRepository = Mockito.mock(AuthServerSessionRepository.class);
         rotationService = Mockito.mock(RefreshTokenRotationService.class);
         tokenRevocationService = Mockito.mock(TokenRevocationService.class);
+        tenantRepository = Mockito.mock(TenantRepository.class);
+        // Default: the session's tenant is ACTIVE, so happy-path validation reaches its intended result.
+        when(tenantRepository.findStatusById(any())).thenReturn(Optional.of(TenantStatus.ACTIVE));
         properties = new CloseAuthProperties(); // idle 1h, absolute 12h, remember 30d, allowed=true
         clock = new MutableClock(Instant.parse("2026-07-04T10:00:00Z"));
         service = new AuthServerSessionService(hotStore, sessionRepository, rotationService,
-                tokenRevocationService, properties, clock,
+                tokenRevocationService, tenantRepository, properties, clock,
                 org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         // save() echoes the row back with a generated id (JPA would).
         when(sessionRepository.save(any(AuthServerSession.class))).thenAnswer(inv -> {
@@ -179,6 +185,30 @@ class AuthServerSessionServiceTest {
     void missingHotEntryIsNoSession() {
         when(hotStore.find("gone")).thenReturn(Optional.empty());
         assertThat(service.validateSession("gone", tenantA)).isEmpty();
+    }
+
+    // ---- validate: TENANT-STATUS gate (IT-9 fix, 1b — closes the SSO bypass) ----
+
+    @Test
+    void sessionForANonActiveTenantIsNoSession() {
+        String key = "sk";
+        when(hotStore.find(key)).thenReturn(Optional.of(state(tenantA, plus(Duration.ofMinutes(30)), plus(Duration.ofHours(6)))));
+        // The session itself is live and tenant-matched, but its tenant has been suspended.
+        when(tenantRepository.findStatusById(tenantA)).thenReturn(Optional.of(TenantStatus.SUSPENDED));
+
+        assertThat(service.validateSession(key, tenantA))
+                .as("a suspended tenant's session must not validate (no SSO bypass)").isEmpty();
+        verify(hotStore, never()).save(any(), any());                              // no slide
+        verify(sessionRepository, never()).touchOnValidation(any(), any(), any()); // no ledger touch
+    }
+
+    @Test
+    void sessionForADeletedTenantIsNoSession() {
+        String key = "sk";
+        when(hotStore.find(key)).thenReturn(Optional.of(state(tenantA, plus(Duration.ofMinutes(30)), plus(Duration.ofHours(6)))));
+        when(tenantRepository.findStatusById(tenantA)).thenReturn(Optional.of(TenantStatus.DELETED));
+
+        assertThat(service.validateSession(key, tenantA)).isEmpty();
     }
 
     // ---- revoke cascade (all four legs) -----------------------------------

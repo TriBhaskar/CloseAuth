@@ -9,6 +9,7 @@ import com.anterka.closeauthbackend.tenant.dto.TenantView;
 import com.anterka.closeauthbackend.tenant.entity.Tenant;
 import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
 import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
+import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import jakarta.validation.Validation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,17 +36,19 @@ import static org.mockito.Mockito.when;
 class TenantServiceTest {
 
     private TenantRepository tenantRepository;
+    private TokenRevocationService tokenRevocationService;
     private TenantService tenantService;
 
     @BeforeEach
     void setUp() {
         tenantRepository = Mockito.mock(TenantRepository.class);
+        tokenRevocationService = Mockito.mock(TokenRevocationService.class);
         // Real Bean Validation provider (Hibernate Validator) so the service-side validation
         // exercises the actual annotations on the command records.
         CommandValidator commandValidator =
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         tenantService = new TenantService(
-                tenantRepository, List.of(), new TenantStateMachine(), commandValidator,
+                tenantRepository, List.of(), new TenantStateMachine(), commandValidator, tokenRevocationService,
                 org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
     }
 
@@ -131,5 +134,37 @@ class TenantServiceTest {
             assertThat(tenant.getStatus()).isEqualTo(TenantStatus.DELETED);
             assertThat(tenant.getDeletedAt()).as("no stamp on rejected delete").isNull();
         }
+    }
+
+    // ---- IT-9 fix (1a): the token-revocation cascade on deactivation --------
+
+    @Test
+    void suspendRevokesTheTenantsAccessTokens() {
+        Tenant tenant = tenantWithStatus(TenantStatus.ACTIVE);
+        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+
+        tenantService.suspendTenant(tenant.getId());
+
+        verify(tokenRevocationService).revokeAllTenantTokens(tenant.getId());
+    }
+
+    @Test
+    void deleteRevokesTheTenantsAccessTokens() {
+        Tenant tenant = tenantWithStatus(TenantStatus.ACTIVE);
+        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+
+        tenantService.deleteTenant(tenant.getId());
+
+        verify(tokenRevocationService).revokeAllTenantTokens(tenant.getId());
+    }
+
+    @Test
+    void activateDoesNotRevokeTokens() {
+        Tenant tenant = tenantWithStatus(TenantStatus.SUSPENDED);
+        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+
+        tenantService.activateTenant(tenant.getId());
+
+        verify(tokenRevocationService, never()).revokeAllTenantTokens(org.mockito.ArgumentMatchers.any());
     }
 }

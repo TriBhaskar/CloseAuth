@@ -63,16 +63,16 @@ class TenantRoleServiceTest {
         return r;
     }
 
-    // ---- last-admin invariant ---------------------------------------------
+    // ---- last-admin invariant (ACTIVE-only counting) ----------------------
 
     @Test
-    void revokingLastTenantAdminIsBlocked() {
+    void revokingLastActiveTenantAdminIsBlocked() {
         TenantRole admin = role(SystemRoleNames.TENANT_ADMIN, true);
         UUID userId = UUID.randomUUID();
         when(tenantRoleRepository.findByIdAndTenantId(admin.getId(), TENANT_A)).thenReturn(Optional.of(admin));
         when(userTenantRoleRepository.findByUserIdAndTenantIdAndTenantRoleId(userId, TENANT_A, admin.getId()))
                 .thenReturn(Optional.of(new UserTenantRole()));
-        when(userTenantRoleRepository.countByTenantIdAndTenantRoleId(TENANT_A, admin.getId())).thenReturn(1L);
+        stubLastActiveAdmin(admin, userId, true, 1L); // target is the sole ACTIVE admin
 
         assertThatThrownBy(() -> service.revokeTenantRole(ctxA, userId, admin.getId()))
                 .isInstanceOf(LastTenantAdminException.class);
@@ -80,16 +80,34 @@ class TenantRoleServiceTest {
     }
 
     @Test
-    void revokingTenantAdminSucceedsWhenAnotherRemains() {
+    void revokingTenantAdminSucceedsWhenAnotherActiveAdminRemains() {
         TenantRole admin = role(SystemRoleNames.TENANT_ADMIN, true);
         UUID userId = UUID.randomUUID();
         UserTenantRole assignment = new UserTenantRole();
         when(tenantRoleRepository.findByIdAndTenantId(admin.getId(), TENANT_A)).thenReturn(Optional.of(admin));
         when(userTenantRoleRepository.findByUserIdAndTenantIdAndTenantRoleId(userId, TENANT_A, admin.getId()))
                 .thenReturn(Optional.of(assignment));
-        when(userTenantRoleRepository.countByTenantIdAndTenantRoleId(TENANT_A, admin.getId())).thenReturn(2L);
+        stubLastActiveAdmin(admin, userId, true, 2L); // two active admins
 
         service.revokeTenantRole(ctxA, userId, admin.getId());
+
+        verify(userTenantRoleRepository).delete(assignment);
+    }
+
+    @Test
+    void revokingASuspendedHoldersDormantRoleIsAllowed() {
+        // Regression: a SUSPENDED holder's dormant TENANT_ADMIN row must be revocable — it isn't an ACTIVE admin, so
+        // removing it can't orphan the tenant (an active admin still exists). The old all-status count wrongly blocked
+        // (or wrongly allowed removing the last active) depending on the sequence; active-only counting fixes both.
+        TenantRole admin = role(SystemRoleNames.TENANT_ADMIN, true);
+        UUID suspendedHolder = UUID.randomUUID();
+        UserTenantRole assignment = new UserTenantRole();
+        when(tenantRoleRepository.findByIdAndTenantId(admin.getId(), TENANT_A)).thenReturn(Optional.of(admin));
+        when(userTenantRoleRepository.findByUserIdAndTenantIdAndTenantRoleId(suspendedHolder, TENANT_A, admin.getId()))
+                .thenReturn(Optional.of(assignment));
+        stubLastActiveAdmin(admin, suspendedHolder, false, 1L); // target NOT an active holder; 1 active admin exists
+
+        service.revokeTenantRole(ctxA, suspendedHolder, admin.getId());
 
         verify(userTenantRoleRepository).delete(assignment);
     }
@@ -105,7 +123,45 @@ class TenantRoleServiceTest {
         service.revokeTenantRole(ctxA, userId, admin.getId());
 
         verify(userTenantRoleRepository, never()).delete(any());
-        verify(userTenantRoleRepository, never()).countByTenantIdAndTenantRoleId(any(), any());
+        verify(userTenantRoleRepository, never()).countActiveHoldersByTenantAndRole(any(), any());
+    }
+
+    // ---- isLastTenantAdmin: active-only semantics (shared by suspend + revoke paths) ----
+
+    @Test
+    void isLastTenantAdmin_soleActiveAdminIsLast_evenWhenASuspendedHolderRowLingers() {
+        // THE sequential-suspension gap: one ACTIVE holder (the target) while a suspended holder's row still exists →
+        // active count is 1 → the target IS the last (active) admin → the guard must fire. Under the old all-status
+        // count this returned false (2 rows) and the last active admin could be suspended, orphaning the tenant.
+        TenantRole admin = role(SystemRoleNames.TENANT_ADMIN, true);
+        UUID lastActive = UUID.randomUUID();
+        stubLastActiveAdmin(admin, lastActive, true, 1L);
+        assertThat(service.isLastTenantAdmin(ctxA, lastActive)).isTrue();
+    }
+
+    @Test
+    void isLastTenantAdmin_falseForASuspendedHolder() {
+        TenantRole admin = role(SystemRoleNames.TENANT_ADMIN, true);
+        UUID suspended = UUID.randomUUID();
+        stubLastActiveAdmin(admin, suspended, false, 1L); // not an active holder → not "the last admin"
+        assertThat(service.isLastTenantAdmin(ctxA, suspended)).isFalse();
+    }
+
+    @Test
+    void isLastTenantAdmin_falseWhenTwoActiveAdminsExist() {
+        TenantRole admin = role(SystemRoleNames.TENANT_ADMIN, true);
+        UUID one = UUID.randomUUID();
+        stubLastActiveAdmin(admin, one, true, 2L);
+        assertThat(service.isLastTenantAdmin(ctxA, one)).isFalse();
+    }
+
+    /** Stubs the active-only last-admin lookups: the TENANT_ADMIN role resolves; the target's active-holder + count. */
+    private void stubLastActiveAdmin(TenantRole adminRole, UUID userId, boolean targetActive, long activeCount) {
+        when(tenantRoleRepository.findByTenantIdAndName(TENANT_A, SystemRoleNames.TENANT_ADMIN))
+                .thenReturn(Optional.of(adminRole));
+        when(userTenantRoleRepository.isActiveHolder(userId, TENANT_A, adminRole.getId())).thenReturn(targetActive);
+        when(userTenantRoleRepository.countActiveHoldersByTenantAndRole(TENANT_A, adminRole.getId()))
+                .thenReturn(activeCount);
     }
 
     // ---- CRUD / uniqueness / system-role protection -----------------------

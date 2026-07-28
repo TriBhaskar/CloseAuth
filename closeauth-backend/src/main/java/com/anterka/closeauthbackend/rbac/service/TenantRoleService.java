@@ -136,11 +136,11 @@ public class TenantRoleService {
             return; // idempotent
         }
 
-        if (SystemRoleNames.TENANT_ADMIN.equals(role.getName())) {
-            long admins = userTenantRoleRepository.countByTenantIdAndTenantRoleId(context.tenantId(), tenantRoleId);
-            if (admins <= 1) {
-                throw new LastTenantAdminException(context.tenantId());
-            }
+        // Same active-only last-admin guard as the suspend/delete path (UserService.transition) — shared method, so the
+        // two enforcement points can't diverge. Revoking the last ACTIVE admin's role is refused; revoking a dormant
+        // (suspended) holder's role is allowed (it doesn't reduce the count of admins who can actually authenticate).
+        if (SystemRoleNames.TENANT_ADMIN.equals(role.getName()) && isLastTenantAdmin(context, userId)) {
+            throw new LastTenantAdminException(context.tenantId());
         }
         userTenantRoleRepository.delete(assignment.get());
         auditEmitter.emit(AuditEvents.roleRevoked(context.tenantId(), userId, "TENANT", tenantRoleId));
@@ -172,17 +172,27 @@ public class TenantRoleService {
                 .orElse(0L);
     }
 
-    /** True iff {@code userId} is the sole {@code TENANT_ADMIN} of the tenant. */
+    /**
+     * True iff {@code userId} is the sole <b>ACTIVE</b> {@code TENANT_ADMIN} of the tenant — i.e. removing its admin
+     * standing would leave the tenant with zero admins that can actually log in and administer it (§7.1).
+     *
+     * <p><b>Active-only counting (the invariant's real intent).</b> Only {@code ACTIVE} holders count. A
+     * {@code SUSPENDED}/{@code DELETED} user's role assignment is retained (suspension is dormant, not a revoke — a
+     * reactivated user regains admin standing without re-assignment) but does NOT count as "an admin". So this returns
+     * true only when the target is ITSELF an active holder AND it is the last active holder: suspending/revoking a
+     * dormant holder is never blocked, while removing the last active admin IS — even if a suspended holder's row still
+     * lingers. Both enforcement paths (this, called by {@code UserService.transition}, and {@code revokeTenantRole})
+     * share this one check, so they can't diverge.
+     */
     @Transactional(readOnly = true)
     public boolean isLastTenantAdmin(TenantContext context, UUID userId) {
         return tenantRoleRepository.findByTenantIdAndName(context.tenantId(), SystemRoleNames.TENANT_ADMIN)
                 .map(role -> {
-                    boolean holds = userTenantRoleRepository
-                            .findByUserIdAndTenantIdAndTenantRoleId(userId, context.tenantId(), role.getId())
-                            .isPresent();
-                    long admins = userTenantRoleRepository
-                            .countByTenantIdAndTenantRoleId(context.tenantId(), role.getId());
-                    return holds && admins <= 1;
+                    boolean targetIsActiveAdmin = userTenantRoleRepository
+                            .isActiveHolder(userId, context.tenantId(), role.getId());
+                    long activeAdmins = userTenantRoleRepository
+                            .countActiveHoldersByTenantAndRole(context.tenantId(), role.getId());
+                    return targetIsActiveAdmin && activeAdmins <= 1;
                 })
                 .orElse(false);
     }

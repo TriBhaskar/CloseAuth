@@ -7,6 +7,8 @@ import com.anterka.closeauthbackend.session.dto.CreateSessionCommand;
 import com.anterka.closeauthbackend.session.dto.SessionView;
 import com.anterka.closeauthbackend.session.entity.AuthServerSession;
 import com.anterka.closeauthbackend.session.repository.AuthServerSessionRepository;
+import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import com.anterka.closeauthbackend.token.service.RefreshTokenRotationService;
 import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +62,7 @@ public class AuthServerSessionService {
     private final AuthServerSessionRepository sessionRepository;
     private final RefreshTokenRotationService refreshTokenRotationService;
     private final TokenRevocationService tokenRevocationService;
+    private final TenantRepository tenantRepository;
     private final CloseAuthProperties properties;
     private final Clock clock;
     private final AuditEmitter auditEmitter;
@@ -68,6 +71,7 @@ public class AuthServerSessionService {
                                     AuthServerSessionRepository sessionRepository,
                                     RefreshTokenRotationService refreshTokenRotationService,
                                     TokenRevocationService tokenRevocationService,
+                                    TenantRepository tenantRepository,
                                     CloseAuthProperties properties,
                                     Clock clock,
                                     AuditEmitter auditEmitter) {
@@ -75,6 +79,7 @@ public class AuthServerSessionService {
         this.sessionRepository = sessionRepository;
         this.refreshTokenRotationService = refreshTokenRotationService;
         this.tokenRevocationService = tokenRevocationService;
+        this.tenantRepository = tenantRepository;
         this.properties = properties;
         this.clock = clock;
         this.auditEmitter = auditEmitter;
@@ -149,6 +154,14 @@ public class AuthServerSessionService {
         // ---- TENANT SCOPING (the security invariant): never validate a session against a different tenant. ----
         if (!state.tenantId().equals(tenantId.toString())) {
             // "No session" for tenant B — forces fresh authentication there. No slide, no leak, no ledger touch.
+            return Optional.empty();
+        }
+
+        // ---- TENANT-STATUS gate (IT-9 fix, 1b): a session for a non-ACTIVE tenant is treated as "no session". ----
+        // Closes the SSO bypass where a suspended tenant's user re-authorizes via a still-live session and gets fresh
+        // tokens without ever hitting the login-time tenant-status gate. A check only — no mutation/revocation here
+        // (the suspend-time cascade + revocation marker own that); validateSession stays non-@Transactional.
+        if (!tenantIsActive(tenantId)) {
             return Optional.empty();
         }
 
@@ -253,6 +266,11 @@ public class AuthServerSessionService {
     }
 
     // ---- decision helpers (pure; unit-tested directly) ---------------------------------------------------------
+
+    /** A session is valid only while its tenant is ACTIVE; a missing tenant is treated as not-active (safe direction). */
+    private boolean tenantIsActive(UUID tenantId) {
+        return tenantRepository.findStatusById(tenantId).map(status -> status == TenantStatus.ACTIVE).orElse(false);
+    }
 
     /** A session is expired if {@code now} has reached EITHER the idle expiry or the absolute cap (safe direction). */
     static boolean isExpired(Instant now, SessionHotState state) {

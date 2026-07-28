@@ -2,6 +2,8 @@ package com.anterka.closeauthbackend.token.service;
 
 import com.anterka.closeauthbackend.audit.event.AuditEvents;
 import com.anterka.closeauthbackend.audit.service.AuditEmitter;
+import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import com.anterka.closeauthbackend.token.entity.RefreshToken;
 import com.anterka.closeauthbackend.token.enums.RefreshTokenStatus;
 import com.anterka.closeauthbackend.token.repository.RefreshTokenRepository;
@@ -41,6 +43,7 @@ public class RefreshTokenRotationService {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenRevocationService tokenRevocationService;
+    private final TenantRepository tenantRepository;
     private final AuditEmitter auditEmitter;
 
     /** Records the root of a new refresh-token family (a fresh login's first refresh token), unlinked to a session. */
@@ -86,6 +89,20 @@ public class RefreshTokenRotationService {
             return RotationOutcome.expired();
         }
 
+        // Tenant-status gate (IT-9 fix, 1c): a suspended/deleted tenant's refresh tokens must not rotate — otherwise a
+        // pre-suspend refresh token keeps minting fresh access tokens indefinitely (the sliding window never closes).
+        // This is a routine lifecycle rejection, NOT a compromise: revoke the (now-useless) family, but log/emit it
+        // DISTINCTLY from a replay so it is never mischaracterized as a stolen-token incident.
+        if (!isTenantActive(token.getTenantId())) {
+            int revoked = refreshTokenRepository.revokeFamily(token.getFamilyId(), now);
+            log.info("REFRESH_TOKEN_REJECTED_TENANT_INACTIVE family={} tenant={} user={} client={} familyTokensRevoked={} "
+                            + "(tenant not ACTIVE — NOT a replay)",
+                    token.getFamilyId(), token.getTenantId(), token.getUserId(), token.getClientRegisteredId(), revoked);
+            auditEmitter.emit(AuditEvents.refreshTokenRejectedTenantInactive(token.getTenantId(), token.getUserId(),
+                    token.getClientRegisteredId(), token.getFamilyId(), revoked));
+            return RotationOutcome.tenantInactive();
+        }
+
         return switch (token.getStatus()) {
             case ACTIVE -> {
                 int affected = refreshTokenRepository.markUsedIfActive(token.getId(), now);
@@ -109,6 +126,12 @@ public class RefreshTokenRotationService {
             }
             case EXPIRED -> RotationOutcome.expired();
         };
+    }
+
+    /** A tenant is usable for rotation only when ACTIVE; a missing tenant is treated as not-active (safe direction). */
+    private boolean isTenantActive(UUID tenantId) {
+        return tenantId != null
+                && tenantRepository.findStatusById(tenantId).map(status -> status == TenantStatus.ACTIVE).orElse(false);
     }
 
     /** Capability for Stage 7 / 4b-ii: revoke an entire refresh-token family. Returns rows revoked. */

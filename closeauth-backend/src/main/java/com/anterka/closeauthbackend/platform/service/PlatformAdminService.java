@@ -2,6 +2,7 @@ package com.anterka.closeauthbackend.platform.service;
 
 import com.anterka.closeauthbackend.common.exception.CloseAuthDomainException;
 import com.anterka.closeauthbackend.common.exception.ErrorCategory;
+import com.anterka.closeauthbackend.common.exception.LastPlatformAdminException;
 import com.anterka.closeauthbackend.common.security.PasswordHasher;
 import com.anterka.closeauthbackend.common.security.PasswordHasher.HashedPassword;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -42,6 +43,9 @@ public class PlatformAdminService {
 
     /** Non-secret constant, used only to burn comparable time on the "no admin" path (timing equalization). */
     private static final String TIMING_GUARD_RAW = "timing-guard-not-a-real-password";
+
+    /** The role {@code @RequiresPlatformAdmin} checks — the one the last-admin invariant protects. */
+    private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
 
     private final PlatformAdminRepository platformAdminRepository;
     private final PlatformAdminRoleRepository platformAdminRoleRepository;
@@ -112,6 +116,12 @@ public class PlatformAdminService {
     @Transactional
     public PlatformAdminView suspend(UUID id) {
         PlatformAdmin admin = loadOrThrow(id);
+        // Last-platform-admin invariant (IT-9 fix): refuse to suspend the sole active PLATFORM_ADMIN, mirroring the
+        // tenant tier's last-TENANT_ADMIN guard (active-only counting). Losing the last active holder would lock the
+        // whole @RequiresPlatformAdmin surface out.
+        if (isLastActivePlatformAdmin(id)) {
+            throw new LastPlatformAdminException(id);
+        }
         admin.setStatus(PlatformAdminStatus.SUSPENDED);
         tokenRevocationService.revokePlatformAdminTokens(id); // also emits TOKEN_REVOKED (scope=PLATFORM_ADMIN)
         auditEmitter.emit(AuditEvents.platformConfigurationChanged("PLATFORM_ADMIN_SUSPENDED", id));
@@ -148,8 +158,25 @@ public class PlatformAdminService {
         PlatformRole role = platformRoleRepository.findByName(roleName)
                 .orElseThrow(() -> new CloseAuthDomainException(ErrorCategory.NOT_FOUND, "platform_role.not_found",
                         "Unknown platform role: " + roleName));
+        // Last-platform-admin invariant (IT-9 fix): don't let a direct role-revoke strip the sole active PLATFORM_ADMIN.
+        // Only PLATFORM_ADMIN is protected (PLATFORM_SUPPORT is a lesser role); a SUSPENDED holder doesn't count.
+        if (PLATFORM_ADMIN_ROLE.equals(role.getName()) && isLastActivePlatformAdmin(adminId)) {
+            throw new LastPlatformAdminException(adminId);
+        }
         platformAdminRoleRepository.findByPlatformAdminIdAndPlatformRoleId(adminId, role.getId())
                 .ifPresent(platformAdminRoleRepository::delete);
+    }
+
+    /**
+     * Whether {@code targetAdminId} is currently the LAST active holder of {@code PLATFORM_ADMIN} (active-only counting,
+     * matching the corrected tenant-tier discipline): they hold it and are ACTIVE, and no other active admin does.
+     */
+    private boolean isLastActivePlatformAdmin(UUID targetAdminId) {
+        return platformRoleRepository.findByName(PLATFORM_ADMIN_ROLE).map(role -> {
+            boolean targetIsActiveHolder = platformAdminRoleRepository.isActiveHolder(targetAdminId, role.getId());
+            long activeHolders = platformAdminRoleRepository.countActiveHoldersByRole(role.getId());
+            return targetIsActiveHolder && activeHolders <= 1;
+        }).orElse(false);
     }
 
     /** The platform-role NAMES held by an admin (sorted) — sourced into the platform-admin token's {@code roles} claim. */

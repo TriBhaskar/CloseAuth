@@ -2,6 +2,7 @@ package com.anterka.closeauthbackend.platform.service;
 
 import com.anterka.closeauthbackend.common.exception.CloseAuthDomainException;
 import com.anterka.closeauthbackend.common.exception.ErrorCategory;
+import com.anterka.closeauthbackend.common.exception.LastPlatformAdminException;
 import com.anterka.closeauthbackend.common.security.PasswordHasher;
 import com.anterka.closeauthbackend.common.security.PasswordHasher.HashedPassword;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -12,6 +13,7 @@ import com.anterka.closeauthbackend.platform.entity.PlatformAdmin;
 import com.anterka.closeauthbackend.platform.enums.PlatformAdminStatus;
 import com.anterka.closeauthbackend.platform.repository.PlatformAdminRepository;
 import com.anterka.closeauthbackend.platform.repository.PlatformAdminRoleRepository;
+import com.anterka.closeauthbackend.rbac.entity.PlatformRole;
 import com.anterka.closeauthbackend.rbac.repository.PlatformRoleRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -118,6 +120,89 @@ class PlatformAdminServiceTest {
         verify(tokenRevocationService).revokePlatformAdminTokens(admin.getId());
     }
 
+    // ---- last-platform-admin protection (IT-9 fix, active-only counting) --
+
+    @Test
+    void suspendingTheSoleActivePlatformAdminIsBlocked() {
+        PlatformAdmin admin = active("boss@x.io", "$2a$real");
+        PlatformRole role = platformAdminRole();
+        when(platformAdminRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
+        when(platformRoleRepository.findByName("PLATFORM_ADMIN")).thenReturn(Optional.of(role));
+        when(platformAdminRoleRepository.isActiveHolder(admin.getId(), role.getId())).thenReturn(true);
+        when(platformAdminRoleRepository.countActiveHoldersByRole(role.getId())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.suspend(admin.getId()))
+                .isInstanceOf(LastPlatformAdminException.class)
+                .satisfies(ex -> {
+                    assertThat(((CloseAuthDomainException) ex).getCategory()).isEqualTo(ErrorCategory.CONFLICT);
+                    assertThat(((CloseAuthDomainException) ex).getCode()).isEqualTo("platform_admin.last_admin");
+                });
+        assertThat(admin.getStatus()).as("must not mutate on a blocked suspend").isEqualTo(PlatformAdminStatus.ACTIVE);
+        verify(tokenRevocationService, never()).revokePlatformAdminTokens(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void suspendingOneOfTwoActivePlatformAdminsSucceeds() {
+        PlatformAdmin admin = active("boss@x.io", "$2a$real");
+        PlatformRole role = platformAdminRole();
+        when(platformAdminRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
+        when(platformRoleRepository.findByName("PLATFORM_ADMIN")).thenReturn(Optional.of(role));
+        when(platformAdminRoleRepository.isActiveHolder(admin.getId(), role.getId())).thenReturn(true);
+        when(platformAdminRoleRepository.countActiveHoldersByRole(role.getId())).thenReturn(2L);
+
+        service.suspend(admin.getId());
+
+        assertThat(admin.getStatus()).isEqualTo(PlatformAdminStatus.SUSPENDED);
+        verify(tokenRevocationService).revokePlatformAdminTokens(admin.getId());
+    }
+
+    @Test
+    void revokingPlatformAdminRoleFromTheSoleActiveHolderIsBlocked() {
+        UUID adminId = UUID.randomUUID();
+        PlatformRole role = platformAdminRole();
+        when(platformRoleRepository.findByName("PLATFORM_ADMIN")).thenReturn(Optional.of(role));
+        when(platformAdminRoleRepository.isActiveHolder(adminId, role.getId())).thenReturn(true);
+        when(platformAdminRoleRepository.countActiveHoldersByRole(role.getId())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.revokeRole(adminId, "PLATFORM_ADMIN"))
+                .isInstanceOf(LastPlatformAdminException.class);
+        verify(platformAdminRoleRepository, never()).delete(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void revokingPlatformAdminRoleFromASuspendedHolderIsAllowed() {
+        UUID adminId = UUID.randomUUID();
+        PlatformRole role = platformAdminRole();
+        when(platformRoleRepository.findByName("PLATFORM_ADMIN")).thenReturn(Optional.of(role));
+        // A suspended holder is NOT an active holder → not "the last one", so the revoke proceeds.
+        when(platformAdminRoleRepository.isActiveHolder(adminId, role.getId())).thenReturn(false);
+        when(platformAdminRoleRepository.findByPlatformAdminIdAndPlatformRoleId(adminId, role.getId()))
+                .thenReturn(Optional.empty());
+
+        service.revokeRole(adminId, "PLATFORM_ADMIN");
+
+        // No last-admin block; the (idempotent) delete path is taken.
+        verify(platformAdminRoleRepository).findByPlatformAdminIdAndPlatformRoleId(adminId, role.getId());
+    }
+
+    @Test
+    void revokingTheLesserSupportRoleIsNotGuarded() {
+        UUID adminId = UUID.randomUUID();
+        PlatformRole support = new PlatformRole();
+        support.setId(UUID.randomUUID());
+        support.setName("PLATFORM_SUPPORT");
+        when(platformRoleRepository.findByName("PLATFORM_SUPPORT")).thenReturn(Optional.of(support));
+        when(platformAdminRoleRepository.findByPlatformAdminIdAndPlatformRoleId(adminId, support.getId()))
+                .thenReturn(Optional.empty());
+
+        service.revokeRole(adminId, "PLATFORM_SUPPORT");
+
+        // The last-admin guard is PLATFORM_ADMIN-specific — it must not even consult the holder count here.
+        verify(platformAdminRoleRepository, never()).isActiveHolder(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(platformAdminRoleRepository, never()).countActiveHoldersByRole(org.mockito.ArgumentMatchers.any());
+    }
+
     // ---- createPlatformAdmin ----------------------------------------------
 
     @Test
@@ -162,5 +247,12 @@ class PlatformAdminServiceTest {
         admin.setPasswordHash(hash);
         admin.setPasswordAlgo("bcrypt");
         return admin;
+    }
+
+    private PlatformRole platformAdminRole() {
+        PlatformRole role = new PlatformRole();
+        role.setId(UUID.randomUUID());
+        role.setName("PLATFORM_ADMIN");
+        return role;
     }
 }

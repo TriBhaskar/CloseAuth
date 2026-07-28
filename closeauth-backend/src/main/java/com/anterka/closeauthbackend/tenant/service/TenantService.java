@@ -12,6 +12,7 @@ import com.anterka.closeauthbackend.tenant.dto.TenantView;
 import com.anterka.closeauthbackend.tenant.entity.Tenant;
 import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
 import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
+import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,8 @@ public class TenantService {
     private final List<TenantProvisioningCallback> provisioningCallbacks;
     private final TenantStateMachine stateMachine;
     private final CommandValidator commandValidator;
+    /** 7b/IT-9 integration: kill a tenant's live access tokens on suspension/deletion (parallel to UserService). */
+    private final TokenRevocationService tokenRevocationService;
     private final AuditEmitter auditEmitter;
 
     // ---------------------------------------------------------------------
@@ -113,6 +116,9 @@ public class TenantService {
         stateMachine.checkTransition(tenant.getStatus(), TenantStatus.DELETED);
         tenant.setStatus(TenantStatus.DELETED);
         tenant.setDeletedAt(Instant.now());
+        // IT-9 fix (1a): a deleted tenant is no longer ACTIVE — kill its users' live access tokens now, mirroring
+        // UserService.transition. Session validation + refresh rotation are separately gated on tenant status.
+        tokenRevocationService.revokeAllTenantTokens(tenantId);
         // Managed entity: the change flushes on commit (dirty checking); no explicit save.
         auditEmitter.emit(AuditEvents.tenantDeleted(tenantId));
         return TenantView.from(tenant);
@@ -122,6 +128,12 @@ public class TenantService {
         Tenant tenant = loadOrThrow(tenantId);
         stateMachine.checkTransition(tenant.getStatus(), target);
         tenant.setStatus(target);
+        if (target == TenantStatus.SUSPENDED) {
+            // IT-9 fix (1a): kill the tenant's users' live access tokens now, not merely at expiry (mirrors
+            // UserService.transition's revokeAllUserTokens). The SSO bypass and refresh path are closed separately
+            // (AuthServerSessionService.validateSession + RefreshTokenRotationService.authorizeRotation tenant gates).
+            tokenRevocationService.revokeAllTenantTokens(tenantId);
+        }
         auditEmitter.emit(target == TenantStatus.ACTIVE
                 ? AuditEvents.tenantActivated(tenantId)
                 : AuditEvents.tenantSuspended(tenantId));

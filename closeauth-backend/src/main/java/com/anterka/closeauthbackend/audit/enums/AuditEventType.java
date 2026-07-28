@@ -36,6 +36,7 @@ public enum AuditEventType {
     TOKEN_INTROSPECTED,
     REFRESH_TOKEN_ROTATED,
     REFRESH_TOKEN_REPLAY_DETECTED,
+    REFRESH_TOKEN_REJECTED_TENANT_INACTIVE,
 
     // --- One-time-token auth flows (Stage 6b-i; wired Stage 8) ---
     EMAIL_VERIFICATION_ISSUED,

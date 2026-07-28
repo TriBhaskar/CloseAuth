@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -97,9 +98,25 @@ public class TenantAwareOAuth2AuthorizationConsentService extends JdbcOAuth2Auth
         return jdbcTemplate.query(LIST_CONSENTS_SQL, (rs, i) -> {
             String authorities = rs.getString("authorities");
             List<String> scopes = (authorities == null || authorities.isBlank())
-                    ? List.of() : List.of(authorities.split(","));
+                    ? List.of()
+                    : Arrays.stream(authorities.split(","))
+                            .map(String::trim)
+                            .map(TenantAwareOAuth2AuthorizationConsentService::stripScopePrefix)
+                            .toList();
             return new ConsentView(rs.getString("registered_client_id"), rs.getString("client_id"), scopes);
         }, tenantId.toString(), principalName);
+    }
+
+    // SAS stores consent authorities as scope authorities ("SCOPE_<scope>", per
+    // OAuth2AuthorizationConsent.Builder.scope). The `authorities` column therefore holds e.g. "SCOPE_openid,
+    // SCOPE_todomaster-api:read". The API contract is the bare scope names (matching what SAS's
+    // OAuth2AuthorizationConsent#getScopes returns, and what GET /oauth2/consent's alreadyGranted already exposes),
+    // so strip the framework prefix here before returning the view.
+    private static final String SCOPE_AUTHORITY_PREFIX = "SCOPE_";
+
+    private static String stripScopePrefix(String authority) {
+        return authority.startsWith(SCOPE_AUTHORITY_PREFIX)
+                ? authority.substring(SCOPE_AUTHORITY_PREFIX.length()) : authority;
     }
 
     /**

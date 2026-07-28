@@ -20,6 +20,12 @@ public record RotationOutcome(Type type, RefreshToken parent) {
         RACE_LOST,
         /** The presented token is past its expiry — reject. Not a compromise, so no family revocation. */
         EXPIRED,
+        /**
+         * The token's TENANT is not ACTIVE (suspended/deleted) — reject. Distinct from {@link #REPLAY}: this is a
+         * routine lifecycle consequence, NOT a stolen-token compromise, and must be logged/audited as such. The family
+         * is revoked here (an inactive tenant has no legitimate further use for it).
+         */
+        TENANT_INACTIVE,
         /** No such token in the ledger — reject. */
         UNKNOWN
     }
@@ -38,6 +44,10 @@ public record RotationOutcome(Type type, RefreshToken parent) {
 
     public static RotationOutcome expired() {
         return new RotationOutcome(Type.EXPIRED, null);
+    }
+
+    public static RotationOutcome tenantInactive() {
+        return new RotationOutcome(Type.TENANT_INACTIVE, null);
     }
 
     public static RotationOutcome unknown() {

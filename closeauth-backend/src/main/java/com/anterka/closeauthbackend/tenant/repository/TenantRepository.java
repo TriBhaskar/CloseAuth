@@ -3,6 +3,8 @@ package com.anterka.closeauthbackend.tenant.repository;
 import com.anterka.closeauthbackend.tenant.entity.Tenant;
 import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -26,4 +28,11 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
 
     /** Platform-level filtering across tenants (e.g. list ACTIVE tenants). */
     List<Tenant> findByStatus(TenantStatus status);
+
+    /**
+     * Projects just the tenant's status by id — a cheap lookup for hot-path status gates (session validation, refresh
+     * rotation) that must not load the whole aggregate. Empty if the tenant does not exist.
+     */
+    @Query("SELECT t.status FROM Tenant t WHERE t.id = :id")
+    Optional<TenantStatus> findStatusById(@Param("id") UUID id);
 }

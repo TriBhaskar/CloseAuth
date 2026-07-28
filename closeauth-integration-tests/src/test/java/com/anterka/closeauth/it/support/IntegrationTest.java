@@ -35,16 +35,26 @@ public abstract class IntegrationTest {
         RestAssured.basePath = stack.contextPath();
     }
 
-    protected MailpitClient mailpit() {
+    protected static MailpitClient mailpit() {
         return stack.mailpit();
     }
 
-    protected Db db() {
+    protected static Db db() {
         return stack.db();
     }
 
+    /** The OAuth2 Authorization Code + PKCE flow client (IT-2) — reused by every flow-driven journey. */
+    protected static OAuthFlowClient oauthFlow() {
+        return stack.oauthFlow();
+    }
+
+    /** The bearer-auth admin API client (IT-3) — reused by every admin-surface / RBAC journey. */
+    protected static AdminApiClient adminApi() {
+        return stack.adminApi();
+    }
+
     /** Mints a platform-admin bearer token from the bootstrap credential ({@code POST /v1/platform/auth/token}). */
-    protected String platformAdminToken() {
+    protected static String platformAdminToken() {
         return RestAssured.given()
                 .contentType(ContentType.JSON)
                 .body(Map.of(

@@ -67,6 +67,20 @@ public final class AuditEvents {
                 .data(data("family_id", str(familyId), "family_tokens_revoked", familyTokensRevoked)).build();
     }
 
+    /**
+     * A refresh rotation refused because the token's TENANT is not ACTIVE (suspended/deleted) — a routine
+     * lifecycle consequence, deliberately distinct from {@link #refreshTokenReplayDetected} (a compromise signal).
+     * The family is revoked (no legitimate further use), but this must NEVER be read as a stolen-token event.
+     */
+    public static CloseAuthAuditEvent refreshTokenRejectedTenantInactive(UUID tenantId, UUID userId,
+                                                                         String clientRegisteredId, UUID familyId,
+                                                                         int familyTokensRevoked) {
+        return base(AuditEventType.REFRESH_TOKEN_REJECTED_TENANT_INACTIVE).outcome(AuditOutcome.FAILURE)
+                .errorCode("refresh_token.tenant_inactive")
+                .tenantId(tenantId).subjectUserId(userId).actorUserId(userId).actorClientRegisteredId(clientRegisteredId)
+                .data(data("family_id", str(familyId), "family_tokens_revoked", familyTokensRevoked)).build();
+    }
+
     /** {@code scope} = {@code USER} / {@code TENANT} / {@code PLATFORM_ADMIN} — which revocation marker was written. */
     public static CloseAuthAuditEvent userTokensRevoked(UUID tenantId, UUID userId) {
         return base(AuditEventType.TOKEN_REVOKED).tenantId(tenantId).subjectUserId(userId)

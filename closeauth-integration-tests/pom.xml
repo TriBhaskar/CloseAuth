@@ -31,6 +31,8 @@
         <assertj.version>3.26.3</assertj.version>
         <jackson.version>2.18.2</jackson.version>
         <slf4j.version>2.0.16</slf4j.version>
+        <!-- IT-11: real RS256 signature verification against the published JWKS (the module's first JWT-crypto dep). -->
+        <nimbus-jose-jwt.version>9.48</nimbus-jose-jwt.version>
 
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
@@ -115,6 +117,14 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>${slf4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- IT-11 only: cryptographic RS256 verification of a real token against the published JWKS. Well-established,
+             lightweight; the same library the backend uses for its JWKSource. Test-scoped like everything else here. -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>${nimbus-jose-jwt.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

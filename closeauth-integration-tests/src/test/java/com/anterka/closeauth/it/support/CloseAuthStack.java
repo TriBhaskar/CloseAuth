@@ -153,10 +153,14 @@ public final class CloseAuthStack {
                 .withEnv("MANAGEMENT_HEALTH_MAIL_ENABLED", "false")
                 // Profile is set explicitly (not via SPRING_PROFILE) to avoid entrypoint.sh's no-space concat quirk;
                 // bootstrap creds go via -D so relaxed env-var binding of the hyphenated property can't bite us.
+                // cookie.secure=false: the suite drives the app over plain HTTP, so the Auth Server session cookie
+                // must NOT be Secure (a Secure cookie is withheld over http, which would break the SSO flow). This is
+                // the documented dev/test posture (SessionCookieManager) — production keeps the default (secure=true).
                 .withEnv("JAVA_OPTS", String.join(" ",
                         "-Dspring.profiles.active=docker",
                         "-Dcloseauth.platform-admin.bootstrap-email=" + BOOTSTRAP_ADMIN_EMAIL,
-                        "-Dcloseauth.platform-admin.bootstrap-password=" + BOOTSTRAP_ADMIN_PASSWORD))
+                        "-Dcloseauth.platform-admin.bootstrap-password=" + BOOTSTRAP_ADMIN_PASSWORD,
+                        "-Dcloseauth.session.cookie.secure=false"))
                 .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("closeauth-backend")))
                 .waitingFor(Wait.forHttp(CONTEXT_PATH + "/actuator/health")
                         .forPort(APP_PORT)
@@ -184,6 +188,16 @@ public final class CloseAuthStack {
     /** A read-only JDBC helper pointed at the Postgres container's mapped port. */
     public Db db() {
         return new Db(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+    }
+
+    /** A client that drives the real OAuth2 Authorization Code + PKCE flow against the running app (IT-2). */
+    public OAuthFlowClient oauthFlow() {
+        return new OAuthFlowClient(appBaseUri(), CONTEXT_PATH);
+    }
+
+    /** A thin bearer-auth client for the admin API ({@code /v1/**}) with role + fixture helpers (IT-3). */
+    public AdminApiClient adminApi() {
+        return new AdminApiClient(appBaseUri(), CONTEXT_PATH);
     }
 
     // ---- backend image inputs ---------------------------------------------

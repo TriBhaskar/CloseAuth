@@ -8,14 +8,9 @@ const app = createApp(App)
 const pinia = createPinia()
 app.use(pinia).use(router)
 
-// In mock mode, seed a fake authenticated user so admin pages are accessible
-if (import.meta.env.VITE_MOCK_MODE === 'true') {
-  import('@/stores/auth').then(({ useAuthStore }) => {
-    const authStore = useAuthStore()
-    if (!authStore.isAuthenticated) {
-      authStore.setUser('admin@closeauth.dev', 'MockAdmin', 'Admin')
-    }
-  })
-}
+// TODO(ui-1/ui-2): the VITE_MOCK_MODE dev-tooling mechanism survives, but its
+// seeded fake-user data was tied to the old (deleted) auth store shape. Rewire
+// this once src/stores/auth.ts models the current backend's principal types
+// (TENANT_ADMIN vs PLATFORM_ADMIN — see vision §7.8).
 
 app.mount('#app')

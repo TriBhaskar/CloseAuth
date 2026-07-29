@@ -1,6 +1,27 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 
+// TODO(ui-2b/ui-2c/ui-3/ui-4): reintroduce the REST of these route trees once
+// the corresponding views are rebuilt against the current backend contract:
+//   - src/views/auth/          (UI-2) hosted end-user auth pages — /login is
+//     wired below (Stage UI-2a); the 4 registration modes, verify,
+//     magic-link, reset, consent follow in UI-2b/2c on the same pattern.
+//   - src/views/tenant-admin/  (UI-3) tenant-admin dashboard
+//   - src/views/platform-admin/(UI-4) minimal platform-admin screens
+// Exact URL path conventions (e.g. `/admin/*` vs `/tenant/*`) are deferred to
+// the stage that builds each surface — do not over-commit here.
+// TENANT_ADMIN and PLATFORM_ADMIN are separate principal types (vision §7.8) —
+// keep their route trees/guards separate, don't conflate them.
+//
+// `/login` here is a CLIENT-SIDE route rendering LoginView.vue — it coexists
+// on the same URL path as the BFF's server-side `POST /login` proxy
+// (handlers_auth_proxy.go) without conflict: chi only registers that path for
+// POST, so a GET here falls through to the SPA catch-all (routes.go's
+// `r.NotFound(static.SPAHandler().ServeHTTP)`), which serves this app's
+// index.html, and THIS router then matches the path client-side. See the
+// stage report for the one open question this leaves (how a real,
+// unauthenticated /oauth2/authorize hit ends up navigating a browser to this
+// exact path in production — a backend-side wiring question, not something
+// this router needs to resolve to be correct on its own terms).
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -8,98 +29,14 @@ const router = createRouter({
       path: '/',
       component: () => import('@/views/public/HomeView.vue'),
     },
-
-    // ── Admin Auth (each view self-wraps in AuthLayout) ──────────────────────
-    { path: '/admin/login',           component: () => import('@/views/admin/LoginView.vue') },
-    { path: '/admin/register',        component: () => import('@/views/admin/RegisterView.vue') },
-    { path: '/admin/forgot-password', component: () => import('@/views/admin/ForgotPasswordView.vue') },
-    { path: '/admin/reset-password',  component: () => import('@/views/admin/ResetPasswordView.vue') },
-
-    // ── Admin Portal (AdminLayout, requires auth) ──────────────────────────────
     {
-      path: '/admin',
-      component: () => import('@/layouts/AdminLayout.vue'),
-      meta: { requiresAuth: true },
-      children: [
-        {
-          path: '',
-          redirect: { path: '/admin/dashboard' },
-        },
-        {
-          path: 'dashboard',
-          component: () => import('@/views/admin/DashboardView.vue'),
-        },
-        {
-          path: 'clients',
-          component: () => import('@/views/admin/ClientsView.vue'),
-        },
-        {
-          path: 'clients/new',
-          component: () => import('@/views/admin/ClientCreateView.vue'),
-        },
-        {
-          path: 'users',
-          component: () => import('@/views/admin/UsersView.vue'),
-        },
-        {
-          path: 'users/new',
-          component: () => import('@/views/admin/UserCreateView.vue'),
-        },
-        {
-          path: 'analytics',
-          component: () => import('@/views/admin/AnalyticsView.vue'),
-        },
-        {
-          path: 'security',
-          component: () => import('@/views/admin/SecurityView.vue'),
-        },
-        {
-          path: 'settings',
-          component: () => import('@/views/admin/SettingsView.vue'),
-        },
-      ],
-    },
-
-    // ── OAuth Flow (OAuthLayout) ───────────────────────────────────────────────
-    {
-      path: '/oauth',
-      component: () => import('@/layouts/OAuthLayout.vue'),
-      children: [
-        {
-          path: '',
-          redirect: '/',
-        },
-        {
-          path: 'login',
-          component: () => import('@/views/oauth/OAuthLoginView.vue'),
-        },
-        {
-          path: 'register',
-          component: () => import('@/views/oauth/OAuthRegisterView.vue'),
-        },
-        {
-          path: 'consent',
-          component: () => import('@/views/oauth/OAuthConsentView.vue'),
-        },
-      ],
+      path: '/login',
+      component: () => import('@/views/auth/LoginView.vue'),
     },
 
     // ── Catch-all: redirect unknown paths to home ─────────────────────────────
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
-})
-
-// ── Navigation guard ──────────────────────────────────────────────────────────
-router.beforeEach((to) => {
-  // Skip auth check in mock mode (no backend needed)
-  if (import.meta.env.VITE_MOCK_MODE === 'true') return
-
-  if (to.meta.requiresAuth) {
-    const authStore = useAuthStore()
-    if (!authStore.isAuthenticated) {
-      return { path: '/admin/login', query: { redirect: to.fullPath } }
-    }
-  }
 })
 
 export default router

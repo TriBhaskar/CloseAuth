@@ -33,6 +33,17 @@ export default defineConfig({
           })
         },
       },
+      // Surface 1's root-level (non-/api) BFF routes — /login, /logout
+      // (Stage UI-1) and /branding (Stage UI-2a) — proxied here too so
+      // `npm run dev` exercises the hosted auth pages end-to-end against a
+      // locally running BFF (`go run ./cmd/api`), the same way /api/* already
+      // does. This was a pre-existing gap for /login and /logout since UI-1
+      // (nothing forwarded them in dev); closed here as part of wiring up the
+      // first real hosted page (LoginView) rather than leaving it to a later
+      // stage that would rediscover the same gap.
+      '/login': { target: 'http://localhost:8080', changeOrigin: true },
+      '/logout': { target: 'http://localhost:8080', changeOrigin: true },
+      '/branding': { target: 'http://localhost:8080', changeOrigin: true },
     },
   },
 })

@@ -1,89 +1,29 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { adminService } from '@/api/services'
-import {clearCsrfToken} from "@/api/client.ts";
-import {useColorScheme} from "@/composables/useColorScheme.ts";
 
-const STORAGE_KEY = 'closeauth_user'
-
-interface PersistedUser {
-  email: string
-  username: string
-  role: string
-  isAuthenticated: boolean
-}
-
-function loadFromStorage(): PersistedUser | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as PersistedUser) : null
-  } catch {
-    return null
-  }
-}
-
+// TODO(ui-1/ui-2): rebuild this store against the current backend's principal
+// model. The deleted version modeled a single flat "admin" user (email,
+// username, role) fetched from a stale endpoint and persisted to
+// localStorage — the current backend has two genuinely separate principal
+// types, TENANT_ADMIN and PLATFORM_ADMIN (vision §7.8), plus tenant end-users.
+// This store needs to distinguish tenant-user auth state from platform-admin
+// auth state rather than conflating them the way the old code conflated
+// "client" and "tenant".
+//
+// The `email`/`isAuthenticated` state and the `logout` stub below are kept as
+// placeholders only because two untouched Stage UI-0 survivors depend on this
+// store's shape at compile time: src/views/public/HomeView.vue (public
+// landing page, out of scope for this whole effort) and
+// src/layouts/AdminLayout.vue (pattern survives, content may be adjusted
+// later). None of this is real auth logic — no persistence, no API calls, no
+// session handling.
 export const useAuthStore = defineStore('auth', () => {
-  const stored = loadFromStorage()
-  const router = useRouter()
+  const email = ref('')
+  const isAuthenticated = ref(false)
 
-  const email           = ref(stored?.email           ?? '')
-  const username        = ref(stored?.username        ?? '')
-  const role            = ref(stored?.role            ?? '')
-  const isAuthenticated = ref(stored?.isAuthenticated ?? false)
-
-  function persist() {
-    const data: PersistedUser = {
-      email: email.value,
-      username: username.value,
-      role: role.value,
-      isAuthenticated: isAuthenticated.value,
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  function logout(): void {
+    // TODO(ui-1/ui-2): real logout (clear session, call backend, redirect).
   }
 
-  function setUser(userEmail: string, userUsername = '', userRole = 'Admin') {
-    email.value           = userEmail
-    username.value        = userUsername
-    role.value            = userRole
-    isAuthenticated.value = true
-    persist()
-  }
-
-  async function fetchMe(): Promise<void> {
-    try {
-      const user = await adminService.getMe()
-      setUser(user.email, user.username, user.role)
-    } catch {
-      // Not authenticated — leave as-is
-    }
-  }
-
-  async function logout(): Promise<void> {
-    try {
-      await adminService.logout()
-    } catch {
-      // Ignore — still clear local state
-    } finally {
-      clear()
-      await router.push('/')
-    }
-  }
-
-  function clear() {
-    email.value           = ''
-    username.value        = ''
-    role.value            = ''
-    isAuthenticated.value = false
-    localStorage.removeItem(STORAGE_KEY)
-
-    // Reset cached CSRF token - the cookie was cleared server-side
-    clearCsrfToken()
-
-    // Reset dark mode back to light so home/login pages aren't dark
-    const { resetToLight } = useColorScheme()
-    resetToLight()
-  }
-
-  return { email, username, role, isAuthenticated, setUser, fetchMe, logout, clear }
+  return { email, isAuthenticated, logout }
 })

@@ -102,22 +102,39 @@
                         </configuration>
                     </execution>
 
+<!--                    Run go vet-->
+                    <execution>
+                        <id>go-vet</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>vet</argument>
+                                <argument>./...</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+
 <!--                    Run go tests-->
-<!--                    <execution>-->
-<!--                        <id>go-test</id>-->
-<!--                        <phase>test</phase>-->
-<!--                        <goals>-->
-<!--                            <goal>exec</goal>-->
-<!--                        </goals>-->
-<!--                        <configuration>-->
-<!--                            <executable>go</executable>-->
-<!--                            <arguments>-->
-<!--                                <argument>test</argument>-->
-<!--                                <argument>./...</argument>-->
-<!--                            </arguments>-->
-<!--                            <workingDirectory>${project.basedir}</workingDirectory>-->
-<!--                        </configuration>-->
-<!--                    </execution>-->
+                    <execution>
+                        <id>go-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>go</executable>
+                            <arguments>
+                                <argument>test</argument>
+                                <argument>./...</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
 
@@ -156,6 +173,7 @@
             <activation>
                 <property>
                     <name>skipTests</name>
+                    <value>true</value>
                 </property>
             </activation>
             <build>
@@ -164,6 +182,10 @@
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
                         <executions>
+                            <execution>
+                                <id>go-vet</id>
+                                <phase>none</phase>
+                            </execution>
                             <execution>
                                 <id>go-test</id>
                                 <phase>none</phase>

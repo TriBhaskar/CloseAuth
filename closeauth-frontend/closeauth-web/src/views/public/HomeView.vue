@@ -16,7 +16,7 @@ import {
   Globe,
   ArrowRight,
 } from 'lucide-vue-next'
-import { homePageMock } from '@/api/mocks/homeMocks'
+import { homePageMock } from './homeContent'
 
 const authStore = useAuthStore()
 const mobileMenuOpen = ref(false)

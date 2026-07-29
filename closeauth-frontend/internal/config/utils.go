@@ -38,3 +38,11 @@ func getEnvInt(key string, defaultValue int) int {
 
 	return defaultValue
 }
+
+// getEnvString retrieves a string from environment variable or returns default.
+func getEnvString(key string, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}

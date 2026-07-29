@@ -11,6 +11,12 @@ import (
 const SessionCookieName = "bff_session"
 
 // Session represents the authenticated user's session data stored in an encrypted cookie.
+//
+// TODO(ui-1): this shape predates the current backend's principal model. It
+// has a single flat Role string (no TENANT_ADMIN/PLATFORM_ADMIN distinction)
+// and a 24h-flat AccessToken field with no rotation/refresh awareness. Rework
+// once the correct auth model (internal/backend) is rebuilt — do not keep
+// conflating tenant-admin and platform-admin sessions under one shape.
 type Session struct {
 	UserID      string `json:"user_id,omitempty"`
 	Email       string `json:"email"`

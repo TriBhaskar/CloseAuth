@@ -6,6 +6,13 @@ import router from '@/router'
  * Strategy:
  * - Starts with `/closeauth/` or `http` → globalThis.location.href (browser navigation, Go handles)
  * - Starts with `/` → router.push() (SPA internal navigation)
+ *
+ * Kept as-is in Stage UI-0: this file has no dependency on the deleted
+ * api/models, api/services, or api/mocks, and the internal/vs-external
+ * redirect-routing pattern is generic. The hardcoded `/closeauth/` prefix
+ * still matches the surviving Go-side convention (internal/static's
+ * SPAHandler skips `/api/` and `/closeauth/`). TODO(ui-1): re-verify this
+ * prefix assumption once the rebuilt routes.go finalizes its route tree.
  */
 export function handleRedirect(redirectUrl: string): void {
   if (!redirectUrl) return

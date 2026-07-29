@@ -1,6 +1,13 @@
 // ── Centralised API Client ────────────────────────────────────────────────────
 // Reads VITE_API_BASE_URL from the environment, defaulting to '/api'.
 // All service files should import `apiClient` from here — never use raw fetch().
+//
+// TODO(ui-1): this file survives Stage UI-0 as a reference for the pattern
+// (centralized fetch wrapper, CSRF injection, 401 handling is a reasonable
+// shape) but expect its details to be reworked once the rebuilt service
+// layer (src/api/services/) exists again — e.g. the 401 handling below
+// assumes a single flat "admin" session and doesn't yet distinguish
+// tenant-user vs platform-admin auth state (vision §7.8).
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 

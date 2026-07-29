@@ -1,70 +1,8 @@
-import { computed } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { useAsyncState } from '@/composables/useAsyncState'
-import { adminService } from '@/api/services'
-
-/**
- * Composable wrapping authentication operations.
- * Provides login, register, logout, forgot-password flows
- * with loading/error state management.
- */
+// TODO(ui-1/ui-2): rebuild this composable against the current backend's
+// principal model (TENANT_ADMIN vs PLATFORM_ADMIN vs tenant end-user — vision
+// §7.8) once src/stores/auth.ts and the internal/backend-backed login/
+// register/verify endpoints exist. The deleted version wrapped a single flat
+// "admin" login/register/logout flow that no longer matches the backend.
 export function useAuth() {
-  const authStore = useAuthStore()
-  const { isLoading, errorMessage, execute } = useAsyncState()
-
-  const isAuthenticated = computed(() => authStore.isAuthenticated)
-  const user = computed(() => ({
-    email: authStore.email,
-    username: authStore.username,
-    role: authStore.role,
-  }))
-
-  async function login(username: string, password: string): Promise<boolean> {
-    const result = await execute(() =>
-      adminService.login({ username, password }),
-    )
-    if (!result) return false
-    await authStore.fetchMe()
-    return true
-  }
-
-  async function register(payload: {
-    username: string
-    email: string
-    password: string
-    firstName: string
-    lastName: string
-  }): Promise<boolean> {
-    const result = await execute(() => adminService.register(payload))
-    return result !== null
-  }
-
-  async function verifyOtp(email: string, verificationCode: string): Promise<boolean> {
-    const result = await execute(() =>
-      adminService.verifyOtp({ email, verificationCode: verificationCode }),
-    )
-    return result !== null
-  }
-
-  async function resendOtp(email: string): Promise<boolean> {
-    const result = await execute(() => adminService.resendOtp({ email }))
-    return result !== null
-  }
-
-  async function logout(): Promise<void> {
-    await authStore.logout()
-  }
-
-  return {
-    isAuthenticated,
-    user,
-    isLoading,
-    errorMessage,
-    login,
-    register,
-    verifyOtp,
-    resendOtp,
-    logout,
-  }
+  return {}
 }
-

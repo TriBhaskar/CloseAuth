@@ -243,15 +243,26 @@ func classifyAuthorize(location, redirectURI string) (Outcome, string) {
 // Login drives the whole flow for a fresh password login: unauthenticated
 // /authorize → /login → resume /authorize (now SSO-recognized) → capture the
 // code → /oauth2/token. Returns the tokens and the resulting cookie jar.
+//
+// Cross-origin login continuity (CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md
+// §3a): LoginController no longer falls back to a session-correlated
+// SavedRequest to reconstruct the post-login /oauth2/authorize redirect —
+// the full original authorize parameter set must be carried forward
+// explicitly on POST /login's own form body (exactly what a real hosted
+// login page's hidden form fields, or the BFF's authorizeQuery merge,
+// would supply). This method models a direct, same-origin form POST (not
+// the BFF's JSON-mode relay), so it supplies those fields itself, reusing
+// the very values it already generated for step 1's /authorize call.
 func (c *OAuthClient) Login(ctx context.Context, clientID, clientSecret, email, password string) (LoginResult, error) {
 	pkce, err := NewPKCE()
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("oauth login: generate PKCE: %w", err)
 	}
 	state := "st-" + uuid.NewString()
+	const scope = "openid"
 
 	// 1. Unauthenticated /authorize → 302 to /login (saves the request; sets the servlet SESSION cookie).
-	init, err := c.Authorize(ctx, clientID, "openid", pkce, state, CookieJar{})
+	init, err := c.Authorize(ctx, clientID, scope, pkce, state, CookieJar{})
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("oauth login: step 1 (authorize): %w", err)
 	}
@@ -260,8 +271,21 @@ func (c *OAuthClient) Login(ctx context.Context, clientID, clientSecret, email, 
 	}
 	jar := init.Jar
 
-	// 2. POST /login → 302 back to the saved /oauth2/authorize URL (sets CLOSEAUTH_SESSION).
-	form := url.Values{"email": {email}, "password": {password}, "client_id": {clientID}}
+	// 2. POST /login → 302 back to a freshly reconstructed /oauth2/authorize URL (sets CLOSEAUTH_SESSION).
+	// The non-credential fields here are exactly the same original authorize
+	// parameters step 1 sent — LoginController reconstructs the resume URL
+	// from these, not from any session-correlated saved request.
+	form := url.Values{
+		"email":                 {email},
+		"password":              {password},
+		"client_id":             {clientID},
+		"redirect_uri":          {c.redirectURI},
+		"response_type":         {"code"},
+		"scope":                 {scope},
+		"state":                 {state},
+		"code_challenge":        {pkce.Challenge},
+		"code_challenge_method": {"S256"},
+	}
 	loginResp, err := c.postForm(ctx, "/login", form, jar)
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("oauth login: step 2 (login): %w", err)

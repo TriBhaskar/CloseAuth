@@ -17,14 +17,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -284,7 +287,37 @@ func startMailpit(ctx context.Context, net *testcontainers.DockerNetwork) (testc
 // `docker` Spring profile — config wiring verified against
 // closeauth-integration-tests' CloseAuthStack.java (same env vars, same
 // -D flags), still accurate for this stage.
+//
+// # Fixed (not random) host port for the app container — CLOSEAUTH_ISSUER_URL
+//
+// Cross-origin login continuity (CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md §3a):
+// LoginSuccessResponder's post-login redirect is now built from
+// properties.getIssuerUrl() + the authorization endpoint path — an ABSOLUTE,
+// statically-configured URL, unlike the old SavedRequest.getRedirectUrl()
+// (always implicitly relative to whatever host/port actually received the
+// request). For that URL to be reachable by this Go process's own HTTP
+// client (running on the host, outside the Docker network the app/Postgres/
+// Redis/Mailpit containers share), issuer-url must be configured to equal
+// this container's real host-reachable address — but Testcontainers only
+// assigns the app's mapped host port AFTER the container starts, and
+// CLOSEAUTH_ISSUER_URL must be set as an env var BEFORE it starts. So: grab a
+// free host port ourselves first (reservePort, below) and explicitly bind
+// the container's exposed port to it (HostConfigModifier), rather than
+// leaving Docker to assign a random one — mirroring exactly what the
+// backend's own CrossOriginLoginIntegrationTest.java does (a fixed port +
+// closeauth.issuer-url dynamic property pointing at it), for the identical
+// reason. Deliberately NOT a hardcoded constant (as that Java test uses,
+// safely, since it's the only test process in its JVM): this harness is
+// shared by two Go packages (internal/server, internal/backend) that `go
+// test ./...` runs as separate, potentially-concurrent processes, and a
+// shared hardcoded port would collide between them.
 func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDir string) (testcontainers.Container, error) {
+	hostPort, err := reservePort()
+	if err != nil {
+		return nil, fmt.Errorf("reserve a host port for the app container: %w", err)
+	}
+	issuerURL := fmt.Sprintf("http://localhost:%d%s", hostPort, appContextPath)
+
 	javaOpts := strings.Join([]string{
 		"-Dspring.profiles.active=docker",
 		"-Dcloseauth.platform-admin.bootstrap-email=" + BootstrapAdminEmail,
@@ -306,6 +339,11 @@ func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDi
 		ExposedPorts:   []string{appPort},
 		Networks:       []string{net.Name},
 		NetworkAliases: map[string][]string{net.Name: {"closeauth-backend"}},
+		HostConfigModifier: func(hc *container.HostConfig) {
+			hc.PortBindings = nat.PortMap{
+				nat.Port(appPort): []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: strconv.Itoa(hostPort)}},
+			}
+		},
 		Env: map[string]string{
 			"SPRING_DATASOURCE_URL":      "jdbc:postgresql://postgres:5432/" + dbName,
 			"SPRING_DATASOURCE_USERNAME": dbUser,
@@ -321,7 +359,13 @@ func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDi
 			"SMTP_STARTTLS": "false",
 			// Don't make the app's health depend on an SMTP handshake.
 			"MANAGEMENT_HEALTH_MAIL_ENABLED": "false",
-			"JAVA_OPTS":                      javaOpts,
+			// Cross-origin login continuity (see the fixed-port doc comment
+			// above): must equal this container's actual host-reachable
+			// address so LoginSuccessResponder's reconstructed
+			// /oauth2/authorize redirect is genuinely followable by this
+			// Go process's HTTP client.
+			"CLOSEAUTH_ISSUER_URL": issuerURL,
+			"JAVA_OPTS":            javaOpts,
 		},
 		WaitingFor: wait.ForHTTP(appContextPath + "/actuator/health").
 			WithPort(nat.Port(appPort)).
@@ -335,6 +379,22 @@ func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDi
 		ContainerRequest: req,
 		Started:          true,
 	})
+}
+
+// reservePort asks the OS for a free TCP port on 127.0.0.1 and immediately
+// releases it, so the caller can bind something else (here, the Docker
+// container's host port mapping) to the SAME port number a moment later.
+// This has an inherent, small TOCTOU race (another process could grab the
+// port in between) — an accepted tradeoff for test harnesses needing to know
+// a port number before the thing that will actually listen on it exists; see
+// startApp's doc comment for why a fixed port is needed at all here.
+func reservePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // ---- backend image inputs --------------------------------------------------

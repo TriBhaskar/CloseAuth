@@ -12,39 +12,45 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
-import org.springframework.security.web.savedrequest.RequestCache;
-import org.springframework.security.web.savedrequest.SavedRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * The interactive login endpoints (Stage 6a). SAS's {@code /oauth2/authorize}, when unauthenticated, redirects the
- * browser here (via the configured {@code LoginUrlAuthenticationEntryPoint}); this endpoint authenticates the user
- * tenant-scoped, establishes the Auth Server session + cookie, and redirects back to the saved authorization request
- * so SAS can issue the code (recognized by {@link TenantSessionSsoFilter}).
+ * browser to the BFF's hosted login page (via the configured {@code LoginUrlAuthenticationEntryPoint}, carrying the
+ * original request's own query string — see {@code CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md}); this endpoint
+ * authenticates the user tenant-scoped, establishes the Auth Server session + cookie, and redirects back to a
+ * freshly re-issued {@code /oauth2/authorize} hit (built from the same parameters this endpoint received) so SAS can
+ * issue the code (recognized by {@link TenantSessionSsoFilter}'s SSO consult).
  *
  * <h2>Tenant resolution (cross-tenant-safe)</h2>
- * The tenant is derived from the authorization request's {@code client_id} — taken from the saved {@code /authorize}
- * request (the normal path), or an explicit {@code client_id} form field. Authentication then runs ONLY against that
- * tenant's user pool ({@link LoginPolicyService}). There is no global authentication path.
+ * The tenant is derived from the authorization request's {@code client_id} — an explicit request parameter, carried
+ * forward end-to-end from the original {@code /oauth2/authorize} hit (no session-correlated request cache: the
+ * backend and BFF are on genuinely separate origins with no reverse proxy, so that mechanism cannot survive the
+ * hop). Authentication then runs ONLY against that tenant's user pool ({@link LoginPolicyService}). There is no
+ * global authentication path.
  *
  * <h2>HTTP contract (for the future UI stage)</h2>
  * <ul>
  *   <li>{@code GET /login} → 200 JSON login context {@code {clientId, tenantId}} (branding is 6b); the hosted page
  *       renders the form.</li>
- *   <li>{@code POST /login} (form-encoded: {@code email}, {@code password}, {@code remember_me?}, {@code client_id?})
- *       → on success <b>302</b> to the saved {@code /oauth2/authorize} URL with {@code Set-Cookie} for the session;
- *       on failure <b>401</b> with a uniform, enumeration-safe JSON body {@code {"error":"invalid_credentials"}} (a
- *       form can render it; it never reveals which factor failed).</li>
+ *   <li>{@code POST /login} (form-encoded: {@code email}, {@code password}, {@code remember_me?}, plus the original
+ *       {@code /oauth2/authorize} parameters — {@code client_id}, {@code redirect_uri}, {@code response_type},
+ *       {@code scope}, {@code state}, {@code code_challenge}, {@code code_challenge_method}, and any OIDC extras)
+ *       → on success <b>302</b> to a freshly reconstructed {@code /oauth2/authorize} URL with {@code Set-Cookie} for
+ *       the session; on failure <b>401</b> with a uniform, enumeration-safe JSON body
+ *       {@code {"error":"invalid_credentials"}} (a form can render it; it never reveals which factor failed).</li>
  * </ul>
  */
 @RestController
@@ -56,13 +62,18 @@ public class LoginController {
     private final LoginPolicyService loginPolicyService;
     private final LoginSuccessResponder loginSuccessResponder;
 
-    private final RequestCache requestCache = new HttpSessionRequestCache();
+    /**
+     * Non-authorize form fields — excluded when reconstructing the {@code /oauth2/authorize} query string for the
+     * post-login redirect (see {@link #buildAuthorizeQuery(HttpServletRequest)}).
+     */
+    private static final Set<String> NON_AUTHORIZE_PARAMS = Set.of("email", "password", "remember_me");
 
     /** Login context for the hosted page. Tenant/branding detail is Stage 6b; here we expose the resolved client/tenant. */
     @GetMapping(value = "/login", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> loginContext(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<Map<String, Object>> loginContext(
+            @RequestParam(value = "client_id", required = false) String clientIdParam) {
         Map<String, Object> body = new LinkedHashMap<>();
-        String clientId = resolveClientId(null, request, response);
+        String clientId = resolveClientId(clientIdParam);
         body.put("clientId", clientId);
         resolveTenant(clientId).ifPresent(t -> body.put("tenantId", t.toString()));
         return ResponseEntity.ok(body);
@@ -74,10 +85,21 @@ public class LoginController {
             @RequestParam("password") String password,
             @RequestParam(value = "remember_me", defaultValue = "false") boolean rememberMe,
             @RequestParam(value = "client_id", required = false) String clientIdParam,
+            // The remaining original /oauth2/authorize parameters, carried forward end-to-end (cross-origin login
+            // continuity — see CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md §3a). Named here (matching client_id's
+            // existing style) for readability/validation; the actual redirect reconstruction below reads the full,
+            // unabridged parameter map so OIDC extras (nonce, prompt, login_hint, ...) survive too without having to
+            // be hand-enumerated.
+            @RequestParam(value = "redirect_uri", required = false) String redirectUri,
+            @RequestParam(value = "response_type", required = false) String responseType,
+            @RequestParam(value = "scope", required = false) String scope,
+            @RequestParam(value = "state", required = false) String state,
+            @RequestParam(value = "code_challenge", required = false) String codeChallenge,
+            @RequestParam(value = "code_challenge_method", required = false) String codeChallengeMethod,
             HttpServletRequest request,
             HttpServletResponse response) {
 
-        String clientId = resolveClientId(clientIdParam, request, response);
+        String clientId = resolveClientId(clientIdParam);
         Optional<UUID> tenantId = resolveTenant(clientId);
         if (tenantId.isEmpty()) {
             // Cannot determine the tenant to authenticate against — uniform failure (no enumeration).
@@ -89,27 +111,44 @@ public class LoginController {
             return invalidCredentials();
         }
 
-        // Establish the tenant-scoped session (capturing request context), set the cookie, resume the OAuth flow.
+        // Establish the tenant-scoped session (capturing request context), set the cookie, and resolve the redirect
+        // by re-issuing a fresh /oauth2/authorize hit with the same parameters this request received — NOT by
+        // resuming a session-correlated saved request (see LoginSuccessResponder).
         // amr=pwd — this login used a password (the OIDC authentication-method reference, RFC 8176).
-        String redirectUrl = loginSuccessResponder.establishSessionAndResolveRedirect(
-                request, response, tenantId.get(), outcome.userId(), AuthMethod.PASSWORD.amrValue(), rememberMe);
+        String authorizeQuery = buildAuthorizeQuery(request);
+        String redirectUrl = loginSuccessResponder.establishSessionAndResolveRedirect(request, response,
+                tenantId.get(), outcome.userId(), AuthMethod.PASSWORD.amrValue(), rememberMe, authorizeQuery);
         log.info("Login succeeded user={} tenant={} → resuming {}", outcome.userId(), tenantId.get(), redirectUrl);
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirectUrl)).build();
     }
 
-    /** Prefer an explicit {@code client_id}; otherwise read it from the saved authorization request. */
-    private String resolveClientId(String explicit, HttpServletRequest request, HttpServletResponse response) {
-        if (explicit != null && !explicit.isBlank()) {
-            return explicit;
-        }
-        SavedRequest saved = requestCache.getRequest(request, response);
-        if (saved != null) {
-            String[] values = saved.getParameterValues("client_id");
-            if (values != null && values.length > 0) {
-                return values[0];
+    /**
+     * Reconstructs the original {@code /oauth2/authorize} query string from this request's own parameters (the
+     * server-to-server-hop equivalent of {@code SavedRequest.getRedirectUrl()}'s full-fidelity reconstruction,
+     * without SAS's {@code RequestCache} machinery) — full-fidelity passthrough, not a hand-picked field allowlist,
+     * so any OIDC extra a relying party sends survives too.
+     */
+    private String buildAuthorizeQuery(HttpServletRequest request) {
+        StringBuilder query = new StringBuilder();
+        for (Map.Entry<String, String[]> entry : request.getParameterMap().entrySet()) {
+            if (NON_AUTHORIZE_PARAMS.contains(entry.getKey())) {
+                continue;
+            }
+            for (String value : entry.getValue()) {
+                if (query.length() > 0) {
+                    query.append('&');
+                }
+                query.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
+                        .append('=')
+                        .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
             }
         }
-        return null;
+        return query.toString();
+    }
+
+    /** The client_id is now always carried explicitly (no session-correlated request-cache fallback). */
+    private String resolveClientId(String explicit) {
+        return (explicit != null && !explicit.isBlank()) ? explicit : null;
     }
 
     private Optional<UUID> resolveTenant(String clientId) {

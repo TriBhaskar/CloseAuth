@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -48,9 +47,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * auto-grant, persistence/no-reprompt, deny → access_denied) and the public branding resolution endpoint (only
  * non-sensitive fields). Gated on {@code -Dcloseauth.it.db.url}.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @EnabledIfSystemProperty(named = "closeauth.it.db.url", matches = ".+")
 class ConsentBrandingIntegrationTest {
+
+    // A FIXED port, not RANDOM_PORT: post cross-origin-login fix, LoginSuccessResponder's resume redirect is built
+    // from properties.getIssuerUrl() + the authorization endpoint path (an ABSOLUTE URL) — issuer-url must equal
+    // this server's real bound address for that redirect to actually be reachable by this test's HTTP client.
+    private static final int PORT = 9097;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -59,11 +63,11 @@ class ConsentBrandingIntegrationTest {
         registry.add("spring.datasource.password", () -> System.getProperty("closeauth.it.db.password"));
         registry.add("spring.data.redis.host", () -> System.getProperty("closeauth.it.redis.host"));
         registry.add("spring.data.redis.port", () -> System.getProperty("closeauth.it.redis.port"));
-        registry.add("closeauth.issuer-url", () -> "http://localhost:9097");
+        registry.add("server.port", () -> PORT);
+        registry.add("closeauth.issuer-url", () -> "http://localhost:" + PORT + "/closeauth");
         registry.add("closeauth.session.cookie.secure", () -> "false");
     }
 
-    @LocalServerPort int port;
     @Autowired TenantService tenantService;
     @Autowired UserService userService;
     @Autowired ClientRegistrationService clientRegistrationService;
@@ -76,7 +80,7 @@ class ConsentBrandingIntegrationTest {
     private final ObjectMapper json = new ObjectMapper();
 
     private String base() {
-        return "http://localhost:" + port + "/closeauth";
+        return "http://localhost:" + PORT + "/closeauth";
     }
 
     // ============================ BRANDING ============================
@@ -130,9 +134,12 @@ class ConsentBrandingIntegrationTest {
 
         HttpClient http = client();
         Pkce pkce = pkce();
-        // authorize → login → resume → consent required.
-        get(http, authorizeUrl(clientId, scope, pkce)); // 302 → /login (saves the request)
-        HttpResponse<String> login = postForm(http, base() + "/login", Map.of("email", email, "password", PASSWORD));
+        String state1 = rnd();
+        // authorize → login → resume → consent required. The original authorize params (no session correlation
+        // between /authorize and /login — see CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md) are carried explicitly on the
+        // login form, mirroring what the BFF relay will forward.
+        get(http, authorizeUrl(clientId, scope, state1, pkce)); // 302 → /login, carrying the query string
+        HttpResponse<String> login = postForm(http, base() + "/login", loginForm(clientId, scope, state1, pkce, email));
         HttpResponse<String> resumed = get(http, location(login));
         String consentUrl = location(resumed);
         assertThat(consentUrl).contains("/oauth2/consent");
@@ -180,8 +187,11 @@ class ConsentBrandingIntegrationTest {
         String clientId = nonTrustedClient(ctx);
 
         HttpClient http = client();
-        get(http, authorizeUrl(clientId, "openid todomaster-api:read todomaster-api:write", pkce()));
-        HttpResponse<String> login = postForm(http, base() + "/login", Map.of("email", email, "password", PASSWORD));
+        String scope = "openid todomaster-api:read todomaster-api:write";
+        String state1 = rnd();
+        Pkce pkce = pkce();
+        get(http, authorizeUrl(clientId, scope, state1, pkce));
+        HttpResponse<String> login = postForm(http, base() + "/login", loginForm(clientId, scope, state1, pkce, email));
         String consentUrl = location(get(http, location(login)));
         assertThat(consentUrl).contains("/oauth2/consent");
         String state = queryParam(consentUrl, "state");
@@ -268,9 +278,31 @@ class ConsentBrandingIntegrationTest {
     }
 
     private String authorizeUrl(String clientId, String scope, Pkce pkce) {
+        return authorizeUrl(clientId, scope, rnd(), pkce);
+    }
+
+    private String authorizeUrl(String clientId, String scope, String state, Pkce pkce) {
         return base() + "/oauth2/authorize?response_type=code&client_id=" + enc(clientId)
                 + "&redirect_uri=" + enc(REDIRECT) + "&scope=" + enc(scope)
-                + "&state=" + rnd() + "&code_challenge=" + pkce.challenge() + "&code_challenge_method=S256";
+                + "&state=" + enc(state) + "&code_challenge=" + pkce.challenge() + "&code_challenge_method=S256";
+    }
+
+    /**
+     * The login form for the cross-origin-safe {@code POST /login}: the original authorize params (no session
+     * correlation to resume — see CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md) plus credentials.
+     */
+    private Map<String, String> loginForm(String clientId, String scope, String state, Pkce pkce, String email) {
+        Map<String, String> form = new HashMap<>();
+        form.put("response_type", "code");
+        form.put("client_id", clientId);
+        form.put("redirect_uri", REDIRECT);
+        form.put("scope", scope);
+        form.put("state", state);
+        form.put("code_challenge", pkce.challenge());
+        form.put("code_challenge_method", "S256");
+        form.put("email", email);
+        form.put("password", PASSWORD);
+        return form;
     }
 
     private Map<String, JsonNode> byScope(JsonNode scopesArray) {

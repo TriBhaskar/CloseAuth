@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.auth;
 
+import com.anterka.closeauthbackend.auth.web.LoginController;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
@@ -22,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -53,9 +53,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rotation lineage, session linkage + ip/ua, introspection round-trip (closes 4b-ii D1), tenant-scoped SSO consult,
  * logout cascade, and cross-tenant authentication refusal.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @EnabledIfSystemProperty(named = "closeauth.it.db.url", matches = ".+")
 class AuthCodeFlowIntegrationTest {
+
+    // A FIXED port, not RANDOM_PORT: post cross-origin-login fix, LoginSuccessResponder's resume redirect is built
+    // from properties.getIssuerUrl() + the authorization endpoint path (an ABSOLUTE URL) rather than
+    // SavedRequest.getRedirectUrl() (which was always implicitly relative to whatever host/port actually received
+    // the request) — so issuer-url must equal this server's real bound address, exactly as in a real deployment.
+    private static final int PORT = 9099;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -64,12 +70,12 @@ class AuthCodeFlowIntegrationTest {
         registry.add("spring.datasource.password", () -> System.getProperty("closeauth.it.db.password"));
         registry.add("spring.data.redis.host", () -> System.getProperty("closeauth.it.redis.host"));
         registry.add("spring.data.redis.port", () -> System.getProperty("closeauth.it.redis.port"));
-        registry.add("closeauth.issuer-url", () -> "http://localhost:9099");
+        registry.add("server.port", () -> PORT);
+        registry.add("closeauth.issuer-url", () -> "http://localhost:" + PORT + "/closeauth");
         // Plain-HTTP test: don't mark the session cookie Secure (else the java.net cookie jar may drop it).
         registry.add("closeauth.session.cookie.secure", () -> "false");
     }
 
-    @LocalServerPort int port;
     @Autowired TenantService tenantService;
     @Autowired UserService userService;
     @Autowired ClientRegistrationService clientRegistrationService;
@@ -83,7 +89,7 @@ class AuthCodeFlowIntegrationTest {
     private final ObjectMapper json = new ObjectMapper();
 
     private String base() {
-        return "http://localhost:" + port + "/closeauth";
+        return "http://localhost:" + PORT + "/closeauth";
     }
 
     // ============================ FLAGSHIP ============================
@@ -206,10 +212,15 @@ class AuthCodeFlowIntegrationTest {
         user(TenantContext.of(tenantB), tenantBEmail);
 
         HttpClient browser = browser();
-        // Start the flow on tenant A's client, then try to log in with tenant B's user credentials.
-        authorize(browser, clientA, "openid", pkce()); // 302 → /login, saves the request (tenant A)
-        HttpResponse<String> login = postForm(browser, base() + "/login",
-                Map.of("email", tenantBEmail, "password", PASSWORD), null);
+        // Start the flow on tenant A's client, then try to log in with tenant B's user credentials. The original
+        // authorize params (notably client_id, which pins tenant resolution to tenant A) are carried explicitly on
+        // the login POST — no session correlation to a "saved" tenant-A request.
+        Map<String, String> authorizeParams = authorizeParams(clientA, "openid", pkce());
+        authorize(browser, authorizeParams); // 302 → /login, carrying the query string (tenant A's client_id)
+        Map<String, String> loginForm = new java.util.LinkedHashMap<>(authorizeParams);
+        loginForm.put("email", tenantBEmail);
+        loginForm.put("password", PASSWORD);
+        HttpResponse<String> login = postForm(browser, base() + "/login", loginForm, null);
 
         // Refused: the tenant-B user is not in tenant A's pool. Uniform, enumeration-safe 401 (no session cookie).
         assertThat(login.statusCode()).isEqualTo(401);
@@ -218,19 +229,29 @@ class AuthCodeFlowIntegrationTest {
 
     // ============================ flow helpers ============================
 
-    /** Drives GET /authorize → /login → POST /login → resume /authorize → returns the exchanged tokens. */
+    /**
+     * Drives GET /authorize → /login → POST /login → resume /authorize → returns the exchanged tokens.
+     *
+     * <p>Cross-origin login continuity (post-fix): {@code POST /login} no longer relies on a session-correlated
+     * saved request to know which authorization it's resuming — the original {@code /oauth2/authorize} parameters
+     * are carried explicitly as form fields alongside the credentials (mirroring what the BFF relay will forward),
+     * exactly as {@link LoginController#login} now expects.
+     */
     private Tokens runAuthCodeFlow(HttpClient browser, String clientId, String scope) throws Exception {
         Pkce pkce = pkce();
+        Map<String, String> authorizeParams = authorizeParams(clientId, scope, pkce);
 
-        HttpResponse<String> authorize = authorize(browser, clientId, scope, pkce);
+        HttpResponse<String> authorize = authorize(browser, authorizeParams);
         assertThat(authorize.statusCode()).isEqualTo(302);
-        assertThat(location(authorize)).contains("/login"); // unauthenticated → login
+        assertThat(location(authorize)).contains("/login"); // unauthenticated → login, carrying the query string
 
-        HttpResponse<String> login = postForm(browser, base() + "/login",
-                Map.of("email", currentEmail, "password", PASSWORD), null);
+        Map<String, String> loginForm = new java.util.LinkedHashMap<>(authorizeParams);
+        loginForm.put("email", currentEmail);
+        loginForm.put("password", PASSWORD);
+        HttpResponse<String> login = postForm(browser, base() + "/login", loginForm, null);
         assertThat(login.statusCode()).isEqualTo(302);
         String resume = location(login);
-        assertThat(resume).contains("/oauth2/authorize"); // resumes the saved authorization request
+        assertThat(resume).contains("/oauth2/authorize"); // resumes via a freshly re-issued authorization request
 
         HttpResponse<String> resumed = get(browser, resume);
         assertThat(resumed.statusCode()).isEqualTo(302);
@@ -248,16 +269,34 @@ class AuthCodeFlowIntegrationTest {
         return new Tokens(body.get("access_token").asText(), body.get("refresh_token").asText());
     }
 
+    /** The full original-authorize parameter set, reused verbatim for both the GET /authorize URL and, after a
+     *  cold /login redirect, the POST /login form (no session correlation between the two — see runAuthCodeFlow). */
+    private Map<String, String> authorizeParams(String clientId, String scope, Pkce pkce) {
+        Map<String, String> params = new java.util.LinkedHashMap<>();
+        params.put("response_type", "code");
+        params.put("client_id", clientId);
+        params.put("redirect_uri", REDIRECT);
+        params.put("scope", scope);
+        params.put("state", rnd());
+        params.put("code_challenge", pkce.challenge());
+        params.put("code_challenge_method", "S256");
+        return params;
+    }
+
+    private HttpResponse<String> authorize(HttpClient browser, Map<String, String> params) throws Exception {
+        StringBuilder query = new StringBuilder();
+        params.forEach((k, v) -> {
+            if (query.length() > 0) {
+                query.append('&');
+            }
+            query.append(enc(k)).append('=').append(enc(v));
+        });
+        return get(browser, base() + "/oauth2/authorize?" + query);
+    }
+
     private HttpResponse<String> authorize(HttpClient browser, String clientId, String scope, Pkce pkce)
             throws Exception {
-        String url = base() + "/oauth2/authorize?response_type=code"
-                + "&client_id=" + enc(clientId)
-                + "&redirect_uri=" + enc(REDIRECT)
-                + "&scope=" + enc(scope)
-                + "&state=" + rnd()
-                + "&code_challenge=" + pkce.challenge()
-                + "&code_challenge_method=S256";
-        return get(browser, url);
+        return authorize(browser, authorizeParams(clientId, scope, pkce));
     }
 
     private Tokens refresh(HttpClient browser, String clientId, String refreshToken) throws Exception {

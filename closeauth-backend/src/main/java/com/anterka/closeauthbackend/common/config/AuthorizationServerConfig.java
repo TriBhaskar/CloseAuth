@@ -1,6 +1,7 @@
 package com.anterka.closeauthbackend.common.config;
 
 import com.anterka.closeauthbackend.auth.service.ConsentScopeResolver;
+import com.anterka.closeauthbackend.auth.web.LoginSuccessResponder;
 import com.anterka.closeauthbackend.auth.web.TenantSessionSsoFilter;
 import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
@@ -43,6 +44,10 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.AuthenticationException;
+
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
@@ -81,7 +86,8 @@ public class AuthorizationServerConfig {
             TenantSessionSsoFilter tenantSessionSsoFilter,
             ConsentScopeResolver consentScopeResolver,
             JwtDecoder jwtDecoder,
-            com.anterka.closeauthbackend.audit.service.AuditEmitter auditEmitter) throws Exception {
+            com.anterka.closeauthbackend.audit.service.AuditEmitter auditEmitter,
+            CloseAuthProperties properties) throws Exception {
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                 .oidc(Customizer.withDefaults()) // OIDC discovery, UserInfo, ID tokens, RP-initiated logout endpoint
@@ -104,13 +110,40 @@ public class AuthorizationServerConfig {
                 // Filter) would see no principal and never skip login. SAS's own filters can't be used as an
                 // addFilterBefore reference (no registered order), so we anchor to the standard SecurityContextHolderFilter.
                 .addFilterAfter(tenantSessionSsoFilter, SecurityContextHolderFilter.class)
-                // Redirect unauthenticated browser requests to the CloseAuth login endpoint (6a's LoginController).
+                // Redirect unauthenticated browser requests to the CloseAuth-hosted login page on the BFF's own
+                // origin (6a's LoginController is reached via the BFF; see crossOriginLoginEntryPoint below —
+                // cross-origin login continuity design).
                 .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
-                        new LoginUrlAuthenticationEntryPoint("/login"),
+                        crossOriginLoginEntryPoint(properties),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 // UserInfo / protected OIDC endpoints validate the CloseAuth-issued JWT.
                 .oauth2ResourceServer(rs -> rs.jwt(Customizer.withDefaults()));
         return http.build();
+    }
+
+    /**
+     * Builds the unauthenticated-entry-point redirect target for a browser hitting a protected endpoint: the BFF's
+     * hosted login page, with the ORIGINAL request's own query string appended verbatim.
+     *
+     * <p>Why: the backend and the BFF are deployed on genuinely separate origins with no reverse proxy, so Spring
+     * Security's session-based {@code RequestCache}/{@code SavedRequest} mechanism cannot survive the hop to the
+     * BFF's login form and back — the BFF's server-to-server relay of {@code POST /login} never carries the
+     * backend's own session cookie. Carrying the {@code /oauth2/authorize} request's own parameters forward on the
+     * URL sidesteps this entirely: they are already public, URL-visible data in any normal OAuth2 flow (see
+     * CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md §3a/§3c). A successful login then re-issues a fresh
+     * {@code /oauth2/authorize} hit with the same parameters (handled by {@link LoginSuccessResponder}) rather than
+     * resuming a session-correlated saved request.
+     */
+    private LoginUrlAuthenticationEntryPoint crossOriginLoginEntryPoint(CloseAuthProperties properties) {
+        return new LoginUrlAuthenticationEntryPoint(properties.getBff().getLoginPage()) {
+            @Override
+            protected String determineUrlToUseForThisRequest(HttpServletRequest request,
+                    HttpServletResponse response, AuthenticationException exception) {
+                String base = super.determineUrlToUseForThisRequest(request, response, exception); // bff.loginPage
+                String query = request.getQueryString();
+                return (query == null || query.isBlank()) ? base : base + "?" + query;
+            }
+        };
     }
 
     /**
@@ -214,7 +247,8 @@ public class AuthorizationServerConfig {
      */
     @Bean
     @Order(2)
-    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http, CloseAuthProperties properties)
+            throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 // Disable Spring Security's default LogoutFilter so POST /logout reaches the 6a LogoutController
@@ -228,8 +262,10 @@ public class AuthorizationServerConfig {
                                 "/register", "/verify-email/**", "/magic-link/**", "/password-reset/**",
                                 "/branding", "/oauth2/consent").permitAll()
                         .anyRequest().authenticated())
+                // Same cross-origin-safe redirect as the @Order(1) chain above (this chain guards everything else via
+                // anyRequest().authenticated()) — must stay consistent, else this path would relocate the same bug.
                 .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
-                        new LoginUrlAuthenticationEntryPoint("/login"),
+                        crossOriginLoginEntryPoint(properties),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)));
         return http.build();
     }

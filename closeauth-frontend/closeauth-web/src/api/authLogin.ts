@@ -23,6 +23,15 @@ export interface LoginPayload {
   password: string
   rememberMe: boolean
   clientId?: string
+  // Cross-origin login continuity (see CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md
+  // §3b): the raw, entire query string captured off window.location.search
+  // when the login page loaded (e.g. "?client_id=...&redirect_uri=...&
+  // state=...&nonce=..."), carried through as ONE opaque string rather than
+  // decomposed into typed fields. This mirrors the backend's own "carry the
+  // querystring verbatim, don't hand-enumerate" choice — a named-field
+  // approach here would silently drop OIDC extras (nonce, prompt, ...) that
+  // the backend now explicitly preserves end-to-end.
+  authorizeQuery?: string
 }
 
 export type LoginResult =

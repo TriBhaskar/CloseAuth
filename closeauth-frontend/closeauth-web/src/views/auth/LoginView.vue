@@ -8,7 +8,6 @@
 // /oauth2/authorize behaves exactly like a native form POST's redirect
 // would have.
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,17 +16,24 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useOAuthTheme } from '@/composables/useOAuthTheme'
 import { submitLogin } from '@/api/authLogin'
 
-const route = useRoute()
-// client_id identifies which tenant's branding/login policy applies. Read
-// from the query string a real relying-party-initiated navigation would
-// carry. If absent, useOAuthTheme resolves to platform-default branding, and
-// the backend's own /login falls back to the saved-authorize-request's
-// client_id (LoginController.resolveClientId) — this page degrades
-// gracefully either way rather than requiring the param.
-const clientId = computed(() => {
-  const raw = route.query.client_id
-  return typeof raw === 'string' ? raw : ''
-})
+// Cross-origin login continuity (CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md §3b):
+// capture the ENTIRE raw query string once, at mount, straight off
+// window.location.search — e.g. "?client_id=...&redirect_uri=...&state=...
+// &nonce=..." — rather than decomposing it into named fields via
+// route.query. This is what the backend's entry point now appends onto the
+// redirect to this page (LoginUrlAuthenticationEntryPoint override), and
+// carrying it verbatim (not hand-enumerated) is exactly the choice the
+// backend itself made, for the same reason: a named-field allowlist would
+// silently drop OIDC extras (nonce, prompt, ...) a relying party may send.
+const authorizeQuery = window.location.search
+
+// client_id identifies which tenant's branding/login policy applies. Derived
+// from the SAME captured string above (not a separate route.query read) so
+// the two values can never disagree. If absent, useOAuthTheme resolves to
+// platform-default branding, and the backend's own /login falls back to no
+// resolvable tenant — this page degrades gracefully either way rather than
+// requiring the param.
+const clientId = computed(() => new URLSearchParams(authorizeQuery).get('client_id') ?? '')
 
 const { branding, hasLogo } = useOAuthTheme(clientId.value)
 
@@ -49,6 +55,7 @@ async function handleSubmit(): Promise<void> {
       password: password.value,
       rememberMe: rememberMe.value,
       clientId: clientId.value || undefined,
+      authorizeQuery: authorizeQuery || undefined,
     })
     if (result.ok) {
       // Real top-level navigation — see file header comment for why this

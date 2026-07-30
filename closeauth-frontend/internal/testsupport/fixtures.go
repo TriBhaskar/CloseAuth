@@ -153,6 +153,50 @@ func (f *Fixtures) CreateActiveUser(ctx context.Context, platformToken, tenantID
 	return created.ID, nil
 }
 
+// SetRegistrationMode sets tenantID's registration mode via the admin API
+// (PUT /v1/tenants/{tenantId}/registration-config, RequiresTenantAccess —
+// the platform token satisfies that gate for any tenant). mode is one of
+// OPEN / EMAIL_VERIFIED / ADMIN_APPROVED / INVITE_ONLY (API_REFERENCE.md
+// §4.6) — Deliverable 3 (registration_proxy_test.go) drives all four through
+// this one helper rather than four bespoke ones.
+func (f *Fixtures) SetRegistrationMode(ctx context.Context, platformToken, tenantID, mode string) error {
+	resp, err := f.admin.PutJSON(ctx, platformToken, "/v1/tenants/"+tenantID+"/registration-config", map[string]string{
+		"mode": mode,
+	})
+	if err != nil {
+		return fmt.Errorf("set registration mode: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("set registration mode: %s", describeFailure(resp))
+	}
+	return nil
+}
+
+// IssueInvite issues an INVITE_ONLY registration invite for email via the
+// admin API (POST /v1/tenants/{tenantId}/invites, 201 — API_REFERENCE.md
+// §4.6). Mirrors the Java IT module's InviteService fixture usage: the raw
+// invite secret is never in this response (emailed only), so Deliverable 3's
+// test still has to go via Mailpit (ExtractLinkParam(body, "invite")) to get
+// a usable token — this only proves issuance, not the token itself.
+func (f *Fixtures) IssueInvite(ctx context.Context, platformToken, tenantID, email string) (string, error) {
+	resp, err := f.admin.PostJSON(ctx, platformToken, "/v1/tenants/"+tenantID+"/invites", map[string]string{
+		"email": email,
+	})
+	if err != nil {
+		return "", fmt.Errorf("issue invite: %w", err)
+	}
+	if resp.StatusCode != 201 {
+		return "", fmt.Errorf("issue invite: %s", describeFailure(resp))
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := resp.JSON(&created); err != nil {
+		return "", fmt.Errorf("issue invite: decode response: %w", err)
+	}
+	return created.ID, nil
+}
+
 func describeFailure(resp backend.APIResponse) string {
 	if problem, err := resp.Problem(); err == nil && problem.Code != "" {
 		return fmt.Sprintf("HTTP %d %s: %s", resp.StatusCode, problem.Code, problem.Detail)

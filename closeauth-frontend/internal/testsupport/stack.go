@@ -133,12 +133,13 @@ func (s *Stack) AdminClient() *backend.AdminClient {
 }
 
 // MailpitBaseURI returns the running Mailpit container's REST API base URL.
-// Included in the harness now (documented decision: UI-2 needs Mailpit for
-// registration/verification/magic-link/reset journeys, and wiring it into
-// the harness later would mean redesigning this file mid-stage-sequence for
-// a container that costs almost nothing to include today). No typed Mailpit
-// client is built yet — this stage has no journey that needs one — so this
-// returns a bare URL for now; add a client wrapper when UI-2 needs it.
+// Included in the harness since UI-1 (documented decision: UI-2 needs
+// Mailpit for registration/verification/magic-link/reset journeys, and
+// wiring it into the harness later would mean redesigning this file
+// mid-stage-sequence for a container that costs almost nothing to include
+// today). Stage UI-2b adds the first typed client over this URL — see
+// Stack.Mailpit / mailpit.go — since it's now the stage that actually needs
+// one (EMAIL_VERIFIED + INVITE_ONLY registration journeys).
 func (s *Stack) MailpitBaseURI(ctx context.Context) (string, error) {
 	host, err := s.mailpit.Host(ctx)
 	if err != nil {

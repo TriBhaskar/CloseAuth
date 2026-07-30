@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// TODO(ui-2b/ui-2c/ui-3/ui-4): reintroduce the REST of these route trees once
-// the corresponding views are rebuilt against the current backend contract:
-//   - src/views/auth/          (UI-2) hosted end-user auth pages — /login is
-//     wired below (Stage UI-2a); the 4 registration modes, verify,
-//     magic-link, reset, consent follow in UI-2b/2c on the same pattern.
+// TODO(ui-2c/ui-3/ui-4): reintroduce the REST of these route trees once the
+// corresponding views are rebuilt against the current backend contract:
+//   - src/views/auth/          (UI-2) hosted end-user auth pages — /login
+//     (Stage UI-2a) and /register + /verify-email (Stage UI-2b) are wired
+//     below; magic-link, reset, consent follow in UI-2c on the same pattern.
 //   - src/views/tenant-admin/  (UI-3) tenant-admin dashboard
 //   - src/views/platform-admin/(UI-4) minimal platform-admin screens
 // Exact URL path conventions (e.g. `/admin/*` vs `/tenant/*`) are deferred to
@@ -32,6 +32,17 @@ const router = createRouter({
     {
       path: '/login',
       component: () => import('@/views/auth/LoginView.vue'),
+    },
+    {
+      path: '/register',
+      component: () => import('@/views/auth/RegisterView.vue'),
+    },
+    // Independently reachable (Stage UI-2b, Deliverable 5) — not just an
+    // inline step of /register; a user returning later to finish
+    // verification (or resend a code) navigates straight here.
+    {
+      path: '/verify-email',
+      component: () => import('@/views/auth/VerifyEmailView.vue'),
     },
 
     // ── Catch-all: redirect unknown paths to home ─────────────────────────────

@@ -44,6 +44,9 @@ export default defineConfig({
       '/login': { target: 'http://localhost:8080', changeOrigin: true },
       '/logout': { target: 'http://localhost:8080', changeOrigin: true },
       '/branding': { target: 'http://localhost:8080', changeOrigin: true },
+      // Stage UI-2b: registration + email verification, same reasoning.
+      '/register': { target: 'http://localhost:8080', changeOrigin: true },
+      '/verify-email': { target: 'http://localhost:8080', changeOrigin: true },
     },
   },
 })

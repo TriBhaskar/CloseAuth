@@ -30,11 +30,17 @@ import (
 // see that file's doc comment for why a distinct route was chosen over an
 // Accept-header switch on /login itself.
 //
-// TODO(ui-2b/ui-2c): add the rest of Surface 1 on the pure pure-relay pattern
-// — registration, verification, magic-link, reset (plain fetch, no
-// translation needed — none of them ever redirect) — and consent (plain
-// native form POST straight to /oauth2/authorize — it always redirects, even
-// on denial, so it never needs the JSON translation mode either).
+// Stage UI-2b adds registration, email verification, and invite acceptance —
+// three more pure-relay routes (handlers_registration_proxy.go), same
+// pattern, still no translation needed (none of them ever redirect either).
+//
+// TODO(ui-2c): add the rest of Surface 1 on the same pure-relay pattern —
+// magic-link, reset (plain fetch, no translation needed — neither ever
+// redirects on the JSON-error path handled here, though magic-link's GET
+// /magic-link/consume is a real browser navigation, not a fetch) — and
+// consent (plain native form POST straight to /oauth2/authorize — it always
+// redirects, even on denial, so it never needs the JSON translation mode
+// either).
 // TODO(ui-3): wire Surfaces 2/3 (admin console) routes once internal/backend's
 // OAuthClient/AdminClient have somewhere to hold their Session (needs Option
 // A's backend piece — the deterministic per-tenant admin-console client —
@@ -65,6 +71,12 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Post("/login", s.handleLoginProxy)
 	r.Post("/logout", s.handleLogoutProxy)
 	r.Get("/branding", s.handleBrandingProxy)
+
+	// Stage UI-2b, Deliverable 1: registration, verification — see
+	// handlers_registration_proxy.go.
+	r.Post("/register", s.handleRegisterProxy)
+	r.Post("/verify-email/request", s.handleVerifyEmailRequestProxy)
+	r.Post("/verify-email/confirm", s.handleVerifyEmailConfirmProxy)
 
 	// ──────────────────────────────────────────────────────────────────────────
 	// Surface 1 — JSON/fetch login mode (Stage UI-2a, Deliverable 1): the

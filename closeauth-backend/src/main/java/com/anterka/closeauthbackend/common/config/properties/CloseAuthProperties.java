@@ -260,6 +260,13 @@ public class CloseAuthProperties {
         private String baseUrl = "http://localhost:8080";
         private String loginPage;
         private String consentPage;
+        /**
+         * Redirect URI for the (future, UI-3) tenant-admin dashboard's OAuth2 authorization-code + PKCE login flow,
+         * used as the auto-provisioned {@code admin-console-{tenantSlug}} public client's sole redirect URI. The
+         * path itself is not implemented yet (UI-3 builds it) — this only registers the value consistently now so
+         * that client's redirect_uri is never ambiguous or missing.
+         */
+        private String adminCallback;
 
         /**
          * Session timeout in seconds. Must match or exceed oauthContextTtlSeconds.

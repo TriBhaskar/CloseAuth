@@ -66,6 +66,10 @@ class ConsentBrandingIntegrationTest {
         registry.add("server.port", () -> PORT);
         registry.add("closeauth.issuer-url", () -> "http://localhost:" + PORT + "/closeauth");
         registry.add("closeauth.session.cookie.secure", () -> "false");
+        // A deliberately distinct, "foreign" origin standing in for the real BFF — proves the consent-required
+        // redirect actually carries this configured, absolute value (not the old same-origin/relative
+        // "/oauth2/consent" literal) and never needs to be reachable (see CLOSEAUTH_CONSENT_CROSS_ORIGIN_DESIGN.md).
+        registry.add("closeauth.bff.consent-page", () -> "http://bff.example.invalid:8088/consent");
     }
 
     @Autowired TenantService tenantService;
@@ -77,6 +81,7 @@ class ConsentBrandingIntegrationTest {
     private static final String SECRET = "client-secret-value";
     private static final String REDIRECT = "http://127.0.0.1/callback";
     private static final String PASSWORD = "password123";
+    private static final String BFF_CONSENT_PAGE = "http://bff.example.invalid:8088/consent";
     private final ObjectMapper json = new ObjectMapper();
 
     private String base() {
@@ -142,10 +147,15 @@ class ConsentBrandingIntegrationTest {
         HttpResponse<String> login = postForm(http, base() + "/login", loginForm(clientId, scope, state1, pkce, email));
         HttpResponse<String> resumed = get(http, location(login));
         String consentUrl = location(resumed);
-        assertThat(consentUrl).contains("/oauth2/consent");
+        // The consent-redirect fix: target is now the configured, absolute bff.consent-page value (a deliberately
+        // foreign, unreachable stand-in for the real BFF), with client_id/scope/state still appended automatically
+        // by SAS. Fetch the SAME query directly against the backend's own real endpoint — standing in for the BFF's
+        // proxy relay, which this backend-only test has no process for.
+        assertThat(consentUrl).startsWith(BFF_CONSENT_PAGE + "?");
+        String consentQuery = URI.create(consentUrl).getRawQuery();
 
         // The consent context: human descriptions + requires_consent flags.
-        JsonNode contextBody = json.readTree(get(http, consentUrl).body());
+        JsonNode contextBody = json.readTree(get(http, base() + "/oauth2/consent?" + consentQuery).body());
         assertThat(contextBody.get("clientName").asText()).isEqualTo(clientId);
         Map<String, JsonNode> scopes = byScope(contextBody.get("scopes"));
         assertThat(scopes.get("todomaster-api:read").get("description").asText()).isEqualTo("Read your to-do items");
@@ -193,7 +203,7 @@ class ConsentBrandingIntegrationTest {
         get(http, authorizeUrl(clientId, scope, state1, pkce));
         HttpResponse<String> login = postForm(http, base() + "/login", loginForm(clientId, scope, state1, pkce, email));
         String consentUrl = location(get(http, location(login)));
-        assertThat(consentUrl).contains("/oauth2/consent");
+        assertThat(consentUrl).startsWith(BFF_CONSENT_PAGE + "?");
         String state = queryParam(consentUrl, "state");
 
         // Deny = submit NO approved scopes. Even the auto-grantable "read" must NOT be granted.

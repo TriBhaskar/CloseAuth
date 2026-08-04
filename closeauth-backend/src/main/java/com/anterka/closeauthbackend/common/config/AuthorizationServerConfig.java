@@ -94,7 +94,11 @@ public class AuthorizationServerConfig {
                 // 6b-ii: consent screen. Non-trusted clients are redirected to the CloseAuth consent page; the
                 // auto-grant customizer approves requires_consent=false scopes without an explicit checkbox.
                 .authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
-                        .consentPage("/oauth2/consent")
+                        // Absolute BFF-hosted consent page (cross-origin login continuity — see
+                        // CLOSEAUTH_CONSENT_CROSS_ORIGIN_DESIGN.md §1/§5): SAS already appends client_id/scope/state
+                        // onto whatever base is configured here, same as it did for the relative literal this
+                        // replaces — no custom entry-point override needed, unlike login's fix.
+                        .consentPage(properties.getBff().getConsentPage())
                         .authenticationProviders(consentAutoGrantProviders(consentScopeResolver)))
                 // 4b-i: wrap SAS's token-endpoint providers to add refresh rotation + replay detection.
                 .tokenEndpoint(tokenEndpoint -> tokenEndpoint.authenticationProviders(

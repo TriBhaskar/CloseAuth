@@ -29,6 +29,16 @@ type Server struct {
 	port      int
 	logger    *slog.Logger
 	authProxy *proxy.Proxy
+
+	// authorizeURL is the backend's own real, absolute /oauth2/authorize
+	// endpoint (Stage UI-2c-ii, consent). Computed once from BackendConfig —
+	// the same config every other proxy route already targets — and injected
+	// into the consent context-fetch proxy's response (handlers_consent_proxy.go)
+	// as the `authorizeUrl` field ConsentView.vue's native form `action` points
+	// at. NEVER used to reach the backend on the BFF's own behalf (that would
+	// defeat the whole point — the decision-submission is a genuine top-level
+	// browser navigation straight to the backend's origin, no BFF hop).
+	authorizeURL string
 }
 
 // NewServer constructs the HTTP server.
@@ -38,9 +48,10 @@ func NewServer() *http.Server {
 	logger := slog.Default()
 
 	s := &Server{
-		port:      serverCfg.Port,
-		logger:    logger,
-		authProxy: proxy.New(backendCfg.BaseURL + backendCfg.ContextPath),
+		port:         serverCfg.Port,
+		logger:       logger,
+		authProxy:    proxy.New(backendCfg.BaseURL + backendCfg.ContextPath),
+		authorizeURL: backendCfg.BaseURL + backendCfg.ContextPath + "/oauth2/authorize",
 	}
 
 	env := os.Getenv("ENVIRONMENT")

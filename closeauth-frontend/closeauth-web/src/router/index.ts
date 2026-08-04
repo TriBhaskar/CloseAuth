@@ -45,6 +45,41 @@ const router = createRouter({
       component: () => import('@/views/auth/VerifyEmailView.vue'),
     },
 
+    // Stage UI-2c-i, Deliverable 3: magic-link's REQUEST step only — reached
+    // via LoginView.vue's "Email me a link instead" link. No route for the
+    // consume step (Design Decision #1 — the emailed link points straight
+    // at the backend's own origin, never through this SPA).
+    {
+      path: '/magic-link-request',
+      component: () => import('@/views/auth/MagicLinkRequestView.vue'),
+    },
+    // Stage UI-2c-i, Deliverable 4: password reset's request + confirm
+    // steps — /forgot-password reached via LoginView.vue's "Forgot
+    // password?" link; /reset-password is the BFF-hosted landing page the
+    // emailed reset link points at (PasswordResetService.resetUrl's
+    // confirmed `{bffBaseUrl}/reset-password?token=...&client_id=...`
+    // shape — see the stage report).
+    {
+      path: '/forgot-password',
+      component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    },
+    {
+      path: '/reset-password',
+      component: () => import('@/views/auth/ResetPasswordView.vue'),
+    },
+
+    // Stage UI-2c-ii, Deliverable 2: consent. Reached via the backend's
+    // consent-required redirect, which now lands on this exact absolute path
+    // (bff.consent-page's corrected `/consent` default — see
+    // CLOSEAUTH_CONSENT_BACKEND_REPORT.md) with client_id/scope/state already
+    // appended by SAS itself. No route needed for the decision itself — the
+    // approve/deny forms this view renders POST straight to the backend's
+    // own origin, never back through this SPA.
+    {
+      path: '/consent',
+      component: () => import('@/views/auth/ConsentView.vue'),
+    },
+
     // ── Catch-all: redirect unknown paths to home ─────────────────────────────
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

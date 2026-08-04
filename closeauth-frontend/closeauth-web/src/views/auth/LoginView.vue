@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useOAuthTheme } from '@/composables/useOAuthTheme'
 import { submitLogin } from '@/api/authLogin'
+import { saveForgotPasswordQuery } from '@/api/helpers/passwordResetContext'
 
 // Cross-origin login continuity (CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md §3b):
 // capture the ENTIRE raw query string once, at mount, straight off
@@ -36,6 +37,27 @@ const authorizeQuery = window.location.search
 const clientId = computed(() => new URLSearchParams(authorizeQuery).get('client_id') ?? '')
 
 const { branding, hasLogo } = useOAuthTheme(clientId.value)
+
+// Stage UI-2c-i, Deliverable 3/4: magic-link's request step and the forgot-
+// password flow are both reached from here via a client-side route push
+// that carries the current query string forward VERBATIM — the exact same
+// "capture the whole raw query string, don't decompose it" discipline as
+// authorizeQuery above, for the same reason (an OIDC extra hand-enumerated
+// out would silently be dropped). Neither target route strictly NEEDS this
+// (their own request steps have no session/redirect dependency at all —
+// see Design Decision #2), but carrying it keeps client_id-driven branding
+// consistent across the hop, and — for /forgot-password specifically —
+// feeds ResetPasswordView's nice-to-have post-success context restoration.
+const magicLinkRequestPath = computed(() => '/magic-link-request' + authorizeQuery)
+const forgotPasswordPath = computed(() => '/forgot-password' + authorizeQuery)
+
+// Best-effort: stash the query string so ResetPasswordView.vue's post-
+// success "log in" link can restore it IF the reset link is opened in this
+// same browser session (see passwordResetContext.ts's header comment for
+// why this is a nice-to-have, not a guarantee).
+function handleForgotPasswordClick(): void {
+  saveForgotPasswordQuery(authorizeQuery)
+}
 
 const email = ref('')
 const password = ref('')
@@ -106,7 +128,16 @@ async function handleSubmit(): Promise<void> {
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <Label for="login-password">Password</Label>
+        <div class="flex items-center justify-between">
+          <Label for="login-password">Password</Label>
+          <RouterLink
+            :to="forgotPasswordPath"
+            class="text-sm text-muted-foreground hover:underline"
+            @click="handleForgotPasswordClick"
+          >
+            Forgot password?
+          </RouterLink>
+        </div>
         <Input
           id="login-password"
           v-model="password"
@@ -129,6 +160,10 @@ async function handleSubmit(): Promise<void> {
       <Button type="submit" class="w-full" :disabled="isSubmitting">
         {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
       </Button>
+
+      <RouterLink :to="magicLinkRequestPath" class="text-sm text-center text-muted-foreground hover:underline">
+        Email me a link instead
+      </RouterLink>
     </form>
   </AuthLayout>
 </template>

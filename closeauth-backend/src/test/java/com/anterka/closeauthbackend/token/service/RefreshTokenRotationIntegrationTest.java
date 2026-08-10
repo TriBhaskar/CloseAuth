@@ -67,7 +67,7 @@ class RefreshTokenRotationIntegrationTest {
     private String newClient(TenantContext ctx) {
         String clientId = "c-" + rnd();
         return clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, "secret", List.of("client_credentials"), List.of("read"), null, false, true)).id();
+                clientId, clientId, false, List.of("client_credentials"), List.of("read"), null, false, true)).client().id();
     }
 
     private RefreshTokenIssuance issuance(String hash) {

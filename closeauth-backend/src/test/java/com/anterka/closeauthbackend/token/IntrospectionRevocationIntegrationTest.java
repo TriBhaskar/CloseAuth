@@ -54,8 +54,9 @@ class IntrospectionRevocationIntegrationTest {
     @Autowired TokenRevocationService tokenRevocationService;
     @Autowired TestRestTemplate rest;
 
-    private static final String SECRET = "test-secret-value";
     private static final String SCOPE = "m2m-client:read";
+    // UI-3c: the backend now generates each client's secret; capture per clientId rather than a shared constant.
+    private final java.util.Map<String, String> clientSecrets = new java.util.HashMap<>();
 
     private String base() {
         return "http://localhost:" + port + "/closeauth";
@@ -69,15 +70,16 @@ class IntrospectionRevocationIntegrationTest {
     private UUID tenantWithClient(String clientId) {
         TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("acme-" + rnd(), "Acme"));
         tenantService.activateTenant(tenant.id());
-        clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
-                clientId, "M2M Client", SECRET, List.of("client_credentials"), List.of(SCOPE), null, false, true));
+        var created = clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
+                clientId, "M2M Client", false, List.of("client_credentials"), List.of(SCOPE), null, false, true));
+        clientSecrets.put(clientId, created.clientSecret());
         return tenant.id();
     }
 
     private String obtainToken(String clientId) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setBasicAuth(clientId, SECRET);
+        headers.setBasicAuth(clientId, clientSecrets.get(clientId));
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "client_credentials");
         form.add("scope", SCOPE);
@@ -90,7 +92,7 @@ class IntrospectionRevocationIntegrationTest {
     private Map<String, Object> introspect(String clientId, String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setBasicAuth(clientId, SECRET);
+        headers.setBasicAuth(clientId, clientSecrets.get(clientId));
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("token", token);
         @SuppressWarnings("unchecked")

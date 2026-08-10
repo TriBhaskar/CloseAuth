@@ -80,6 +80,7 @@ public enum AuditEventType {
     CLIENT_REGISTERED,
     CLIENT_UPDATED,
     CLIENT_DELETED,
+    CLIENT_SECRET_REGENERATED,
 
     // --- Resource Server ---
     RESOURCE_SERVER_CREATED,

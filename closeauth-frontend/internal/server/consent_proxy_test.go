@@ -96,13 +96,16 @@ func TestConsentContextProxy_RoundTrip(t *testing.T) {
 
 	// A NON-TRUSTED client — the one thing that makes consent required at all
 	// (RegisterClientCommand.trusted's javadoc: false => consent required).
+	// UI-3c: the backend generates the secret server-side now; this test
+	// never needs it (no token exchange happens here — see the file's
+	// "setup, not the thing under test" note below), so publicClient=false
+	// is enough to keep the client confidential without capturing the value.
 	clientID := testsupport.ClientID("consent")
-	secret := "secret-" + testsupport.Suffix()
 	const redirectURI = "http://127.0.0.1/callback"
 	clientResp, err := admin.PostJSON(ctx, platformToken, "/v1/tenants/"+tenantID+"/clients", map[string]any{
 		"clientId":        clientID,
 		"clientName":      clientID,
-		"clientSecret":    secret,
+		"publicClient":    false,
 		"grantTypes":      []string{"authorization_code", "refresh_token"},
 		"scopes":          []string{"openid", readScope, writeScope},
 		"redirectUris":    []string{redirectURI},

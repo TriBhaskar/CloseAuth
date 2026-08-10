@@ -1,6 +1,7 @@
 package com.anterka.closeauthbackend.auth;
 
 import com.anterka.closeauthbackend.auth.web.LoginController;
+import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
@@ -83,10 +84,12 @@ class AuthCodeFlowIntegrationTest {
     @Autowired AuthServerSessionRepository sessionRepository;
     @Autowired TokenRevocationService tokenRevocationService;
 
-    private static final String SECRET = "client-secret-value";
     private static final String REDIRECT = "http://127.0.0.1/callback";
     private static final String PASSWORD = "password123";
     private final ObjectMapper json = new ObjectMapper();
+    // UI-3c: the backend now generates each client's secret (no more caller-supplied SECRET constant), and a
+    // distinct one per registration, so it must be captured per clientId rather than shared.
+    private final Map<String, String> clientSecrets = new java.util.HashMap<>();
 
     private String base() {
         return "http://localhost:" + PORT + "/closeauth";
@@ -344,8 +347,9 @@ class AuthCodeFlowIntegrationTest {
     }
 
     private String basic(String clientId) {
+        String secret = clientSecrets.get(clientId);
         return "Basic " + Base64.getEncoder().encodeToString(
-                (clientId + ":" + SECRET).getBytes(StandardCharsets.UTF_8));
+                (clientId + ":" + secret).getBytes(StandardCharsets.UTF_8));
     }
 
     private static String formEncode(Map<String, String> form) {
@@ -409,12 +413,13 @@ class AuthCodeFlowIntegrationTest {
 
     private String authCodeClient(TenantContext ctx) {
         String clientId = "app-" + rnd();
-        clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, SECRET,
+        ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
+                clientId, clientId, false,
                 List.of("authorization_code", "refresh_token"),
                 List.of("openid", "profile"),
                 List.of(REDIRECT),
                 true, true)); // requireProofKey (PKCE), trusted
+        clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }
 

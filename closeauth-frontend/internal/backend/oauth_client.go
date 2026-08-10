@@ -202,10 +202,19 @@ func (c *OAuthClient) postForm(ctx context.Context, path string, form url.Values
 	return c.do(ctx, http.MethodPost, c.url(path), strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", "", jar)
 }
 
-// Authorize hits GET /oauth2/authorize carrying jar, WITHOUT logging in, and
-// classifies the response. It does not mutate jar; the result carries the
-// (possibly updated) jar to thread into a follow-up call.
-func (c *OAuthClient) Authorize(ctx context.Context, clientID, scope string, pkce PKCE, state string, jar CookieJar) (AuthorizeResult, error) {
+// AuthorizeURL builds the absolute GET /oauth2/authorize URL for clientID,
+// carrying the given scope/PKCE/state — WITHOUT performing the request.
+//
+// Split out of Authorize (which performs the GET itself, server-side) for
+// stage UI-3a's admin-console flow: that flow must hand this URL to the
+// BROWSER as an HTTP redirect (a real top-level navigation), never fetch it
+// itself. Two backend behaviors force this: TenantSessionSsoFilter's
+// unauthenticated-entry-point redirect is registered only for
+// Accept: text/html (a server-side JSON-Accept GET would 401 instead of
+// reaching /login), and CLOSEAUTH_SESSION is SameSite=Lax on the backend
+// origin, which is only attached to a genuine top-level browser navigation,
+// not a same-process HTTP client call.
+func (c *OAuthClient) AuthorizeURL(clientID, scope string, pkce PKCE, state string) string {
 	q := url.Values{}
 	q.Set("response_type", "code")
 	q.Set("client_id", clientID)
@@ -214,10 +223,16 @@ func (c *OAuthClient) Authorize(ctx context.Context, clientID, scope string, pkc
 	q.Set("code_challenge", pkce.Challenge)
 	q.Set("code_challenge_method", "S256")
 	q.Set("state", state)
+	return c.url("/oauth2/authorize") + "?" + q.Encode()
+}
 
+// Authorize hits GET /oauth2/authorize carrying jar, WITHOUT logging in, and
+// classifies the response. It does not mutate jar; the result carries the
+// (possibly updated) jar to thread into a follow-up call.
+func (c *OAuthClient) Authorize(ctx context.Context, clientID, scope string, pkce PKCE, state string, jar CookieJar) (AuthorizeResult, error) {
 	// Accept text/html so an unrecognized session 302s to /login (a JSON
 	// Accept header would instead hit the resource-server chain and 401).
-	result, err := c.do(ctx, http.MethodGet, c.url("/oauth2/authorize")+"?"+q.Encode(), nil, "", "text/html", jar)
+	result, err := c.do(ctx, http.MethodGet, c.AuthorizeURL(clientID, scope, pkce, state), nil, "", "text/html", jar)
 	if err != nil {
 		return AuthorizeResult{}, err
 	}

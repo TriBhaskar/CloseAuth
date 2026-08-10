@@ -245,6 +245,12 @@ public final class AuditEvents {
                 .data(data("client_registered_id", clientRegisteredId, "client_id", clientId)).build();
     }
 
+    /** UI-3c: a confidential client's secret was rotated. Deliberately its own event, not folded into the still-unwired {@code CLIENT_UPDATED}. */
+    public static CloseAuthAuditEvent clientSecretRegenerated(UUID tenantId, String clientRegisteredId, String clientId) {
+        return base(AuditEventType.CLIENT_SECRET_REGENERATED).tenantId(tenantId).actorClientRegisteredId(clientRegisteredId)
+                .data(data("client_registered_id", clientRegisteredId, "client_id", clientId)).build();
+    }
+
     public static CloseAuthAuditEvent resourceServerCreated(UUID tenantId, UUID resourceServerId, String name) {
         return base(AuditEventType.RESOURCE_SERVER_CREATED).tenantId(tenantId).resourceServerId(resourceServerId)
                 .data(data("name", name)).build();

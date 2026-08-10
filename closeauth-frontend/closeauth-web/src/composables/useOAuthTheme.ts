@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { hasBrandingLogo } from '@/lib/branding'
 
 // Stage UI-2a, Deliverable 2: the ONE shared branding composable for every
 // hosted end-user auth page (login now; registration/verify/magic-link/
@@ -94,8 +95,12 @@ export function useOAuthTheme(clientId: string) {
 
   // Mandatory truthiness guard: unset logoUrl is "", never null — `hasLogo`
   // is the ONE place this composable's consumers should check before binding
-  // <img>, e.g. `v-if="hasLogo"` alongside `:src="branding.logoUrl"`.
-  const hasLogo = computed(() => branding.value.logoUrl !== '')
+  // <img>, e.g. `v-if="hasLogo"` alongside `:src="branding.logoUrl"`. Stage
+  // UI-3e moved the actual check into src/lib/branding.ts's hasBrandingLogo
+  // so the tenant-admin settings view (a second, independent consumer of
+  // this same truthiness rule) doesn't grow its own copy — this computed is
+  // now a thin wrapper kept for the existing call sites' `hasLogo` name.
+  const hasLogo = computed(() => hasBrandingLogo(branding.value.logoUrl))
 
   async function load(): Promise<void> {
     isLoading.value = true

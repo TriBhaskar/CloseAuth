@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -46,6 +47,12 @@ func CSRFTokenMiddleware(isProduction bool) func(http.Handler) http.Handler {
 
 // CSRFValidationMiddleware validates the CSRF token on state-changing requests (POST/PUT/DELETE).
 // Accepts the token from either the X-CSRF-Token header (SPA fetch) or csrf_token form field (native forms).
+//
+// Stage UI-3a mounts this ONLY on the JSON-only /t/{slug}/api route group —
+// never on Surface-1's relay routes (handlers_auth_proxy.go documents why
+// those are deliberately unprotected: no ambient session-cookie
+// authentication for CSRF to defend). That placement is itself a safeguard
+// for the fix below, not a substitute for it.
 func CSRFValidationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only validate on state-changing methods
@@ -65,9 +72,20 @@ func CSRFValidationMiddleware(next http.Handler) http.Handler {
 		// Get submitted token from header OR form field
 		submittedToken := r.Header.Get(CSRFHeaderName)
 		if submittedToken == "" {
-			// Try form field (for native form POSTs like consent)
-			if err := r.ParseForm(); err == nil {
-				submittedToken = r.FormValue(CSRFFormField)
+			// Try a form field (for native form POSTs, e.g. the consent
+			// page), but ONLY when the body actually IS a form — r.ParseForm()
+			// drains r.Body, which would silently empty a JSON body or a
+			// relayed body handed onward via proxy.Relay/handlers_login_json.go's
+			// synthetic upstream request. Every admin-console JSON endpoint
+			// this middleware guards sends the token via the header, so this
+			// fallback exists purely for form-encoded callers and must not
+			// fire for anything else.
+			contentType := r.Header.Get("Content-Type")
+			if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") ||
+				strings.HasPrefix(contentType, "multipart/form-data") {
+				if err := r.ParseForm(); err == nil {
+					submittedToken = r.FormValue(CSRFFormField)
+				}
 			}
 		}
 
@@ -86,47 +104,50 @@ func CSRFValidationMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// HandleCSRFToken is the handler for GET /api/csrf.
-// Returns the CSRF token as JSON so the SPA can include it in fetch headers.
-func HandleCSRFToken(w http.ResponseWriter, r *http.Request) {
-	// Read current token from cookie (set by middleware)
-	cookie, err := r.Cookie(CSRFCookieName)
-	if err != nil {
-		// Generate a new token if none exists
-		token, err := generateCSRFToken()
+// HandleCSRFToken is the handler for GET /api/csrf, returning the CSRF token
+// as JSON so the SPA can include it in fetch headers (src/api/client.ts's
+// fetchCsrfToken already calls this path — before stage UI-3a wired a real
+// route here it 404ed and the SPA silently proceeded without a token).
+//
+// Takes isProduction explicitly (matching CSRFTokenMiddleware) rather than
+// the old hardcoded Secure:false, whose comment incorrectly claimed
+// "middleware" would override it on production — nothing did, since this
+// mint-on-miss branch is the only writer for a first-time visitor.
+func HandleCSRFToken(isProduction bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Read current token from cookie (set by middleware)
+		cookie, err := r.Cookie(CSRFCookieName)
 		if err != nil {
-			http.Error(w, `{"error": "Failed to generate CSRF token"}`, http.StatusInternalServerError)
+			// Generate a new token if none exists
+			token, err := generateCSRFToken()
+			if err != nil {
+				http.Error(w, `{"error": "Failed to generate CSRF token"}`, http.StatusInternalServerError)
+				return
+			}
+
+			// Set cookie for future validation
+			http.SetCookie(w, &http.Cookie{
+				Name:     CSRFCookieName,
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   isProduction,
+				SameSite: http.SameSiteLaxMode,
+			})
+
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
 			return
 		}
 
-		// Set cookie for future validation
-		http.SetCookie(w, &http.Cookie{
-			Name:     CSRFCookieName,
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   false, // Will be overridden by middleware on production
-			SameSite: http.SameSiteLaxMode,
-		})
-
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"token": token})
-		return
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": cookie.Value})
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": cookie.Value})
 }
 
-// ClearCSRFToken removes the CSRF cookie(used during logout).
-func ClearCSRFToken(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     CSRFCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-	})
+// ClearCSRFToken removes the CSRF cookie (used during logout/sign-out).
+func ClearCSRFToken(w http.ResponseWriter, isProduction bool) {
+	clearCookie(w, CSRFCookieName, "/", isProduction)
 }
 
 // generateCSRFToken generates a cryptographically secure random token.

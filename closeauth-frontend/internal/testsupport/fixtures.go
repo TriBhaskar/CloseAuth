@@ -3,6 +3,7 @@ package testsupport
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -34,6 +35,15 @@ func Slug(base string) string {
 // ClientID returns a unique OAuth2 client id.
 func ClientID(base string) string {
 	return fmt.Sprintf("%s-%s", base, Suffix())
+}
+
+// AdminConsoleClientID returns the deterministic per-tenant admin-console
+// client id Option A auto-provisions for slug, matching
+// AdminConsoleClientProvisioningCallback.CLIENT_ID_PREFIX + tenant.getSlug()
+// on the backend (and config.BFFConfig.AdminClientID on the BFF side)
+// exactly.
+func AdminConsoleClientID(slug string) string {
+	return "admin-console-" + slug
 }
 
 // ClientCredentials is a registered client's id + plaintext secret (the
@@ -71,33 +81,95 @@ func (f *Fixtures) PlatformAdminToken(ctx context.Context) (string, error) {
 
 // ProvisionActiveTenant provisions a tenant (via the platform token) and
 // activates it, returning the tenant id.
+//
+// A thin wrapper over ProvisionActiveTenantWithSlug that discards the slug —
+// kept so this function's 6 pre-existing call sites (predating stage UI-3a,
+// which is the first caller that needs the slug back) don't need to change.
 func (f *Fixtures) ProvisionActiveTenant(ctx context.Context, platformToken string) (string, error) {
-	slug := Slug("t")
+	tenantID, _, err := f.ProvisionActiveTenantWithSlug(ctx, platformToken)
+	return tenantID, err
+}
+
+// ProvisionActiveTenantWithSlug is ProvisionActiveTenant, additionally
+// returning the tenant's slug — needed by stage UI-3a's admin-console
+// journeys, whose entire routing/client-id scheme (admin-console-{slug},
+// /t/{slug}/...) is slug-keyed, not id-keyed.
+func (f *Fixtures) ProvisionActiveTenantWithSlug(ctx context.Context, platformToken string) (tenantID, slug string, err error) {
+	slug = Slug("t")
 	resp, err := f.admin.PostJSON(ctx, platformToken, "/v1/platform/tenants", map[string]string{
 		"slug": slug,
 		"name": "Tenant " + slug,
 	})
 	if err != nil {
-		return "", fmt.Errorf("provision tenant: %w", err)
+		return "", "", fmt.Errorf("provision tenant: %w", err)
 	}
 	if resp.StatusCode != 201 {
-		return "", fmt.Errorf("provision tenant: %s", describeFailure(resp))
+		return "", "", fmt.Errorf("provision tenant: %s", describeFailure(resp))
 	}
 	var created struct {
 		ID string `json:"id"`
 	}
 	if err := resp.JSON(&created); err != nil {
-		return "", fmt.Errorf("provision tenant: decode response: %w", err)
+		return "", "", fmt.Errorf("provision tenant: decode response: %w", err)
 	}
 
 	activateResp, err := f.admin.Post(ctx, platformToken, "/v1/platform/tenants/"+created.ID+"/activate")
 	if err != nil {
-		return "", fmt.Errorf("activate tenant: %w", err)
+		return "", "", fmt.Errorf("activate tenant: %w", err)
 	}
 	if activateResp.StatusCode != 200 {
-		return "", fmt.Errorf("activate tenant: %s", describeFailure(activateResp))
+		return "", "", fmt.Errorf("activate tenant: %s", describeFailure(activateResp))
 	}
-	return created.ID, nil
+	return created.ID, slug, nil
+}
+
+// AssignTenantAdmin grants userID the tenant's built-in TENANT_ADMIN system
+// role (seeded on every tenant by the backend's role-starter-pack
+// provisioning callback — see rbac.service.RoleStarterPackProvisioningCallback).
+// Mirrors the Java IT module's AdminApiClient.assignTenantRole: look the role
+// up by name (GET .../roles), then assign it (POST .../tenant-roles/{roleId},
+// 204) — no such helper existed in this package before stage UI-3a, whose
+// admin-console journeys need a real TENANT_ADMIN (and, for the refusal
+// proof, a user WITHOUT this call) to drive the callback's verification
+// triple.
+func (f *Fixtures) AssignTenantAdmin(ctx context.Context, platformToken, tenantID, userID string) error {
+	const roleName = "TENANT_ADMIN"
+
+	resp, err := f.admin.GetQuery(ctx, platformToken, "/v1/tenants/"+tenantID+"/roles", url.Values{"size": {"100"}})
+	if err != nil {
+		return fmt.Errorf("list tenant roles: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("list tenant roles: %s", describeFailure(resp))
+	}
+	var page struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err := resp.JSON(&page); err != nil {
+		return fmt.Errorf("list tenant roles: decode response: %w", err)
+	}
+	var roleID string
+	for _, role := range page.Items {
+		if role.Name == roleName {
+			roleID = role.ID
+			break
+		}
+	}
+	if roleID == "" {
+		return fmt.Errorf("assign tenant admin: no %s role found among tenant %s's roles", roleName, tenantID)
+	}
+
+	assignResp, err := f.admin.Post(ctx, platformToken, "/v1/tenants/"+tenantID+"/users/"+userID+"/tenant-roles/"+roleID)
+	if err != nil {
+		return fmt.Errorf("assign tenant admin: %w", err)
+	}
+	if assignResp.StatusCode != 204 {
+		return fmt.Errorf("assign tenant admin: %s", describeFailure(assignResp))
+	}
+	return nil
 }
 
 // RegisterConfidentialClient registers a confidential (secret), PKCE-required,
@@ -105,13 +177,18 @@ func (f *Fixtures) ProvisionActiveTenant(ctx context.Context, platformToken stri
 // backend issues a refresh token (SAS does not issue refresh tokens to public
 // clients — needed to prove refresh rotation); trusted so consent is skipped
 // (out of scope this stage); PKCE required to match OAuthClient's flow.
+//
+// UI-3c: the backend now generates the secret server-side and ignores any
+// caller-supplied value (ClientSecretGenerator, closeauth-backend) —
+// "publicClient: false" replaces the old "send a clientSecret" contract, and
+// the secret is read back out of the 201 response, mirroring the same fix
+// applied to closeauth-integration-tests' AdminApiClient.registerClient.
 func (f *Fixtures) RegisterConfidentialClient(ctx context.Context, platformToken, tenantID, redirectURI string) (ClientCredentials, error) {
 	clientID := ClientID("c")
-	secret := "secret-" + Suffix()
 	body := map[string]any{
 		"clientId":        clientID,
 		"clientName":      "Client " + clientID,
-		"clientSecret":    secret,
+		"publicClient":    false,
 		"grantTypes":      []string{"authorization_code", "refresh_token"},
 		"scopes":          []string{"openid"},
 		"redirectUris":    []string{redirectURI},
@@ -125,7 +202,16 @@ func (f *Fixtures) RegisterConfidentialClient(ctx context.Context, platformToken
 	if resp.StatusCode != 201 {
 		return ClientCredentials{}, fmt.Errorf("register client: %s", describeFailure(resp))
 	}
-	return ClientCredentials{ClientID: clientID, Secret: secret}, nil
+	var created struct {
+		ClientSecret string `json:"clientSecret"`
+	}
+	if err := resp.JSON(&created); err != nil {
+		return ClientCredentials{}, fmt.Errorf("register client: decode response: %w", err)
+	}
+	if created.ClientSecret == "" {
+		return ClientCredentials{}, fmt.Errorf("register client: response carried no clientSecret")
+	}
+	return ClientCredentials{ClientID: clientID, Secret: created.ClientSecret}, nil
 }
 
 // CreateActiveUser admin-creates an ACTIVE password user in tenantID and

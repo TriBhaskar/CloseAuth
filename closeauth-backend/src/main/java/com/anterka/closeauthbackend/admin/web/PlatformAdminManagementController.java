@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -27,8 +28,11 @@ import java.util.UUID;
  *
  * <h2>HTTP contract</h2>
  * {@code GET /v1/platform/admins?page&size} · {@code POST /v1/platform/admins} (create, 201) ·
- * {@code POST .../{id}/suspend} · {@code POST .../{id}/activate} · {@code POST .../{id}/roles/{roleName}} (assign) ·
- * {@code DELETE .../{id}/roles/{roleName}} (revoke). Views never carry credentials.
+ * {@code POST .../{id}/suspend} · {@code POST .../{id}/activate} · {@code GET .../{id}/roles} (UI-4: the platform-role
+ * names an admin currently holds — the same {@link PlatformAdminService#resolveRoleNames} the token mint and
+ * {@code /v1/platform/me} already use, exposed here so a caller can read ANOTHER admin's roles, not just their own) ·
+ * {@code POST .../{id}/roles/{roleName}} (assign) · {@code DELETE .../{id}/roles/{roleName}} (revoke). Views never
+ * carry credentials.
  */
 @RestController
 @RequiredArgsConstructor
@@ -57,6 +61,17 @@ public class PlatformAdminManagementController {
     @PostMapping("/{id}/activate")
     public PlatformAdminView activate(@PathVariable UUID id) {
         return platformAdminService.activate(id);
+    }
+
+    /**
+     * UI-4: the platform-role names {@code id} currently holds. {@code getById} first, so a nonexistent admin 404s
+     * ({@code platform_admin.not_found}) rather than silently returning an empty list — the same defensive-lookup
+     * shape {@code assignRole}/{@code revokeRole} already use.
+     */
+    @GetMapping("/{id}/roles")
+    public List<String> roles(@PathVariable UUID id) {
+        platformAdminService.getById(id);
+        return platformAdminService.resolveRoleNames(id);
     }
 
     @PostMapping("/{id}/roles/{roleName}")

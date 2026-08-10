@@ -119,11 +119,12 @@ class EmailVerifiedRegistrationJourneyTest extends IntegrationTest {
     }
 
     private void registerClient(String adminToken, String tenantId, String clientId) {
-        // Map.of rejects null values; clientSecret is null for a public (PKCE) client.
+        // UI-3c: clientSecret is gone from the create DTO; a public (PKCE) client is now expressed with
+        // publicClient=true rather than an absent/null secret.
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("clientId", clientId);
         body.put("clientName", "Web App " + clientId);
-        body.put("clientSecret", null);
+        body.put("publicClient", true);
         body.put("grantTypes", List.of("authorization_code", "refresh_token"));
         body.put("scopes", List.of("openid"));
         body.put("redirectUris", List.of("http://localhost:12345/callback"));

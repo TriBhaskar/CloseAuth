@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -32,6 +33,7 @@ import java.util.UUID;
  * <h2>HTTP contract</h2>
  * {@code GET/POST /resource-servers/{rsId}/roles} · {@code GET/PATCH/DELETE .../roles/{roleId}} ·
  * {@code GET .../roles/{roleId}/scopes} · {@code POST/DELETE .../roles/{roleId}/scopes/{scopeId}} ·
+ * {@code GET /users/{userId}/application-roles?resourceServerId=} (role names currently held, within one RS) ·
  * {@code POST/DELETE /users/{userId}/application-roles/{roleId}}.
  */
 @RestController
@@ -94,6 +96,19 @@ public class ApplicationRoleController {
                                             @PathVariable UUID roleId, @PathVariable UUID scopeId) {
         applicationRoleService.removeScopeFromRole(ctx(tenantId), roleId, scopeId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Application-role names held by {@code userId} within one resource server (UI-3d). Names are unique only per
+     * RS ({@code uq_application_roles_rs_name}), so this read is deliberately RS-scoped — a tenant-wide name list
+     * would be unjoinable (two RSes in one tenant can share a role name). Mirrors
+     * {@link TenantRoleController#rolesForUser}; the caller joins against {@code GET .../{rsId}/roles} for ids.
+     * {@code resourceServerId} is required — an omitted value 400s rather than silently answering tenant-wide.
+     */
+    @GetMapping("/users/{userId}/application-roles")
+    public List<String> applicationRolesForUser(@PathVariable String tenantId, @PathVariable UUID userId,
+                                                @RequestParam UUID resourceServerId) {
+        return applicationRoleService.getApplicationRolesForUser(ctx(tenantId), userId, resourceServerId);
     }
 
     @PostMapping("/users/{userId}/application-roles/{roleId}")

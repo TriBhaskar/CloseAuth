@@ -9,9 +9,17 @@ import java.util.List;
 /**
  * Command to register a new OAuth2 client (input DTO).
  *
+ * <p><b>UI-3c change:</b> {@code clientSecret} was removed. The backend now generates the secret for every
+ * confidential client ({@link com.anterka.closeauthbackend.client.service.ClientSecretGenerator}) rather than
+ * accepting a caller-supplied value — see that class's javadoc for why. {@code publicClient} replaces the old
+ * "blank secret means public" convention explicitly. It deliberately defaults to {@code false} (an omitted JSON
+ * field deserializes to {@code false}): the safe failure direction is an unwanted-but-inert generated secret on a
+ * confidential client, not an accidentally-public client with no secret at all.
+ *
  * @param clientId       the OAuth2 client identifier (unique within the tenant).
  * @param clientName     display name.
- * @param clientSecret   raw secret for a confidential client; {@code null} for a public client (auth method NONE).
+ * @param publicClient   {@code true} for a public client (no secret, auth method NONE, PKCE-only); {@code false}
+ *                       (the default) for a confidential client, which gets a server-generated secret.
  * @param grantTypes     e.g. {@code client_credentials}, {@code authorization_code}, {@code refresh_token}.
  * @param scopes         requested scopes (may include {@code openid}, {@code profile}, ...).
  * @param redirectUris   required for {@code authorization_code}; ignored otherwise.
@@ -30,7 +38,7 @@ public record RegisterClientCommand(
         @Size(max = 200)
         String clientName,
 
-        String clientSecret,
+        boolean publicClient,
 
         @NotEmpty
         List<String> grantTypes,

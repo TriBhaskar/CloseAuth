@@ -18,12 +18,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,7 +68,11 @@ const (
 )
 
 // Stack is the four-container harness: Postgres + Redis + Mailpit + the real
-// CloseAuth backend, wired together on a private Docker network.
+// CloseAuth backend, wired together on a private Docker network — PLUS
+// (stage UI-3a) a held host-process HTTP listener standing in for "the BFF",
+// so a Go server_test.go can drive the real Authorization Code + PKCE round
+// trip against a real *server.Server without either side needing to import
+// the other's package (see ServeBFF's doc comment for why).
 type Stack struct {
 	network  *testcontainers.DockerNetwork
 	postgres *postgres.PostgresContainer
@@ -76,6 +82,15 @@ type Stack struct {
 
 	appHost string
 	appPort int
+
+	bffListener net.Listener
+	bffPort     int
+	// bffHandler is swapped per-test by ServeBFF via an atomic.Pointer so
+	// concurrent test packages/tests never need to rebind bffListener's port
+	// (a Windows-flaky pattern) while still keeping the port fixed from
+	// BEFORE the app container booted (see startBFF's doc comment for why
+	// the port must be known that early).
+	bffHandler atomic.Pointer[http.Handler]
 }
 
 var (
@@ -133,6 +148,41 @@ func (s *Stack) OAuthClient(redirectURI string) *backend.OAuthClient {
 // AdminClient returns a backend.AdminClient pointed at the running app.
 func (s *Stack) AdminClient() *backend.AdminClient {
 	return backend.NewAdminClient(s.AppBaseURI(), s.ContextPath())
+}
+
+// BFFBaseURL is the address the harness's held BFF listener is bound to
+// (reserved BEFORE the app container booted — see startBFF — so it could be
+// baked into the app's BFF_ADMIN_CALLBACK/BFF_LOGIN_PAGE/etc. env vars at
+// container start). Uses "localhost", matching AppBaseURI's own use of the
+// app's issuer-url host: both must be reachable from THIS test process's own
+// http.Client (acting as "the browser"), not from inside the Docker network.
+func (s *Stack) BFFBaseURL() string {
+	return fmt.Sprintf("http://localhost:%d", s.bffPort)
+}
+
+// ServeBFF installs h as the handler for the stack's pre-bound BFF listener
+// for the duration of tb, restoring the previous handler (a 503 stub,
+// initially) on cleanup.
+//
+// Why a held listener + swappable handler, rather than testsupport
+// constructing and holding a *server.Server directly: internal/server's
+// production code has no reason to import internal/testsupport, but if
+// testsupport imported internal/server, "server(+tests) -> testsupport ->
+// server" would read exactly like the ambiguous dependency direction
+// internal/backend's own test file (oauth_client_test.go) explicitly calls
+// out and avoids (by using an external server_test package) — see that
+// file's doc comment. Taking a bare http.Handler here means testsupport
+// never needs to import internal/server at all: the caller (a test living IN
+// package server, which already has a *server.Server and its
+// RegisterRoutes() result) builds the handler and hands it over. The
+// dependency stays one-directional: server's tests -> testsupport, never the
+// reverse.
+func (s *Stack) ServeBFF(tb testing.TB, h http.Handler) {
+	tb.Helper()
+	prev := s.bffHandler.Swap(&h)
+	tb.Cleanup(func() {
+		s.bffHandler.Store(prev)
+	})
 }
 
 // MailpitBaseURI returns the running Mailpit container's REST API base URL.
@@ -200,8 +250,23 @@ func boot(ctx context.Context) (*Stack, error) {
 	}
 	defer os.RemoveAll(buildCtxDir)
 
-	app, err := startApp(ctx, net, buildCtxDir)
+	// Stage UI-3a: reserve the BFF's host port and start its (initially
+	// stub-serving) listener BEFORE the app container boots — Option A's
+	// per-tenant admin-console client bakes closeauth.bff.admin-callback
+	// into the client's redirect_uri AT PROVISIONING TIME, so the app
+	// container's BFF_ADMIN_CALLBACK (and sibling BFF_* env vars) must be
+	// known before it starts, exactly like CLOSEAUTH_ISSUER_URL below. See
+	// startBFF's doc comment for why this is simpler than the app port's
+	// reserve-then-close dance in reservePort.
+	bffListener, bffPort, err := startBFF()
 	if err != nil {
+		return nil, fmt.Errorf("start BFF listener: %w", err)
+	}
+	bffBaseURL := fmt.Sprintf("http://localhost:%d", bffPort)
+
+	app, err := startApp(ctx, net, buildCtxDir, bffBaseURL)
+	if err != nil {
+		bffListener.Close()
 		return nil, fmt.Errorf("build/start backend app: %w", err)
 	}
 
@@ -215,14 +280,17 @@ func boot(ctx context.Context) (*Stack, error) {
 	}
 
 	stack := &Stack{
-		network:  net,
-		postgres: pg,
-		redis:    rd,
-		mailpit:  mailpit,
-		app:      app,
-		appHost:  host,
-		appPort:  mappedPort.Int(),
+		network:     net,
+		postgres:    pg,
+		redis:       rd,
+		mailpit:     mailpit,
+		app:         app,
+		appHost:     host,
+		appPort:     mappedPort.Int(),
+		bffListener: bffListener,
+		bffPort:     bffPort,
 	}
+	stack.serveBFFStub()
 
 	// The actuator health check passing does NOT guarantee the platform-admin
 	// bootstrap (a Spring ApplicationRunner) has finished — a real race found
@@ -264,6 +332,43 @@ func waitForBootstrapAdmin(ctx context.Context, admin *backend.AdminClient) erro
 		}
 	}
 	return lastErr
+}
+
+// startBFF binds a TCP listener on 127.0.0.1:0 and returns it together with
+// its assigned port, WITHOUT closing it — a genuine hold, not the
+// reserve-then-close-then-hope-nobody-else-grabs-it dance reservePort (below)
+// has to do for the app CONTAINER's port (Docker, not this process, binds
+// that one, so it can't be held directly). Here this process itself is what
+// will serve on the port, so simply not closing the listener is sufficient
+// and has no TOCTOU window at all.
+func startBFF() (net.Listener, int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, 0, err
+	}
+	return l, l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// serveBFFStub starts the long-lived HTTP server over the stack's held BFF
+// listener, dispatching every request to whatever handler ServeBFF most
+// recently installed (a 503 stub until the first test calls ServeBFF).
+// Runs for the lifetime of the test process, same posture as the Docker
+// containers ("nothing terminates explicitly; the process exiting cleans it
+// up").
+func (s *Stack) serveBFFStub() {
+	var stub http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"no BFF handler installed for this test"}`, http.StatusServiceUnavailable)
+	})
+	s.bffHandler.Store(&stub)
+
+	srv := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			(*s.bffHandler.Load()).ServeHTTP(w, r)
+		}),
+	}
+	go func() {
+		_ = srv.Serve(s.bffListener)
+	}()
 }
 
 func startMailpit(ctx context.Context, net *testcontainers.DockerNetwork) (testcontainers.Container, error) {
@@ -311,7 +416,26 @@ func startMailpit(ctx context.Context, net *testcontainers.DockerNetwork) (testc
 // shared by two Go packages (internal/server, internal/backend) that `go
 // test ./...` runs as separate, potentially-concurrent processes, and a
 // shared hardcoded port would collide between them.
-func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDir string) (testcontainers.Container, error) {
+//
+// # bffBaseURL — the harness's stand-in "BFF origin" (stage UI-3a)
+//
+// Same reasoning as CLOSEAUTH_ISSUER_URL, one level further out: the
+// per-tenant admin-console-{slug} client Option A auto-creates bakes
+// closeauth.bff.admin-callback into that CLIENT's registered redirect_uri AT
+// PROVISIONING TIME (during fixtures.ProvisionActiveTenantWithSlug, which
+// runs well after this container has booted) — but the config value itself
+// is read from the app's environment at STARTUP, before any tenant exists.
+// bffBaseURL must therefore already point at the harness's held BFF listener
+// (startBFF, reserved by the caller before this function runs) so every
+// tenant this harness provisions gets a client whose redirect_uri this test
+// process can actually receive a callback on.
+//
+// Env var NAMES here are the docker-profile's (BFF_BASE_URL, BFF_LOGIN_PAGE,
+// BFF_CONSENT_PAGE, BFF_ADMIN_CALLBACK — application-docker.yml), NOT the
+// base profile's CLOSEAUTH_BFF_* names, since -Dspring.profiles.active=docker
+// is what's active here (same distinction already correctly made for every
+// other env var in this Env map).
+func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDir, bffBaseURL string) (testcontainers.Container, error) {
 	hostPort, err := reservePort()
 	if err != nil {
 		return nil, fmt.Errorf("reserve a host port for the app container: %w", err)
@@ -365,7 +489,16 @@ func startApp(ctx context.Context, net *testcontainers.DockerNetwork, buildCtxDi
 			// /oauth2/authorize redirect is genuinely followable by this
 			// Go process's HTTP client.
 			"CLOSEAUTH_ISSUER_URL": issuerURL,
-			"JAVA_OPTS":            javaOpts,
+			// Stage UI-3a: point the app's BFF config at this harness's held
+			// BFF listener (see this function's bffBaseURL doc comment above)
+			// so every tenant provisioned by this stack's Fixtures gets an
+			// admin-console-{slug} client whose redirect_uri this test
+			// process can actually receive a callback on.
+			"BFF_BASE_URL":       bffBaseURL,
+			"BFF_LOGIN_PAGE":     bffBaseURL + "/login",
+			"BFF_CONSENT_PAGE":   bffBaseURL + "/consent",
+			"BFF_ADMIN_CALLBACK": bffBaseURL + "/admin/callback",
+			"JAVA_OPTS":          javaOpts,
 		},
 		WaitingFor: wait.ForHTTP(appContextPath + "/actuator/health").
 			WithPort(nat.Port(appPort)).

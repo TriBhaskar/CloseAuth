@@ -130,26 +130,67 @@ class AdminCrudIntegrationTest {
         assertThat(mapper.readTree(suspend.body()).get("code").asText()).isEqualTo("tenant_role.last_admin");
     }
 
-    // ---- secret handling: client secret once, never on GET ----------------
+    // ---- secret handling: server-generated, once, never on GET, regenerable (UI-3c) ----------
 
     @Test
-    void clientSecretReturnedOnceNeverOnGet() throws Exception {
+    void clientSecretIsServerGeneratedReturnedOnceNeverOnGet() throws Exception {
         String platform = platformToken();
         UUID tenant = provisionAndActivateTenant();
         String clientId = "svc-" + rnd();
 
+        // UI-3c: the backend generates the secret; a submitted "clientSecret" field (the old contract) is no
+        // longer part of the DTO at all — sending one here would just be ignored as an unknown JSON property.
         HttpResponse<String> created = postJson("/v1/tenants/" + tenant + "/clients",
-                "{\"clientId\":\"" + clientId + "\",\"clientName\":\"Svc\",\"clientSecret\":\"the-secret-value\","
+                "{\"clientId\":\"" + clientId + "\",\"clientName\":\"Svc\",\"publicClient\":false,"
                         + "\"grantTypes\":[\"client_credentials\"],\"scopes\":[\"svc:read\"],\"requireProofKey\":false,"
                         + "\"trusted\":true}", platform);
         assertThat(created.statusCode()).isEqualTo(201);
         JsonNode createdBody = mapper.readTree(created.body());
-        assertThat(createdBody.get("clientSecret").asText()).isEqualTo("the-secret-value"); // returned ONCE
+        String firstSecret = createdBody.get("clientSecret").asText();
+        assertThat(firstSecret).isNotBlank();
+        assertThat(firstSecret).isNotEqualTo("the-secret-value"); // not the old caller-supplied contract
         String internalId = createdBody.get("client").get("id").asText();
 
         HttpResponse<String> got = get("/v1/tenants/" + tenant + "/clients/" + internalId, platform);
         assertThat(got.statusCode()).isEqualTo(200);
         assertThat(got.body()).doesNotContain("secret"); // never surfaced again
+        assertThat(got.body()).doesNotContain(firstSecret);
+
+        // Regenerate: a fresh secret, once, differing from the first — the missing recovery path this stage adds.
+        HttpResponse<String> regenerated = post(
+                "/v1/tenants/" + tenant + "/clients/" + internalId + "/client-secret", platform);
+        assertThat(regenerated.statusCode()).isEqualTo(200);
+        JsonNode regeneratedBody = mapper.readTree(regenerated.body());
+        String secondSecret = regeneratedBody.get("clientSecret").asText();
+        assertThat(secondSecret).isNotBlank();
+        assertThat(secondSecret).isNotEqualTo(firstSecret);
+
+        HttpResponse<String> gotAfterRegenerate = get("/v1/tenants/" + tenant + "/clients/" + internalId, platform);
+        assertThat(gotAfterRegenerate.statusCode()).isEqualTo(200);
+        assertThat(gotAfterRegenerate.body()).doesNotContain("secret");
+        assertThat(gotAfterRegenerate.body()).doesNotContain(firstSecret);
+        assertThat(gotAfterRegenerate.body()).doesNotContain(secondSecret);
+    }
+
+    @Test
+    void regeneratingSecretForPublicClientIsRejected() throws Exception {
+        String platform = platformToken();
+        UUID tenant = provisionAndActivateTenant();
+        String clientId = "spa-" + rnd();
+
+        HttpResponse<String> created = postJson("/v1/tenants/" + tenant + "/clients",
+                "{\"clientId\":\"" + clientId + "\",\"clientName\":\"SPA\",\"publicClient\":true,"
+                        + "\"grantTypes\":[\"authorization_code\"],\"redirectUris\":[\"http://127.0.0.1/callback\"],"
+                        + "\"requireProofKey\":true,\"trusted\":true}", platform);
+        assertThat(created.statusCode()).isEqualTo(201);
+        JsonNode createdBody = mapper.readTree(created.body());
+        assertThat(createdBody.get("clientSecret").isNull()).isTrue(); // public client: no secret at all
+        String internalId = createdBody.get("client").get("id").asText();
+
+        HttpResponse<String> regenerate = post(
+                "/v1/tenants/" + tenant + "/clients/" + internalId + "/client-secret", platform);
+        assertThat(regenerate.statusCode()).isEqualTo(409);
+        assertThat(mapper.readTree(regenerate.body()).get("code").asText()).isEqualTo("client.public_no_secret");
     }
 
     // ---- self-service isolation -------------------------------------------
@@ -220,7 +261,93 @@ class AdminCrudIntegrationTest {
         assertThat(stillPresent).isFalse();
     }
 
+    // ---- application-role assignment read (UI-3d) --------------------------
+
+    @Test
+    void applicationRolesForUserIsScopedToTheGivenResourceServer() throws Exception {
+        String platform = platformToken();
+        UUID tenant = provisionAndActivateTenant();
+        UUID user = createUser(platform, tenant, "app-role-" + rnd() + "@x.io");
+        UUID rs = createResourceServer(platform, tenant, "rs-" + rnd());
+        UUID roleId = createApplicationRole(platform, tenant, rs, "INVOICE_READER");
+
+        // Not yet assigned.
+        JsonNode before = mapper.readTree(
+                get("/v1/tenants/" + tenant + "/users/" + user + "/application-roles?resourceServerId=" + rs,
+                        platform).body());
+        assertThat(before.isArray() && before.isEmpty()).isTrue();
+
+        // Missing resourceServerId is refused, not silently answered tenant-wide.
+        assertThat(get("/v1/tenants/" + tenant + "/users/" + user + "/application-roles", platform).statusCode())
+                .isEqualTo(400);
+
+        assertThat(post("/v1/tenants/" + tenant + "/users/" + user + "/application-roles/" + roleId, platform)
+                .statusCode()).isEqualTo(204);
+
+        JsonNode after = mapper.readTree(
+                get("/v1/tenants/" + tenant + "/users/" + user + "/application-roles?resourceServerId=" + rs,
+                        platform).body());
+        assertThat(after.isArray() && after.size() == 1 && after.get(0).asText().equals("INVOICE_READER")).isTrue();
+
+        // A different resource server never sees this user's assignment against it.
+        UUID otherRs = createResourceServer(platform, tenant, "rs-" + rnd());
+        JsonNode otherRsView = mapper.readTree(
+                get("/v1/tenants/" + tenant + "/users/" + user + "/application-roles?resourceServerId=" + otherRs,
+                        platform).body());
+        assertThat(otherRsView.isArray() && otherRsView.isEmpty()).isTrue();
+
+        assertThat(delete("/v1/tenants/" + tenant + "/users/" + user + "/application-roles/" + roleId, platform)
+                .statusCode()).isEqualTo(204);
+        JsonNode afterRevoke = mapper.readTree(
+                get("/v1/tenants/" + tenant + "/users/" + user + "/application-roles?resourceServerId=" + rs,
+                        platform).body());
+        assertThat(afterRevoke.isArray() && afterRevoke.isEmpty()).isTrue();
+    }
+
+    @Test
+    void bundlingAScopeFromAnotherResourceServerIsRejected400WithCodeIntact() throws Exception {
+        String platform = platformToken();
+        UUID tenant = provisionAndActivateTenant();
+        UUID rsA = createResourceServer(platform, tenant, "rs-a-" + rnd());
+        UUID rsB = createResourceServer(platform, tenant, "rs-b-" + rnd());
+        UUID roleOnA = createApplicationRole(platform, tenant, rsA, "READER");
+        UUID scopeOnB = addScope(platform, tenant, rsB, "read");
+
+        HttpResponse<String> mismatch = post(
+                "/v1/tenants/" + tenant + "/resource-servers/" + rsA + "/roles/" + roleOnA + "/scopes/" + scopeOnB,
+                platform);
+        assertThat(mismatch.statusCode()).isEqualTo(400);
+        JsonNode body = mapper.readTree(mismatch.body());
+        assertThat(body.get("code").asText()).isEqualTo("application_role.scope_rs_mismatch");
+        assertThat(body.has("errors")).isTrue(); // arrives intact through the RFC 7807 mapping, not flattened
+    }
+
     // ---- helpers ----------------------------------------------------------
+
+    private UUID createResourceServer(String platformToken, UUID tenant, String slug) throws Exception {
+        HttpResponse<String> created = postJson("/v1/tenants/" + tenant + "/resource-servers",
+                "{\"slug\":\"" + slug + "\",\"name\":\"" + slug + "\",\"audienceIdentifier\":\"https://" + slug
+                        + ".test\"}", platformToken);
+        assertThat(created.statusCode()).isEqualTo(201);
+        return UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+    }
+
+    private UUID createApplicationRole(String platformToken, UUID tenant, UUID rs, String name) throws Exception {
+        HttpResponse<String> created = postJson(
+                "/v1/tenants/" + tenant + "/resource-servers/" + rs + "/roles",
+                "{\"name\":\"" + name + "\",\"description\":\"\",\"isDefault\":false}", platformToken);
+        assertThat(created.statusCode()).isEqualTo(201);
+        return UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+    }
+
+    private UUID addScope(String platformToken, UUID tenant, UUID rs, String scopeName) throws Exception {
+        HttpResponse<String> created = postJson(
+                "/v1/tenants/" + tenant + "/resource-servers/" + rs + "/scopes",
+                "{\"scopeName\":\"" + scopeName + "\",\"description\":\"\",\"isDefault\":false,"
+                        + "\"requiresConsent\":false}", platformToken);
+        assertThat(created.statusCode()).isEqualTo(201);
+        return UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+    }
 
     private UUID provisionAndActivateTenant() throws Exception {
         String platform = platformToken();

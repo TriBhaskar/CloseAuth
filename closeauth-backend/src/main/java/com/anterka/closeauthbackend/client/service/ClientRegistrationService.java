@@ -2,9 +2,13 @@ package com.anterka.closeauthbackend.client.service;
 
 import com.anterka.closeauthbackend.audit.event.AuditEvents;
 import com.anterka.closeauthbackend.audit.service.AuditEmitter;
+import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
+import com.anterka.closeauthbackend.client.dto.ClientSecretView;
 import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
+import com.anterka.closeauthbackend.common.exception.ClientNotFoundException;
+import com.anterka.closeauthbackend.common.exception.ClientPublicNoSecretException;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
 import com.anterka.closeauthbackend.resourceserver.service.ResourceServerService;
@@ -35,6 +39,11 @@ import java.util.UUID;
  * <p><b>New-vs-update discrimination:</b> auto-creation is triggered <em>here</em> (new-client registration), NOT
  * inside {@code RegisteredClientRepository.save()}. So a plain {@code save()} of an existing client (an update)
  * never re-triggers auto-creation — only {@link #registerClient} does, and it only ever creates new clients.
+ *
+ * <p><b>UI-3c: the secret is generated here, never accepted from the caller.</b> {@link RegisterClientCommand} no
+ * longer carries a {@code clientSecret} field at all — see {@link ClientSecretGenerator}'s javadoc for why. This
+ * service is also, as of UI-3c, the one place a confidential client's secret can be replaced after creation
+ * ({@link #regenerateClientSecret}), since CloseAuth previously had no recovery path for a lost secret at all.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,15 +54,17 @@ public class ClientRegistrationService {
     private final TenantService tenantService;
     private final CommandValidator commandValidator;
     private final PasswordEncoder passwordEncoder;
+    private final ClientSecretGenerator clientSecretGenerator;
     private final CloseAuthProperties properties;
     private final AuditEmitter auditEmitter;
 
     @Transactional
-    public ClientView registerClient(TenantContext context, RegisterClientCommand command) {
+    public ClientCreatedView registerClient(TenantContext context, RegisterClientCommand command) {
         commandValidator.validate(command);
         tenantService.requireActiveTenant(context);
 
-        RegisteredClient registeredClient = buildRegisteredClient(context, command);
+        String rawSecret = command.publicClient() ? null : clientSecretGenerator.generate();
+        RegisteredClient registeredClient = buildRegisteredClient(context, command, rawSecret);
         registeredClientRepository.save(registeredClient);
 
         // Trigger the 3c-i capability: create the client's 1:1 Resource Server (same transaction → atomic).
@@ -61,16 +72,58 @@ public class ClientRegistrationService {
 
         auditEmitter.emit(AuditEvents.clientRegistered(context.tenantId(), registeredClient.getId(),
                 registeredClient.getClientId()));
-        return ClientView.from(registeredClient);
+        // rawSecret is returned here ONCE (only the encoded hash was persisted above); ClientCreatedView is the
+        // only place it ever appears. null for a public client.
+        return new ClientCreatedView(ClientView.from(registeredClient), rawSecret);
     }
 
-    private RegisteredClient buildRegisteredClient(TenantContext context, RegisterClientCommand command) {
+    /**
+     * Mints a fresh secret for an existing confidential client and returns it once — the missing recovery path
+     * for "the admin lost the secret" (previously the client was simply dead; there was no way back). Refuses a
+     * public client outright ({@link ClientPublicNoSecretException}) rather than silently making it confidential.
+     *
+     * <p>{@code TenantAwareRegisteredClientRepository.save} already routes an existing client id to a plain SAS
+     * {@code UPDATE} (SAS columns only; {@code tenant_id} untouched) — no repository change was needed for this.
+     */
+    @Transactional
+    public ClientSecretView regenerateClientSecret(TenantContext context, String clientRegisteredId) {
+        tenantService.requireActiveTenant(context);
+        RegisteredClient existing = loadClientOrThrow(context, clientRegisteredId);
+
+        if (existing.getClientAuthenticationMethods().contains(ClientAuthenticationMethod.NONE)) {
+            throw new ClientPublicNoSecretException(clientRegisteredId);
+        }
+
+        String rawSecret = clientSecretGenerator.generate();
+        RegisteredClient rotated = RegisteredClient.from(existing)
+                .clientSecret(passwordEncoder.encode(rawSecret))
+                .build();
+        registeredClientRepository.save(rotated);
+
+        auditEmitter.emit(AuditEvents.clientSecretRegenerated(context.tenantId(), rotated.getId(), rotated.getClientId()));
+        return new ClientSecretView(ClientView.from(rotated), rawSecret);
+    }
+
+    /**
+     * Tenant-scoped lookup shared by {@link #regenerateClientSecret} and {@code TenantClientController.get} — a
+     * client that exists but belongs to a different tenant 404s exactly like one that doesn't exist at all
+     * (defense in depth, never distinguish the two to a caller).
+     */
+    public RegisteredClient loadClientOrThrow(TenantContext context, String clientRegisteredId) {
+        RegisteredClient client = registeredClientRepository.findById(clientRegisteredId);
+        if (client == null || !context.tenantId().equals(CloseAuthClientSettings.getTenantId(client))) {
+            throw new ClientNotFoundException(clientRegisteredId);
+        }
+        return client;
+    }
+
+    private RegisteredClient buildRegisteredClient(TenantContext context, RegisterClientCommand command, String rawSecret) {
         RegisteredClient.Builder builder = RegisteredClient.withId(UUID.randomUUID().toString())
                 .clientId(command.clientId())
                 .clientName(command.clientName());
 
-        if (command.clientSecret() != null && !command.clientSecret().isBlank()) {
-            builder.clientSecret(passwordEncoder.encode(command.clientSecret()))
+        if (rawSecret != null) {
+            builder.clientSecret(passwordEncoder.encode(rawSecret))
                     .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
         } else {
             builder.clientAuthenticationMethod(ClientAuthenticationMethod.NONE); // public client

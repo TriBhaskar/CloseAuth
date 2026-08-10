@@ -2,6 +2,7 @@ package com.anterka.closeauthbackend.auth;
 
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenPurpose;
 import com.anterka.closeauthbackend.auth.service.OneTimeTokenService;
+import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
@@ -98,9 +99,10 @@ class IdentityFlowsIntegrationTest {
     @Autowired OneTimeTokenService oneTimeTokenService;
     @Autowired CapturingNotificationSender mail;
 
-    private static final String SECRET = "client-secret-value";
     private static final String REDIRECT = "http://127.0.0.1/callback";
     private final ObjectMapper json = new ObjectMapper();
+    // UI-3c: the backend now generates each client's secret; capture per clientId rather than a shared constant.
+    private final java.util.Map<String, String> clientSecrets = new java.util.HashMap<>();
 
     private String base() {
         return "http://localhost:" + port + "/closeauth";
@@ -260,7 +262,7 @@ class IdentityFlowsIntegrationTest {
     }
 
     private String basic(String clientId) {
-        return "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + SECRET).getBytes(StandardCharsets.UTF_8));
+        return "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecrets.get(clientId)).getBytes(StandardCharsets.UTF_8));
     }
 
     private static String formEncode(Map<String, String> form) {
@@ -310,9 +312,10 @@ class IdentityFlowsIntegrationTest {
 
     private String authCodeClient(TenantContext ctx) {
         String clientId = "app-" + rnd();
-        clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, SECRET, List.of("authorization_code", "refresh_token"),
+        ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
+                clientId, clientId, false, List.of("authorization_code", "refresh_token"),
                 List.of("openid", "profile"), List.of(REDIRECT), true, true));
+        clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }
 

@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.auth;
 
+import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
@@ -89,9 +90,10 @@ class CrossOriginLoginIntegrationTest {
     @Autowired UserService userService;
     @Autowired ClientRegistrationService clientRegistrationService;
 
-    private static final String SECRET = "client-secret-value";
     private static final String REDIRECT = "http://127.0.0.1/callback";
     private static final String PASSWORD = "password123";
+    // UI-3c: the backend now generates each client's secret; capture per clientId rather than a shared constant.
+    private final java.util.Map<String, String> clientSecrets = new java.util.HashMap<>();
     private static final String BFF_LOGIN_PAGE = "http://bff.example.invalid:8088/login";
     private final ObjectMapper json = new ObjectMapper();
 
@@ -231,7 +233,7 @@ class CrossOriginLoginIntegrationTest {
 
     private String basic(String clientId) {
         return "Basic " + Base64.getEncoder().encodeToString(
-                (clientId + ":" + SECRET).getBytes(StandardCharsets.UTF_8));
+                (clientId + ":" + clientSecrets.get(clientId)).getBytes(StandardCharsets.UTF_8));
     }
 
     private static String encodeQuery(Map<String, String> form) {
@@ -291,12 +293,13 @@ class CrossOriginLoginIntegrationTest {
 
     private String authCodeClient(TenantContext ctx) {
         String clientId = "app-" + rnd();
-        clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, SECRET,
+        ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
+                clientId, clientId, false,
                 List.of("authorization_code", "refresh_token"),
                 List.of("openid", "profile"),
                 List.of(REDIRECT),
                 true, true)); // requireProofKey (PKCE), trusted
+        clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }
 

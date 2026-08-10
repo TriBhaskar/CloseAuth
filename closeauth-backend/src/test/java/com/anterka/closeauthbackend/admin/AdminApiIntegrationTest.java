@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.admin;
 
+import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
@@ -240,13 +241,12 @@ class AdminApiIntegrationTest {
     /** Registers a confidential client (able to authenticate to {@code /oauth2/introspect}). @return {clientId, secret}. */
     private String[] introspectionClient() {
         String clientId = "introspect-" + rnd();
-        String secret = "introspect-secret-value";
         TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("acme-" + rnd(), "Acme"));
         tenantService.activateTenant(tenant.id());
-        clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
-                clientId, "Introspect Client", secret, List.of("client_credentials"),
+        ClientCreatedView created = clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
+                clientId, "Introspect Client", false, List.of("client_credentials"),
                 List.of("introspect:read"), null, false, true));
-        return new String[]{clientId, secret};
+        return new String[]{clientId, created.clientSecret()};
     }
 
     private Map<String, Object> introspect(String clientId, String secret, String token) throws Exception {

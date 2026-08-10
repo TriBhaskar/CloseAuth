@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"closeauth-frontend/internal/middleware"
 	"closeauth-frontend/internal/static"
 
 	"github.com/go-chi/chi/v5"
@@ -50,10 +51,64 @@ import (
 // will — it's a genuine native HTML form POST straight to the backend's own
 // /oauth2/authorize, exactly like magic-link's consume step, for the same
 // cross-origin-cookie reason (see CLOSEAUTH_CONSENT_CROSS_ORIGIN_DESIGN.md).
-// TODO(ui-3): wire Surfaces 2/3 (admin console) routes once internal/backend's
-// OAuthClient/AdminClient have somewhere to hold their Session (needs Option
-// A's backend piece — the deterministic per-tenant admin-console client —
-// tracked but explicitly out of scope through UI-1/UI-2).
+// Stage UI-3a adds Surface 2, the tenant-admin console's login foundation:
+// tenant-scoped routing (/t/{slug}/...), the OAuth2 authorization-code+PKCE
+// round trip against the per-tenant admin-console-{slug} client (Option A),
+// a real BFF-held session (unlike Surface 1's stateless relay above), and
+// lazy silent re-authorization. GET /api/csrf and the /t/{slug} route group
+// below are that surface's entire footprint.
+//
+// Stage UI-3b adds the console's first CRUD surface: users and tenant
+// roles (handlers_admin_users.go). Stage UI-3c adds the second: clients
+// (handlers_admin_clients.go — register, get, and secret regeneration; no
+// list, since the backend has none) and resource servers + their scope
+// catalog (handlers_admin_resource_servers.go — full CRUD, the backend
+// exposes it all).
+//
+// Stage UI-3d completes the RBAC surface: tenant-role CRUD
+// (handlers_admin_tenant_roles.go — GET /roles and the assign/revoke/
+// held-names trio already existed from UI-3b) and the whole application-role
+// tier (handlers_admin_application_roles.go — RS-scoped CRUD, scope-bundle
+// add/remove, and assign/revoke/held-names for a user). The held-names read
+// for application roles required a small backend addition
+// (ApplicationRoleController.applicationRolesForUser), the same kind of
+// agreed exception as UI-3b's tenant-roles GET.
+//
+// Stage UI-3e closes out the tenant-admin console's CRUD surface: branding
+// (handlers_admin_tenant_settings.go — GET/PUT, the BFF's first PUT
+// handlers; AdminClient.PutJSON already existed, used only by
+// testsupport.Fixtures.SetRegistrationMode before this stage), registration
+// config (same file, same GET/PUT shape), and the read-only audit query
+// (handlers_admin_audit.go — GET only, six allow-listed filters plus
+// page/size, see that file's auditFilterQuery).
+//
+// Deliberately NOT in UI-3e or earlier: a platform-admin console (that's
+// UI-4, immediately below), the invites surface (INVITE_ONLY registration
+// mode exists and is settable via this stage's registration-config PUT, but
+// issuing/listing invites has no console route), and calling the backend's
+// POST /logout cascade on sign-out (handlers_admin_session.go's
+// handleAdminSignOut clears only the BFF's own cookies — the settled
+// decision is that "sign out" here ends the console session, not the
+// tenant's whole SSO session).
+//
+// Stage UI-4 adds the platform-admin console — genuinely NOT a bigger UI-3:
+// platform admins are a separate principal type (platform_admins table,
+// Stage 7a), not a role on a tenant user. Route tree is /platform/**, with
+// NO slug segment at all (this surface is cross-tenant by construction), so
+// it structurally cannot collide with /t/{slug}/**, and its own session
+// cookie (bff_platform_session, Path=/platform) is disjoint from
+// bff_admin_session's /t/{slug} paths — a browser can hold both. Login is a
+// plain JSON POST /platform/api/login against the backend's one
+// unauthenticated /v1 endpoint (no OAuth2/PKCE dance, no browser-navigation
+// redirect), so — unlike the /t/{slug} group above — there is no
+// /platform/login *server* route: the SPA's own client-side route renders
+// the login form and calls the API directly. The platform-admin token is
+// access-only with a 5-minute TTL and no refresh
+// (PlatformAdminTokenService), so RequirePlatformSession
+// (internal/middleware/platform_guard.go) has no reauth branch at all —
+// on expiry the operator simply signs in again. See
+// handlers_platform_auth.go / handlers_platform_tenants.go /
+// handlers_platform_admins.go.
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -108,7 +163,168 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Post("/api/auth/login", s.handleLoginJSON)
 
 	// ──────────────────────────────────────────────────────────────────────────
-	// SPA catch-all — serve embedded Vue dist/ (fallback to index.html)
+	// Surface 2 — tenant-admin console (Stage UI-3a): the BFF as a real OAuth2
+	// client. GET /api/csrf lives at the root (settled decision: the CSRF
+	// cookie is Path=/, tenant-agnostic, and not an authn credential) — it
+	// finally gives src/api/client.ts's existing fetchCsrfToken() call a real
+	// route instead of a silently-swallowed 404.
+	// ──────────────────────────────────────────────────────────────────────────
+	bffCfg := s.bffConfig()
+	slugParam := func(r *http.Request) string { return chi.URLParam(r, "slug") }
+
+	r.Get("/api/csrf", middleware.HandleCSRFToken(bffCfg.IsProduction))
+
+	r.Route("/t/{slug}", func(tr chi.Router) {
+		tr.Use(middleware.NoCacheMiddleware)
+
+		// Login/reauth initiation — both a real top-level browser navigation
+		// (never fetch()): TenantSessionSsoFilter's unauthenticated entry
+		// point is registered only for Accept: text/html, and
+		// CLOSEAUTH_SESSION is SameSite=Lax, neither of which survives a
+		// same-process HTTP call. See handlers_admin_auth.go.
+		tr.Get("/admin/login", s.handleAdminAuthStart)
+		tr.Get("/admin/reauth", s.handleAdminAuthStart)
+
+		tr.Route("/api", func(ar chi.Router) {
+			ar.Use(middleware.CSRFTokenMiddleware(bffCfg.IsProduction))
+			ar.Use(middleware.CSRFValidationMiddleware)
+
+			// A state probe, not a protected resource — always 200 (see
+			// handlers_admin_session.go), so the SPA's router guard never
+			// has to special-case "not logged in" as an error.
+			ar.Get("/session", s.handleAdminSession)
+			ar.Post("/signout", s.handleAdminSignOut)
+			ar.Post("/denied/dismiss", s.handleAdminDeniedDismiss)
+
+			ar.Group(func(pr chi.Router) {
+				pr.Use(middleware.RequireAdminSession(slugParam, bffCfg.ReauthSkew))
+				pr.Get("/ping", s.handleAdminPing)
+
+				// Stage UI-3b: the console's first real CRUD surface — user
+				// listing/creation/lifecycle and tenant-role assignment. See
+				// handlers_admin_users.go's doc comment for the shared
+				// session/tenant-scoping/UUID-validation preamble every
+				// handler here follows.
+				pr.Get("/users", s.handleAdminUsersList)
+				pr.Post("/users", s.handleAdminUserCreate)
+				pr.Get("/users/{userId}", s.handleAdminUserGet)
+				pr.Post("/users/{userId}/suspend", s.handleAdminUserLifecycle("suspend"))
+				pr.Post("/users/{userId}/activate", s.handleAdminUserLifecycle("activate"))
+				pr.Post("/users/{userId}/approve", s.handleAdminUserLifecycle("approve"))
+				pr.Delete("/users/{userId}", s.handleAdminUserDelete)
+				pr.Get("/users/{userId}/tenant-roles", s.handleAdminUserTenantRoles)
+				pr.Post("/users/{userId}/tenant-roles/{roleId}", s.handleAdminUserRoleAssignment(http.MethodPost))
+				pr.Delete("/users/{userId}/tenant-roles/{roleId}", s.handleAdminUserRoleAssignment(http.MethodDelete))
+				pr.Get("/roles", s.handleAdminRolesList)
+
+				// Stage UI-3c: clients (create/get/regenerate-secret — no list, the
+				// backend has none) and resource servers + scopes (full CRUD). See
+				// handlers_admin_clients.go / handlers_admin_resource_servers.go.
+				pr.Post("/clients", s.handleAdminClientCreate)
+				pr.Get("/clients/{clientId}", s.handleAdminClientGet)
+				pr.Post("/clients/{clientId}/client-secret", s.handleAdminClientSecretRegenerate)
+
+				pr.Get("/resource-servers", s.handleAdminResourceServersList)
+				pr.Post("/resource-servers", s.handleAdminResourceServerCreate)
+				pr.Get("/resource-servers/{rsId}", s.handleAdminResourceServerGet)
+				pr.Patch("/resource-servers/{rsId}", s.handleAdminResourceServerUpdate)
+				pr.Delete("/resource-servers/{rsId}", s.handleAdminResourceServerDelete)
+				pr.Get("/resource-servers/{rsId}/scopes", s.handleAdminScopesList)
+				pr.Post("/resource-servers/{rsId}/scopes", s.handleAdminScopeAdd)
+				pr.Patch("/resource-servers/{rsId}/scopes/{scopeId}", s.handleAdminScopeUpdate)
+				pr.Delete("/resource-servers/{rsId}/scopes/{scopeId}", s.handleAdminScopeDelete)
+
+				// Stage UI-3d: tenant-role CRUD (list + assign/revoke/held-names
+				// already existed, UI-3b) and the whole application-role tier — RS-
+				// scoped CRUD, scope bundling, and assign/revoke/held-names for a
+				// user. See handlers_admin_tenant_roles.go /
+				// handlers_admin_application_roles.go.
+				pr.Post("/roles", s.handleAdminRoleCreate)
+				pr.Get("/roles/{roleId}", s.handleAdminRoleGet)
+				pr.Patch("/roles/{roleId}", s.handleAdminRoleUpdate)
+				pr.Delete("/roles/{roleId}", s.handleAdminRoleDelete)
+
+				pr.Get("/resource-servers/{rsId}/roles", s.handleAdminApplicationRolesList)
+				pr.Post("/resource-servers/{rsId}/roles", s.handleAdminApplicationRoleCreate)
+				pr.Get("/resource-servers/{rsId}/roles/{roleId}", s.handleAdminApplicationRoleGet)
+				pr.Patch("/resource-servers/{rsId}/roles/{roleId}", s.handleAdminApplicationRoleUpdate)
+				pr.Delete("/resource-servers/{rsId}/roles/{roleId}", s.handleAdminApplicationRoleDelete)
+				pr.Get("/resource-servers/{rsId}/roles/{roleId}/scopes", s.handleAdminApplicationRoleScopesList)
+				pr.Post("/resource-servers/{rsId}/roles/{roleId}/scopes/{scopeId}", s.handleAdminApplicationRoleScopeBundle(http.MethodPost))
+				pr.Delete("/resource-servers/{rsId}/roles/{roleId}/scopes/{scopeId}", s.handleAdminApplicationRoleScopeBundle(http.MethodDelete))
+
+				pr.Get("/users/{userId}/application-roles", s.handleAdminUserApplicationRoles)
+				pr.Post("/users/{userId}/application-roles/{roleId}", s.handleAdminUserApplicationRoleAssignment(http.MethodPost))
+				pr.Delete("/users/{userId}/application-roles/{roleId}", s.handleAdminUserApplicationRoleAssignment(http.MethodDelete))
+
+				// Stage UI-3e: tenant settings (branding + registration mode —
+				// both GET/PUT, full-replacement semantics on the backend, see
+				// handlers_admin_tenant_settings.go) and the read-only audit
+				// query (handlers_admin_audit.go).
+				pr.Get("/branding", s.handleAdminBrandingGet)
+				pr.Put("/branding", s.handleAdminBrandingUpdate)
+				pr.Get("/registration-config", s.handleAdminRegistrationConfigGet)
+				pr.Put("/registration-config", s.handleAdminRegistrationConfigUpdate)
+				pr.Get("/audit-events", s.handleAdminAuditEventsList)
+			})
+		})
+	})
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// Surface 3 — the platform-admin console (Stage UI-4). See this file's
+	// header comment above for why the route shape has no slug segment.
+	// ──────────────────────────────────────────────────────────────────────────
+	r.Route("/platform", func(plr chi.Router) {
+		plr.Use(middleware.NoCacheMiddleware)
+
+		plr.Route("/api", func(par chi.Router) {
+			par.Use(middleware.CSRFTokenMiddleware(bffCfg.IsProduction))
+			par.Use(middleware.CSRFValidationMiddleware)
+
+			// Always-200 probe (mirrors GET /t/{slug}/api/session) and the
+			// login/signout pair — all three called by the SPA via fetch(),
+			// never a browser navigation (see this file's header comment on
+			// why platform-admin login has no OAuth2 round trip to redirect
+			// through).
+			par.Get("/session", s.handlePlatformSession)
+			par.Post("/login", s.handlePlatformLogin)
+			par.Post("/signout", s.handlePlatformSignOut)
+
+			par.Group(func(gr chi.Router) {
+				gr.Use(middleware.RequirePlatformSession())
+
+				gr.Get("/tenants", s.handlePlatformTenantsList)
+				gr.Post("/tenants", s.handlePlatformTenantProvision)
+				gr.Get("/tenants/{tenantId}", s.handlePlatformTenantGet)
+				gr.Post("/tenants/{tenantId}/activate", s.handlePlatformTenantLifecycle("activate"))
+				gr.Post("/tenants/{tenantId}/suspend", s.handlePlatformTenantLifecycle("suspend"))
+				gr.Delete("/tenants/{tenantId}", s.handlePlatformTenantDelete)
+
+				gr.Get("/admins", s.handlePlatformAdminsList)
+				gr.Post("/admins", s.handlePlatformAdminCreate)
+				gr.Post("/admins/{adminId}/suspend", s.handlePlatformAdminLifecycle("suspend"))
+				gr.Post("/admins/{adminId}/activate", s.handlePlatformAdminLifecycle("activate"))
+				gr.Get("/admins/{adminId}/roles", s.handlePlatformAdminRoles)
+				gr.Post("/admins/{adminId}/roles/{roleName}", s.handlePlatformAdminRoleAssignment(http.MethodPost))
+				gr.Delete("/admins/{adminId}/roles/{roleName}", s.handlePlatformAdminRoleAssignment(http.MethodDelete))
+			})
+		})
+	})
+
+	// The admin-console callback path is FIXED, not slug-aware, by
+	// construction — Option A registers exactly one redirect_uri per tenant
+	// client, so every tenant's admin-console client shares this single
+	// callback. The slug is recovered from the state param / oauth_ctx_{slug}
+	// cookie inside the handler, not from the route.
+	r.Get(bffCfg.AdminCallbackPath, s.handleAdminCallback)
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// SPA catch-all — serve embedded Vue dist/ (fallback to index.html).
+	// chi propagates a NotFound handler registered here into subrouters
+	// declared before it (r.Route("/t/{slug}", ...) above), which is what
+	// lets /t/{slug}/console fall through to the SPA while
+	// internal/static/embed.go's tenantAPIPath check still 404s a bad
+	// /t/{slug}/api/... path instead of silently serving index.html.
 	// ──────────────────────────────────────────────────────────────────────────
 	r.NotFound(static.SPAHandler().ServeHTTP)
 

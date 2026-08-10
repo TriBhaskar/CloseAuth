@@ -90,3 +90,70 @@ func TestGetEncryptionKey_DefaultLength(t *testing.T) {
 		t.Errorf("GetEncryptionKey() length = %d, want 32", len(key))
 	}
 }
+
+func TestSealOpen_RoundTripWithMatchingAAD(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+	aad := []byte("closeauth.bff.admin-session:acme")
+
+	sealed, err := Seal([]byte("payload"), key, aad)
+	if err != nil {
+		t.Fatalf("Seal() error = %v", err)
+	}
+	opened, err := Open(sealed, key, aad)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if string(opened) != "payload" {
+		t.Errorf("Open() = %q, want %q", opened, "payload")
+	}
+}
+
+func TestOpen_WrongAAD_Fails(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+
+	sealed, err := Seal([]byte("payload"), key, []byte("closeauth.bff.admin-session:acme"))
+	if err != nil {
+		t.Fatalf("Seal() error = %v", err)
+	}
+
+	// Same cookie purpose, different tenant: must not open.
+	if _, err := Open(sealed, key, []byte("closeauth.bff.admin-session:globex")); err == nil {
+		t.Error("Open() with a different tenant's AAD should fail, got nil error")
+	}
+
+	// Different cookie purpose entirely (the cross-purpose-replay case Seal's
+	// doc comment describes): must not open.
+	if _, err := Open(sealed, key, []byte("closeauth.bff.oauth-ctx:acme")); err == nil {
+		t.Error("Open() with a different purpose's AAD should fail, got nil error")
+	}
+}
+
+func TestEncryptDecrypt_StillWorksWithNilAAD(t *testing.T) {
+	// Encrypt/Decrypt are thin nil-AAD wrappers over Seal/Open — a
+	// ciphertext from one must open via the other.
+	key := []byte("0123456789abcdef0123456789abcdef")
+
+	sealed, err := Seal([]byte("payload"), key, nil)
+	if err != nil {
+		t.Fatalf("Seal() error = %v", err)
+	}
+	decrypted, err := Decrypt(sealed, key)
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if string(decrypted) != "payload" {
+		t.Errorf("Decrypt() = %q, want %q", decrypted, "payload")
+	}
+
+	encrypted, err := Encrypt([]byte("payload2"), key)
+	if err != nil {
+		t.Fatalf("Encrypt() error = %v", err)
+	}
+	opened, err := Open(encrypted, key, nil)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if string(opened) != "payload2" {
+		t.Errorf("Open() = %q, want %q", opened, "payload2")
+	}
+}

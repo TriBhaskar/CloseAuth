@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,6 +31,7 @@ import java.util.UUID;
  *
  * <h2>HTTP contract</h2>
  * {@code GET/POST /roles} · {@code GET/PATCH/DELETE /roles/{roleId}} ·
+ * {@code GET /users/{userId}/tenant-roles} (role names currently held) ·
  * {@code POST/DELETE /users/{userId}/tenant-roles/{roleId}} (assign/revoke).
  */
 @RestController
@@ -68,6 +70,16 @@ public class TenantRoleController {
     public ResponseEntity<Void> delete(@PathVariable String tenantId, @PathVariable UUID roleId) {
         tenantRoleService.deleteTenantRole(ctx(tenantId), roleId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Role names currently held by {@code userId} in this tenant (UI-3b: the admin console has no other way to know
+     * which of the catalog's roles a user already holds before offering assign/revoke). Sorted names, not ids/DTOs —
+     * mirrors {@link TenantRoleService#getTenantRolesForUser}; the caller joins against {@code GET /roles} for ids.
+     */
+    @GetMapping("/users/{userId}/tenant-roles")
+    public List<String> rolesForUser(@PathVariable String tenantId, @PathVariable UUID userId) {
+        return tenantRoleService.getTenantRolesForUser(ctx(tenantId), userId);
     }
 
     @PostMapping("/users/{userId}/tenant-roles/{roleId}")

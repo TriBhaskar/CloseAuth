@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Claims is a black-box view of a decoded JWT payload — claim names as the
@@ -80,4 +82,37 @@ func (c Claims) StringSlice(name string) []string {
 func (c Claims) Has(name string) bool {
 	_, ok := c[name]
 	return ok
+}
+
+// Int64 returns the named claim as an int64, with ok reporting whether it
+// was present and numeric. Needed because String() cannot read numeric
+// claims: encoding/json decodes a bare JSON number (e.g. the standard "exp"
+// claim) into a Claims map as float64, and String("exp") on a float64 value
+// returns "" (not a string). Accepts float64 (the normal case), json.Number,
+// and a numeric string (defensive — not expected from this backend's
+// tokens, but cheap to allow) so callers don't have to guess the
+// representation.
+func (c Claims) Int64(name string) (int64, bool) {
+	switch v := c[name].(type) {
+	case float64:
+		return int64(v), true
+	case json.Number:
+		n, err := v.Int64()
+		return n, err == nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		return n, err == nil
+	default:
+		return 0, false
+	}
+}
+
+// Time returns the named claim (a Unix-seconds numeric claim such as "exp")
+// as a time.Time, with ok reporting whether it was present and numeric.
+func (c Claims) Time(name string) (time.Time, bool) {
+	seconds, ok := c.Int64(name)
+	if !ok {
+		return time.Time{}, false
+	}
+	return time.Unix(seconds, 0), true
 }

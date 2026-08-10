@@ -11,12 +11,13 @@ import { ref } from 'vue'
 // "client" and "tenant".
 //
 // The `email`/`isAuthenticated` state and the `logout` stub below are kept as
-// placeholders only because two untouched Stage UI-0 survivors depend on this
-// store's shape at compile time: src/views/public/HomeView.vue (public
-// landing page, out of scope for this whole effort) and
-// src/layouts/AdminLayout.vue (pattern survives, content may be adjusted
-// later). None of this is real auth logic — no persistence, no API calls, no
-// session handling.
+// placeholders only because src/views/public/HomeView.vue (public landing
+// page, out of scope for this whole effort) depends on this store's shape at
+// compile time. (Its other UI-0 dependent, src/layouts/AdminLayout.vue, is
+// gone — UI-4 replaced it with layouts/PlatformAdminLayout.vue +
+// stores/platformAdmin.ts, a real session store against the actual
+// platform-admin principal, not this placeholder.) None of this is real auth
+// logic — no persistence, no API calls, no session handling.
 export const useAuthStore = defineStore('auth', () => {
   const email = ref('')
   const isAuthenticated = ref(false)

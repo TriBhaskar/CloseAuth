@@ -141,17 +141,21 @@ public final class AdminApiClient {
      */
     public ClientCredentials registerClient(String platformToken, String tenantId, String clientId, String clientName,
                                             boolean trusted, List<String> scopes) {
-        String secret = "secret-" + Fixtures.suffix();
+        // UI-3c: the backend now generates the secret server-side and ignores any caller-supplied value (a
+        // deliberate change from a caller-chosen secret, matching Keycloak's admin API) — "publicClient: false"
+        // replaces the old "send a clientSecret" contract, and the secret is read back out of the 201 response.
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("clientId", clientId);
         body.put("clientName", clientName);
-        body.put("clientSecret", secret);
+        body.put("publicClient", false);
         body.put("grantTypes", List.of("authorization_code", "refresh_token"));
         body.put("scopes", scopes);
         body.put("redirectUris", List.of(OAuthFlowClient.REDIRECT_URI));
         body.put("requireProofKey", true);
         body.put("trusted", trusted);
-        postJson(platformToken, "/v1/tenants/{tid}/clients", body, tenantId).then().statusCode(201);
+        Response response = postJson(platformToken, "/v1/tenants/{tid}/clients", body, tenantId);
+        expect(response.statusCode() == 201, "register client failed: " + response.statusCode() + " " + response.asString());
+        String secret = response.jsonPath().getString("clientSecret");
         return new ClientCredentials(clientId, secret);
     }
 

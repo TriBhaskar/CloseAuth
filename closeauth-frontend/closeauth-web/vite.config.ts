@@ -47,6 +47,17 @@ export default defineConfig({
       // Stage UI-2b: registration + email verification, same reasoning.
       '/register': { target: 'http://localhost:8080', changeOrigin: true },
       '/verify-email': { target: 'http://localhost:8080', changeOrigin: true },
+      // Pre-existing gap (predates Stage UI-3a): authPasswordReset.ts and
+      // authMagicLink.ts call these absolute paths, same as every other
+      // Surface-1 route above, but neither was ever added to this proxy list.
+      '/magic-link': { target: 'http://localhost:8080', changeOrigin: true },
+      '/password-reset': { target: 'http://localhost:8080', changeOrigin: true },
+      // Stage UI-3a: the tenant-admin console's BFF-owned surface —
+      // /t/{slug}/api/** and /t/{slug}/admin/{login,reauth} (both BFF
+      // routes; /t/{slug}/console is a client-side SPA route and must NOT be
+      // proxied) plus the fixed, non-slug-aware callback.
+      '^/t/[^/]+/(api|admin)(/|$)': { target: 'http://localhost:8080', changeOrigin: true },
+      '/admin/callback': { target: 'http://localhost:8080', changeOrigin: true },
     },
   },
 })

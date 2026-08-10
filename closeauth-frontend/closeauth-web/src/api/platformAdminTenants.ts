@@ -1,0 +1,101 @@
+// Stage UI-4: the platform console's tenant-lifecycle API layer, talking to
+// internal/server/handlers_platform_tenants.go's /platform/api/tenants/**
+// surface. Built on platformAdminFetch/parsePlatformResult — the
+// cross-tenant sibling of tenantAdminUsers.ts.
+import { platformAdminFetch } from '@/api/platformAdminClient'
+import { parsePlatformResult } from '@/api/platformAdminProblem'
+import type { AdminResult } from '@/api/tenantAdminProblem'
+
+// Mirrors tenant/enums/TenantStatus.java exactly.
+export type TenantStatus = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'DELETED'
+
+// Mirrors tenant/dto/TenantView.java exactly.
+export interface TenantView {
+  id: string
+  slug: string
+  name: string
+  status: TenantStatus
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+// Mirrors common/web/PageView.java exactly — same shape tenantAdminUsers.ts
+// already declares for UserView; redeclared here (not imported from there)
+// so this module doesn't reach across the tenant/platform boundary for a
+// type, matching the "own store, never merged" discipline the session layer
+// already follows.
+export interface PageView<T> {
+  items: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+export const DEFAULT_PAGE_SIZE = 20
+
+export interface ProvisionTenantPayload {
+  slug: string
+  name: string
+}
+
+export async function listTenants(page: number, size: number = DEFAULT_PAGE_SIZE): Promise<AdminResult<PageView<TenantView>>> {
+  const result = await platformAdminFetch(`/tenants?page=${page}&size=${size}`)
+  return parsePlatformResult<PageView<TenantView>>(result)
+}
+
+export async function provisionTenant(payload: ProvisionTenantPayload): Promise<AdminResult<TenantView>> {
+  const result = await platformAdminFetch('/tenants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return parsePlatformResult<TenantView>(result)
+}
+
+async function lifecycleAction(tenantId: string, action: 'activate' | 'suspend'): Promise<AdminResult<TenantView>> {
+  const result = await platformAdminFetch(`/tenants/${encodeURIComponent(tenantId)}/${action}`, { method: 'POST' })
+  return parsePlatformResult<TenantView>(result)
+}
+
+/** PROVISIONING|SUSPENDED -> ACTIVE. */
+export function activateTenant(tenantId: string): Promise<AdminResult<TenantView>> {
+  return lifecycleAction(tenantId, 'activate')
+}
+
+/** ACTIVE -> SUSPENDED. Revokes every user's live access tokens AND SSO sessions in the tenant immediately. */
+export function suspendTenant(tenantId: string): Promise<AdminResult<TenantView>> {
+  return lifecycleAction(tenantId, 'suspend')
+}
+
+/** Soft-delete — terminal (DELETED has no transitions out); revokes live tokens immediately. */
+export async function deleteTenant(tenantId: string): Promise<AdminResult<TenantView>> {
+  const result = await platformAdminFetch(`/tenants/${encodeURIComponent(tenantId)}`, { method: 'DELETE' })
+  return parsePlatformResult<TenantView>(result)
+}
+
+export type TenantLifecycleAction = 'activate' | 'suspend' | 'delete'
+
+/**
+ * The real transition matrix (tenant/service/TenantStateMachine.java):
+ *   PROVISIONING -> ACTIVE (via activate) | DELETED
+ *   ACTIVE       -> SUSPENDED | DELETED
+ *   SUSPENDED    -> ACTIVE (via activate) | DELETED
+ *   DELETED      -> terminal, no transitions out
+ * The tenants view offers exactly these actions per status, so the UI never
+ * presents an action the backend would refuse with a 409
+ * tenant.invalid_state_transition.
+ */
+export function availableTenantActions(status: TenantStatus): TenantLifecycleAction[] {
+  switch (status) {
+    case 'PROVISIONING':
+      return ['activate', 'delete']
+    case 'ACTIVE':
+      return ['suspend', 'delete']
+    case 'SUSPENDED':
+      return ['activate', 'delete']
+    case 'DELETED':
+      return []
+  }
+}

@@ -1,7 +1,9 @@
 package com.anterka.closeauthbackend.admin.web;
 
 import com.anterka.closeauthbackend.admin.security.RequiresPlatformAdmin;
+import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.web.PageView;
+import com.anterka.closeauthbackend.rbac.service.TenantRoleService;
 import com.anterka.closeauthbackend.tenant.dto.ProvisionTenantCommand;
 import com.anterka.closeauthbackend.tenant.dto.TenantView;
 import com.anterka.closeauthbackend.tenant.service.TenantService;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -25,6 +28,11 @@ import java.util.UUID;
  * cannot reach these). Thin HTTP surface over {@link TenantService} (3a); the state machine + soft-delete already exist.
  * All mutations are audited in the service ({@code TENANT_CREATED}/{@code TENANT_ACTIVATED}/
  * {@code TENANT_SUSPENDED}/{@code TENANT_DELETED} via the Stage-8 audit outbox).
+ *
+ * <p>{@code list}/{@code get} additionally populate {@link TenantView#adminCount()} (§1.16 of the tenant-onboarding
+ * design) via {@link TenantRoleService} — merged here, at the controller layer, deliberately NOT inside
+ * {@code TenantService}: the {@code tenant} module has no dependency on {@code rbac} ({@code rbac} depends on
+ * {@code tenant}, not the reverse — introducing the opposite edge here would create a package cycle).
  *
  * <h2>HTTP contract</h2>
  * {@code POST /v1/platform/tenants} (provision, 201) · {@code GET /v1/platform/tenants?page&size} (paginated) ·
@@ -38,6 +46,7 @@ import java.util.UUID;
 public class PlatformTenantController {
 
     private final TenantService tenantService;
+    private final TenantRoleService tenantRoleService;
 
     @PostMapping
     public ResponseEntity<TenantView> provision(@Valid @RequestBody ProvisionTenantCommand command) {
@@ -47,12 +56,18 @@ public class PlatformTenantController {
     @GetMapping
     public PageView<TenantView> list(@RequestParam(defaultValue = "0") int page,
                                      @RequestParam(defaultValue = "20") int size) {
-        return PageView.of(tenantService.listTenants(), page, size);
+        Map<UUID, Long> adminCounts = tenantRoleService.countActiveAdminsPerTenant();
+        var enriched = tenantService.listTenants().stream()
+                .map(tenant -> tenant.withAdminCount(adminCounts.getOrDefault(tenant.id(), 0L)))
+                .toList();
+        return PageView.of(enriched, page, size);
     }
 
     @GetMapping("/{id}")
     public TenantView get(@PathVariable UUID id) {
-        return tenantService.getTenantById(id);
+        TenantView tenant = tenantService.getTenantById(id);
+        long adminCount = tenantRoleService.countActiveTenantAdmins(TenantContext.of(id));
+        return tenant.withAdminCount(adminCount);
     }
 
     @PostMapping("/{id}/activate")

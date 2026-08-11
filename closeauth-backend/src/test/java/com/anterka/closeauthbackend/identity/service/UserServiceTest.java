@@ -150,6 +150,93 @@ class UserServiceTest {
                 .doesNotContain("s3cretpassword");
         assertThat(identity.getPasswordAlgo()).isEqualTo("bcrypt");
         assertThat(hasher.matches("s3cretpassword", identity.getPasswordHash())).isTrue();
+        // Phase 1 (tenant-admin onboarding, inert schema): a normally-created identity defaults to
+        // no-rotation-pending / no expiry — nothing sets these yet, so a plain create must leave them alone.
+        assertThat(identity.isMustChangePassword()).isFalse();
+        assertThat(identity.getTempCredentialExpiresAt()).isNull();
+    }
+
+    // ---- Phase 1 (tenant-admin onboarding, inert schema): must_change_password / temp_credential_expires_at
+    // are untouched by every EXISTING password-mutation path. Nothing issues a temp credential yet, so the only
+    // way either field is ever true/non-null today is a fixture that sets it directly, as below.
+
+    @Test
+    void resetLocalPasswordDoesNotTouchCredentialLifecycleFields() {
+        User user = userWithLocalPassword("dana@x.com", "old-pass", UserStatus.ACTIVE);
+        UserIdentity identity = user.getIdentities().get(0);
+        identity.setMustChangePassword(true);
+        java.time.Instant expiry = java.time.Instant.now().plusSeconds(3600);
+        identity.setTempCredentialExpiresAt(expiry);
+        when(userRepository.findByIdInTenant(user.getId(), TENANT_A)).thenReturn(Optional.of(user));
+
+        userService.resetLocalPassword(ctxA, user.getId(), "brand-new-password");
+
+        assertThat(identity.isMustChangePassword())
+                .as("resetLocalPassword must not clear/set the rotation flag — Phase 1 is inert").isTrue();
+        assertThat(identity.getTempCredentialExpiresAt())
+                .as("resetLocalPassword must not touch the temp-credential expiry — Phase 1 is inert").isEqualTo(expiry);
+    }
+
+    @Test
+    void changePasswordDoesNotTouchCredentialLifecycleFields() {
+        User user = userWithLocalPassword("erin@x.com", "old-pass", UserStatus.ACTIVE);
+        UserIdentity identity = user.getIdentities().get(0);
+        identity.setMustChangePassword(true);
+        java.time.Instant expiry = java.time.Instant.now().plusSeconds(3600);
+        identity.setTempCredentialExpiresAt(expiry);
+        when(userRepository.findByIdInTenant(user.getId(), TENANT_A)).thenReturn(Optional.of(user));
+
+        userService.changePassword(ctxA,
+                new com.anterka.closeauthbackend.identity.dto.ChangePasswordCommand(
+                        user.getId(), "old-pass", "brand-new-password"));
+
+        assertThat(identity.isMustChangePassword())
+                .as("changePassword must not clear/set the rotation flag — Phase 1 is inert").isTrue();
+        assertThat(identity.getTempCredentialExpiresAt())
+                .as("changePassword must not touch the temp-credential expiry — Phase 1 is inert").isEqualTo(expiry);
+    }
+
+    // ---- Phase 2 (forced credential rotation): getLocalCredentialState / completeForcedRotation ------------------
+
+    @Test
+    void getLocalCredentialStateReturnsCurrentFlags() {
+        User user = userWithLocalPassword("frank@x.com", "temp-pass", UserStatus.ACTIVE);
+        UserIdentity identity = user.getIdentities().get(0);
+        identity.setMustChangePassword(true);
+        java.time.Instant expiry = java.time.Instant.now().plusSeconds(3600);
+        identity.setTempCredentialExpiresAt(expiry);
+        when(userRepository.findByIdInTenant(user.getId(), TENANT_A)).thenReturn(Optional.of(user));
+
+        var state = userService.getLocalCredentialState(ctxA, user.getId());
+
+        assertThat(state).isPresent();
+        assertThat(state.get().mustChangePassword()).isTrue();
+        assertThat(state.get().tempCredentialExpiresAt()).isEqualTo(expiry);
+    }
+
+    @Test
+    void getLocalCredentialStateEmptyWhenNoLocalPasswordIdentity() {
+        User user = userWithStatus(UserStatus.ACTIVE);
+        when(userRepository.findByIdInTenant(user.getId(), TENANT_A)).thenReturn(Optional.of(user));
+
+        assertThat(userService.getLocalCredentialState(ctxA, user.getId())).isEmpty();
+    }
+
+    @Test
+    void completeForcedRotationSetsPasswordAndClearsBothLifecycleFields() {
+        User user = userWithLocalPassword("grace@x.com", "temp-pass", UserStatus.ACTIVE);
+        UserIdentity identity = user.getIdentities().get(0);
+        identity.setMustChangePassword(true);
+        identity.setTempCredentialExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findByIdInTenant(user.getId(), TENANT_A)).thenReturn(Optional.of(user));
+
+        userService.completeForcedRotation(ctxA, user.getId(), "brand-new-real-password");
+
+        assertThat(identity.isMustChangePassword()).as("rotation must clear the flag").isFalse();
+        assertThat(identity.getTempCredentialExpiresAt()).as("rotation must clear the expiry").isNull();
+        assertThat(hasher.matches("brand-new-real-password", identity.getPasswordHash())).isTrue();
+        assertThat(hasher.matches("temp-pass", identity.getPasswordHash()))
+                .as("the old temp password must no longer match").isFalse();
     }
 
     // ---- verifyPassword primitive + enumeration-safety --------------------

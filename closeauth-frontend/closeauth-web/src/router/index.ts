@@ -77,6 +77,18 @@ const router = createRouter({
       path: '/reset-password',
       component: () => import('@/views/auth/ResetPasswordView.vue'),
     },
+    // Phase 4a: the BFF-hosted landing page for tenant-onboarding password
+    // rotation — PasswordRotationService.rotationPageUrl's confirmed
+    // `{bffBaseUrl}/password-rotation?token=...&client_id=...` shape (plus,
+    // only on the temp-password on-ramp, `&authorize_query=...`). Public,
+    // no meta — same as /reset-password, this must be reachable by an
+    // unauthenticated user with no session; the router's only guard
+    // (beforeEach below) early-exits for any route without
+    // requiresTenantAdmin/requiresPlatformAdmin meta.
+    {
+      path: '/password-rotation',
+      component: () => import('@/views/auth/PasswordRotationView.vue'),
+    },
 
     // Stage UI-2c-ii, Deliverable 2: consent. Reached via the backend's
     // consent-required redirect, which now lands on this exact absolute path

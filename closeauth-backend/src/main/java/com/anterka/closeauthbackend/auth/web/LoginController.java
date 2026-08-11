@@ -4,6 +4,7 @@ import com.anterka.closeauthbackend.auth.dto.LoginOutcome;
 import com.anterka.closeauthbackend.auth.enums.AuthMethod;
 import com.anterka.closeauthbackend.auth.service.AuthFlowTenantResolver;
 import com.anterka.closeauthbackend.auth.service.LoginPolicyService;
+import com.anterka.closeauthbackend.auth.service.PasswordRotationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -50,7 +51,12 @@ import java.util.UUID;
  *       {@code scope}, {@code state}, {@code code_challenge}, {@code code_challenge_method}, and any OIDC extras)
  *       → on success <b>302</b> to a freshly reconstructed {@code /oauth2/authorize} URL with {@code Set-Cookie} for
  *       the session; on failure <b>401</b> with a uniform, enumeration-safe JSON body
- *       {@code {"error":"invalid_credentials"}} (a form can render it; it never reveals which factor failed).</li>
+ *       {@code {"error":"invalid_credentials"}} (a form can render it; it never reveals which factor failed —
+ *       including whether the failure was a bad credential, a rate-limit refusal, or an expired temp credential,
+ *       see {@link LoginPolicyService#authenticate}); when the correct password belongs to a credential pending
+ *       forced rotation (Phase 2, §2.2), <b>302</b> instead to the password-rotation page — <em>no</em>
+ *       {@code Set-Cookie}, no session, no code: identity was proven but access is withheld until rotation
+ *       completes at {@code POST /password-rotation/confirm}.</li>
  * </ul>
  */
 @RestController
@@ -61,6 +67,7 @@ public class LoginController {
     private final AuthFlowTenantResolver tenantResolver;
     private final LoginPolicyService loginPolicyService;
     private final LoginSuccessResponder loginSuccessResponder;
+    private final PasswordRotationService passwordRotationService;
 
     /**
      * Non-authorize form fields — excluded when reconstructing the {@code /oauth2/authorize} query string for the
@@ -107,6 +114,18 @@ public class LoginController {
         }
 
         LoginOutcome outcome = loginPolicyService.authenticate(TenantContext.of(tenantId.get()), email, password);
+        if (outcome.rotationRequired()) {
+            // The password was correct, but must_change_password is set (Phase 2, §2.2) — the caller proved
+            // identity, but NO session/code/token may be issued yet. Route to the rotation interstitial instead of
+            // establishSessionAndResolveRedirect; the original authorize request is carried forward exactly as an
+            // ordinary login already carries it (buildAuthorizeQuery, unchanged), so rotation resumes it afterward.
+            String authorizeQuery = buildAuthorizeQuery(request);
+            String rotationUrl = passwordRotationService.beginRotation(
+                    TenantContext.of(tenantId.get()), outcome.userId(), email, clientId, authorizeQuery);
+            log.info("Login requires password rotation user={} tenant={} → {}", outcome.userId(), tenantId.get(),
+                    rotationUrl);
+            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(rotationUrl)).build();
+        }
         if (!outcome.success()) {
             return invalidCredentials();
         }

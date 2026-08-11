@@ -20,12 +20,18 @@
 // (this link opened in a different tab/browser than the one that requested
 // it — the common case for email links), the fallback is a bare `/login`
 // with no client_id, which is a normal, expected outcome, not an error.
-import { computed, reactive, ref } from 'vue'
+//
+// Phase 4a: the field pair + match check now live in the shared
+// NewPasswordFields.vue (per decision 8's intent — one implementation of the
+// "type a new password twice" form, reused by the new rotation view). The
+// submit target, success semantics, and error copy below are UNCHANGED from
+// before that extraction — idPrefix="reset-password" keeps this view's
+// element ids identical, so ResetPasswordView.spec.ts required no edits.
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AuthLayout from '@/layouts/AuthLayout.vue'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import NewPasswordFields from '@/components/auth/NewPasswordFields.vue'
 import { useOAuthTheme } from '@/composables/useOAuthTheme'
 import { confirmPasswordReset } from '@/api/authPasswordReset'
 import { readForgotPasswordQuery } from '@/api/helpers/passwordResetContext'
@@ -44,11 +50,6 @@ const clientId = computed(() => {
 const { branding, hasLogo } = useOAuthTheme(clientId.value)
 const companyLabel = computed(() => branding.value.companyName || 'CloseAuth')
 
-const form = reactive({
-  password: '',
-  confirmPassword: '',
-})
-const fieldErrors = reactive<Record<string, string>>({})
 const bannerMessage = ref('')
 const isSubmitting = ref(false)
 const isReset = ref(false)
@@ -61,25 +62,15 @@ const loginHref = computed(() => {
   return savedQuery ? `/login${savedQuery}` : '/login'
 })
 
-function clearErrors(): void {
-  bannerMessage.value = ''
-  for (const key of Object.keys(fieldErrors)) delete fieldErrors[key]
-}
-
-async function handleSubmit(): Promise<void> {
+async function handleSubmit(password: string): Promise<void> {
   if (isSubmitting.value) return
-  clearErrors()
-
-  if (form.confirmPassword !== form.password) {
-    fieldErrors.confirmPassword = 'Passwords do not match.'
-    return
-  }
+  bannerMessage.value = ''
 
   isSubmitting.value = true
   try {
     const result = await confirmPasswordReset({
       token: token.value,
-      password: form.password,
+      password,
       clientId: clientId.value || undefined,
     })
 
@@ -126,42 +117,14 @@ async function handleSubmit(): Promise<void> {
       </RouterLink>
     </div>
 
-    <form v-else class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
-      <div class="flex flex-col gap-1.5">
-        <Label for="reset-password-new">New password</Label>
-        <Input
-          id="reset-password-new"
-          v-model="form.password"
-          type="password"
-          autocomplete="new-password"
-          required
-          :disabled="isSubmitting"
-          :aria-invalid="!!fieldErrors.password"
-        />
-        <p v-if="fieldErrors.password" role="alert" class="text-sm text-destructive">{{ fieldErrors.password }}</p>
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <Label for="reset-password-confirm">Confirm new password</Label>
-        <Input
-          id="reset-password-confirm"
-          v-model="form.confirmPassword"
-          type="password"
-          autocomplete="new-password"
-          required
-          :disabled="isSubmitting"
-          :aria-invalid="!!fieldErrors.confirmPassword"
-        />
-        <p v-if="fieldErrors.confirmPassword" role="alert" class="text-sm text-destructive">
-          {{ fieldErrors.confirmPassword }}
-        </p>
-      </div>
-
-      <p v-if="bannerMessage" role="alert" class="text-sm text-destructive">{{ bannerMessage }}</p>
-
-      <Button type="submit" class="w-full" :disabled="isSubmitting">
-        {{ isSubmitting ? 'Resetting…' : 'Reset password' }}
-      </Button>
-    </form>
+    <NewPasswordFields
+      v-else
+      id-prefix="reset-password"
+      submit-label="Reset password"
+      submitting-label="Resetting…"
+      :is-submitting="isSubmitting"
+      :banner-message="bannerMessage"
+      @submit="handleSubmit"
+    />
   </AuthLayout>
 </template>

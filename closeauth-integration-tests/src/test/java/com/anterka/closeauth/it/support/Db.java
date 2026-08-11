@@ -11,12 +11,18 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * A minimal, <b>read-only</b> JDBC helper for direct database assertions against the running Postgres container — just
- * enough to keep raw SQL out of every test method, deliberately NOT a repository/ORM layer (this module owns no
- * entities). A journey uses it to prove a side effect really landed in the DB, not merely that the API claimed success.
+ * A minimal JDBC helper for direct database assertions against the running Postgres container — just enough to keep
+ * raw SQL out of every test method, deliberately NOT a repository/ORM layer (this module owns no entities). A
+ * journey uses it to prove a side effect really landed in the DB, not merely that the API claimed success.
  *
  * <p>Each call opens and closes its own short-lived connection (test volumes are tiny; pooling would be premature).
- * Only {@code SELECT} is ever issued here — this module never mutates the database.
+ *
+ * <p><b>{@link #execute} is a deliberate, narrow exception to "queries only."</b> {@code TempCredentialRotationJourneyTest}
+ * (Phase 2 of the tenant-onboarding design) deliberately sets {@code user_identities.must_change_password} directly
+ * via SQL rather than through {@code TenantAdminBootstrapJourneyTest}'s (Phase 3) issuance endpoints — it exists to
+ * prove the rotation GATE in isolation, against a row constructed independently of any one issuance path, so the
+ * two test classes don't duplicate coverage of each other's concern. This is not a general-purpose write escape
+ * hatch — every other journey in this module stays read-only through {@link #queryOne}.
  */
 public final class Db {
 
@@ -53,6 +59,23 @@ public final class Db {
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Read-only DB query failed: " + sql, e);
+        }
+    }
+
+    /**
+     * Runs a parameterized DML statement (UPDATE/INSERT/DELETE) and returns the affected row count. See the class
+     * javadoc — this exists ONLY because Phase 2's fixtures need to set {@code must_change_password} /
+     * {@code temp_credential_expires_at} directly; no product code sets them yet. Not for general use.
+     */
+    public int execute(String sql, Object... params) {
+        try (Connection connection = DriverManager.getConnection(jdbcUrl, username, password);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int i = 0; i < params.length; i++) {
+                statement.setObject(i + 1, params[i]);
+            }
+            return statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("DB write failed: " + sql, e);
         }
     }
 }

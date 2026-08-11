@@ -65,7 +65,7 @@ class ResourceServerServiceTest {
 
         // requireActiveTenant returns a live tenant view (autoCreate reads its slug).
         when(tenantService.requireActiveTenant(any())).thenReturn(
-                new TenantView(TENANT_A, "acme", "Acme", TenantStatus.ACTIVE, Instant.now(), null, null));
+                new TenantView(TENANT_A, "acme", "Acme", TenantStatus.ACTIVE, Instant.now(), null, null, null));
         when(rsRepo.save(any(ResourceServer.class))).thenAnswer(inv -> {
             ResourceServer r = inv.getArgument(0);
             if (r.getId() == null) {

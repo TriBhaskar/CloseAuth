@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.audit.event;
 import com.anterka.closeauthbackend.audit.enums.AuditEventType;
 import com.anterka.closeauthbackend.audit.enums.AuditOutcome;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -143,6 +144,22 @@ public final class AuditEvents {
 
     public static CloseAuthAuditEvent inviteRevoked(UUID tenantId, UUID inviteId) {
         return base(AuditEventType.INVITE_REVOKED).tenantId(tenantId).data(data("invite_id", str(inviteId))).build();
+    }
+
+    /**
+     * A system-generated temporary credential was issued for a tenant's first admin (Phase 3 of the
+     * tenant-onboarding design, {@code TenantOnboardingService.bootstrapFirstAdmin}). Actor deliberately UNSET —
+     * the calling platform admin is filled in from the security context (admin-mutation convention).
+     */
+    public static CloseAuthAuditEvent tempCredentialIssued(UUID tenantId, UUID userId, Instant expiresAt) {
+        return base(AuditEventType.TEMP_CREDENTIAL_ISSUED).tenantId(tenantId).subjectUserId(userId)
+                .data(data("expires_at", str(expiresAt))).build();
+    }
+
+    /** As {@link #tempCredentialIssued}, but for {@code TenantOnboardingService.reissueOnboardingCredential}. */
+    public static CloseAuthAuditEvent tempCredentialReissued(UUID tenantId, UUID userId, Instant expiresAt) {
+        return base(AuditEventType.TEMP_CREDENTIAL_REISSUED).tenantId(tenantId).subjectUserId(userId)
+                .data(data("expires_at", str(expiresAt))).build();
     }
 
     // ---- Session -----------------------------------------------------------
@@ -290,6 +307,10 @@ public final class AuditEvents {
     }
 
     private static String str(UUID value) {
+        return value == null ? null : value.toString();
+    }
+
+    private static String str(Instant value) {
         return value == null ? null : value.toString();
     }
 

@@ -48,6 +48,10 @@ public enum AuditEventType {
     INVITE_ISSUED,
     INVITE_REVOKED,
 
+    // --- Tenant-admin onboarding (Phase 3 of the tenant-onboarding design; wired here) ---
+    TEMP_CREDENTIAL_ISSUED,
+    TEMP_CREDENTIAL_REISSUED,
+
     // --- Session (Stage 5; wired Stage 8) ---
     SESSION_CREATED,
     SESSION_REVOKED,

@@ -15,6 +15,7 @@ import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
 import com.anterka.closeauthbackend.identity.dto.ChangePasswordCommand;
 import com.anterka.closeauthbackend.identity.dto.CreateUserWithPasswordCommand;
+import com.anterka.closeauthbackend.identity.dto.LocalCredentialState;
 import com.anterka.closeauthbackend.identity.dto.PasswordVerificationResult;
 import com.anterka.closeauthbackend.identity.dto.PasswordVerificationResult.FailureReason;
 import com.anterka.closeauthbackend.identity.dto.UserView;
@@ -29,6 +30,7 @@ import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -193,6 +195,67 @@ public class UserService {
         } else {
             buildLocalPasswordIdentity(user, newRawPassword);
         }
+    }
+
+    /**
+     * Reads the credential-lifecycle state of {@code userId}'s {@code LOCAL_PASSWORD} identity (Phase 2 of the
+     * tenant-onboarding design, §2.2/§2.3) — the primitive {@code LoginPolicyService}'s shared rotation/expiry gate
+     * is built on. Empty if the user has no local password (there is no temp credential to gate — the password
+     * path would already have failed with {@code NO_LOCAL_PASSWORD} before this is ever consulted).
+     */
+    @Transactional(readOnly = true)
+    public Optional<LocalCredentialState> getLocalCredentialState(TenantContext context, UUID userId) {
+        User user = loadUserOrThrow(context, userId);
+        return findLocalPasswordIdentity(user)
+                .map(identity -> new LocalCredentialState(identity.isMustChangePassword(),
+                        identity.getTempCredentialExpiresAt()));
+    }
+
+    /**
+     * Completes a forced password rotation (Phase 2, §2.2.2): sets the real password AND clears both
+     * credential-lifecycle fields in the same transaction, so a legitimate rotation can never leave the row in an
+     * inconsistent state ({@code must_change_password=false} with a stale {@code temp_credential_expires_at}, or the
+     * reverse). Deliberately NOT built on {@link #resetLocalPassword} — that primitive is asserted elsewhere to leave
+     * these fields untouched (self-service reset is a different scenario with no lifecycle fields to clear).
+     *
+     * <p>This primitive performs NO authorization of its own; the caller ({@code PasswordRotationService}) is
+     * responsible for having proven the rotation is legitimate (a validly consumed {@code TENANT_ADMIN_ONBOARDING}
+     * one-time token).
+     */
+    @Transactional
+    public void completeForcedRotation(TenantContext context, UUID userId, String newRawPassword) {
+        tenantService.requireActiveTenant(context);
+        User user = loadUserOrThrow(context, userId);
+        UserIdentity identity = findLocalPasswordIdentity(user)
+                .orElseThrow(InvalidCredentialsException::new);
+        applyPassword(identity, newRawPassword);
+        identity.setMustChangePassword(false);
+        identity.setTempCredentialExpiresAt(null);
+    }
+
+    /**
+     * Issues a system-generated temporary credential (Phase 3 of the tenant-onboarding design,
+     * {@code docs/TENANT_ONBOARDING_UI_ANALYSIS.md} §2.4/§2.9): sets the password AND both credential-lifecycle
+     * fields in one call, so the row can never be left half-set (a temp password with no expiry, or an expiry
+     * left on what is actually a user-chosen password). The exact inverse of {@link #completeForcedRotation}.
+     *
+     * <p>On the tenant-admin bootstrap path the caller ({@code TenantOnboardingService}) has just hashed the
+     * same raw password once already via {@link #createUserWithPassword} — this hashes it again rather than
+     * exposing a second, flags-only primitive that could accidentally mark an existing, user-chosen password as
+     * temporary. One extra hash on a rare, admin-only operation is the cheaper and safer tradeoff.
+     *
+     * <p>This primitive performs NO authorization of its own; the caller is responsible for having proven the
+     * issuance is legitimate (a platform-admin-gated bootstrap/reissue operation).
+     */
+    @Transactional
+    public void issueTempCredential(TenantContext context, UUID userId, String rawTempPassword, Instant expiresAt) {
+        tenantService.requireActiveTenant(context);
+        User user = loadUserOrThrow(context, userId);
+        UserIdentity identity = findLocalPasswordIdentity(user)
+                .orElseThrow(InvalidCredentialsException::new);
+        applyPassword(identity, rawTempPassword);
+        identity.setMustChangePassword(true);
+        identity.setTempCredentialExpiresAt(expiresAt);
     }
 
     /**

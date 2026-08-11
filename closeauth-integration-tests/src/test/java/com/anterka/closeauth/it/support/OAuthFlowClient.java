@@ -373,6 +373,27 @@ public final class OAuthFlowClient {
                 .post("/login");
     }
 
+    // ---- forced password rotation (Phase 2 of the tenant-onboarding design) -----------------------------
+
+    /**
+     * Confirms a forced password rotation ({@code POST /password-rotation/confirm}) with the token carried on the
+     * {@code /login} rotation redirect, a new password, and (when resuming an interrupted login) the
+     * {@code authorize_query} carried alongside it. On success: <b>302</b> with a fresh {@code CLOSEAUTH_SESSION}
+     * {@code Set-Cookie} and a {@code Location} resuming the original {@code /oauth2/authorize} request (or the BFF
+     * default if {@code authorizeQuery} was {@code null} — the emailed-link on-ramp). <b>400</b> generic on an
+     * invalid/expired/used/stale token — never says which (no enumeration). Redirects are never auto-followed —
+     * callers that need to complete the flow follow the returned {@code Location} carrying this response's cookies,
+     * exactly as {@link #login} does for an ordinary password login.
+     */
+    public Response confirmPasswordRotation(String token, String newPassword, String clientId, String authorizeQuery) {
+        RequestSpecification spec = base().contentType(ContentType.URLENC)
+                .formParam("token", token).formParam("password", newPassword).formParam("client_id", clientId);
+        if (authorizeQuery != null) {
+            spec.formParam("authorize_query", authorizeQuery);
+        }
+        return spec.post("/password-rotation/confirm");
+    }
+
     // ---- internals ---------------------------------------------------------
 
     private Response authorize(String clientId, String scope, String codeChallenge, String state, Map<String, String> jar) {

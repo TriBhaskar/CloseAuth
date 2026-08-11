@@ -515,3 +515,77 @@ func TestAdminRolesRoutes_MutatingWithoutCSRFToken_Returns403(t *testing.T) {
 		}
 	}
 }
+
+// TestPlatformRoutes_MissingSession_Returns401 is the /platform/api/**
+// counterpart of TestAdminUsersRoutes_MissingSession_Returns401 — that group
+// previously had no always-run structural tests at all (only the
+// Docker-gated platform_console_test.go / platform_onboarding_test.go
+// exercise it against a real stack). Covers the full existing surface
+// (tenants, admins) plus Stage UI-4b's three new onboarding routes, so a
+// route accidentally registered outside RequirePlatformSession's group would
+// be caught without needing Docker.
+func TestPlatformRoutes_MissingSession_Returns401(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	tenantID := "11111111-1111-1111-1111-111111111111"
+	adminID := "33333333-3333-3333-3333-333333333333"
+	paths := []string{
+		"/platform/api/tenants",
+		"/platform/api/tenants/" + tenantID,
+		"/platform/api/tenants/" + tenantID + "/users",
+		"/platform/api/admins",
+		"/platform/api/admins/" + adminID + "/roles",
+	}
+	for _, p := range paths {
+		resp, err := http.Get(ts.URL + p)
+		if err != nil {
+			t.Fatalf("GET %s: %v", p, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("GET %s: status = %d, want 401 (no session)", p, resp.StatusCode)
+		}
+	}
+}
+
+// TestPlatformRoutes_MutatingWithoutCSRFToken_Returns403 is the
+// /platform/api/** counterpart of TestAdminUsersRoutes_MutatingWithoutCSRFToken_Returns403
+// — CSRFValidationMiddleware sits on the /platform/api subrouter, ahead of
+// RequirePlatformSession, so this holds even with no session cookie at all
+// (see platform_api_result.go's own doc comment on CSRF-before-session
+// ordering).
+func TestPlatformRoutes_MutatingWithoutCSRFToken_Returns403(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	tenantID := "11111111-1111-1111-1111-111111111111"
+	userID := "22222222-2222-2222-2222-222222222222"
+	adminID := "33333333-3333-3333-3333-333333333333"
+
+	cases := []struct{ method, path string }{
+		{http.MethodPost, "/platform/api/tenants"},
+		{http.MethodPost, "/platform/api/tenants/" + tenantID + "/activate"},
+		{http.MethodDelete, "/platform/api/tenants/" + tenantID},
+		{http.MethodPost, "/platform/api/tenants/" + tenantID + "/bootstrap-admin"},
+		{http.MethodPost, "/platform/api/tenants/" + tenantID + "/users/" + userID + "/reissue-onboarding-credential"},
+		{http.MethodPost, "/platform/api/admins"},
+		{http.MethodPost, "/platform/api/admins/" + adminID + "/suspend"},
+	}
+	for _, c := range cases {
+		req, err := http.NewRequest(c.method, ts.URL+c.path, nil)
+		if err != nil {
+			t.Fatalf("build %s %s: %v", c.method, c.path, err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", c.method, c.path, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s: status = %d, want 403 (missing CSRF token)", c.method, c.path, resp.StatusCode)
+		}
+	}
+}

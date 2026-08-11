@@ -222,6 +222,26 @@ public final class AdminApiClient {
     }
 
     /**
+     * Bootstraps a tenant's first {@code TENANT_ADMIN} with a system-generated temporary credential
+     * ({@code POST /v1/platform/tenants/{tid}/bootstrap-admin}, Phase 3 onboarding). Raw response — callers assert
+     * status themselves (a repeat call against a tenant that already has an admin is expected to 409 via
+     * {@link #problemCode}).
+     */
+    public Response bootstrapTenantAdmin(String platformToken, String tenantId, String email) {
+        return postJson(platformToken, "/v1/platform/tenants/{tid}/bootstrap-admin", Map.of("email", email), tenantId);
+    }
+
+    /**
+     * Reissues a tenant admin's onboarding temporary credential
+     * ({@code POST /v1/platform/tenants/{tid}/users/{uid}/reissue-onboarding-credential}, Phase 3). Raw response —
+     * callers assert status themselves (409 on an already-rotated user via {@link #problemCode}).
+     */
+    public Response reissueOnboardingCredential(String platformToken, String tenantId, String userId) {
+        return post(platformToken, "/v1/platform/tenants/{tid}/users/{uid}/reissue-onboarding-credential",
+                tenantId, userId);
+    }
+
+    /**
      * Sets a tenant's registration mode ({@code OPEN | EMAIL_VERIFIED | ADMIN_APPROVED | INVITE_ONLY}) via
      * {@code PUT /v1/tenants/{tid}/registration-config} (body {@code {"mode": ...}}). Asserts 200 and that the returned
      * config echoes the requested mode. Every registration-mode journey sets a mode this way.

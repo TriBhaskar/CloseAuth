@@ -162,6 +162,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// ──────────────────────────────────────────────────────────────────────────
 	r.Post("/api/auth/login", s.handleLoginJSON)
 
+	// Phase 4a: tenant-onboarding password rotation's confirm step — the
+	// same redirect-vs-JSON-error translation as /api/auth/login above,
+	// because /password-rotation/confirm also returns a 302 + Set-Cookie on
+	// success (unlike /password-reset/confirm's plain 200, which is why that
+	// route above is a bare relay and this one isn't). See
+	// handlers_password_rotation_proxy.go's doc comment.
+	r.Post("/api/auth/password-rotation/confirm", s.handlePasswordRotationConfirm)
+
 	// ──────────────────────────────────────────────────────────────────────────
 	// Surface 2 — tenant-admin console (Stage UI-3a): the BFF as a real OAuth2
 	// client. GET /api/csrf lives at the root (settled decision: the CSRF
@@ -299,6 +307,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 				gr.Post("/tenants/{tenantId}/activate", s.handlePlatformTenantLifecycle("activate"))
 				gr.Post("/tenants/{tenantId}/suspend", s.handlePlatformTenantLifecycle("suspend"))
 				gr.Delete("/tenants/{tenantId}", s.handlePlatformTenantDelete)
+
+				// Stage UI-4b: bootstrap a tenant's first admin, list its
+				// users (so the console can find a userId to reissue for),
+				// and reissue an unused onboarding credential. See
+				// handlers_platform_onboarding.go's header comment.
+				gr.Get("/tenants/{tenantId}/users", s.handlePlatformTenantUsersList)
+				gr.Post("/tenants/{tenantId}/bootstrap-admin", s.handlePlatformTenantBootstrapAdmin)
+				gr.Post("/tenants/{tenantId}/users/{userId}/reissue-onboarding-credential", s.handlePlatformTenantReissueCredential)
 
 				gr.Get("/admins", s.handlePlatformAdminsList)
 				gr.Post("/admins", s.handlePlatformAdminCreate)

@@ -183,7 +183,13 @@ public class CloseAuthProperties {
     @Getter
     @Setter
     public static class Security {
+        /**
+         * Login-policy rate limit (read by {@code LoginPolicyService}): failed password-login attempts allowed
+         * per account (tenant + email) within {@link #lockoutDurationMinutes}. Only failures count — a successful
+         * login never consumes budget.
+         */
         private int maxLoginAttempts = 5;
+        /** The rate-limit window length in minutes — a fixed window, not a separate post-limit cooldown. */
         private int lockoutDurationMinutes = 30;
 
         /**
@@ -231,6 +237,8 @@ public class CloseAuthProperties {
         private Duration magicLinkTtl = Duration.ofMinutes(15);
         private Duration passwordResetTtl = Duration.ofMinutes(30);
         private Duration inviteTtl = Duration.ofDays(7);
+        /** Tenant-admin onboarding link; matches the temp credential's own 7-day lifetime (§2.3), not the unrelated forgot-password TTL. */
+        private Duration tenantAdminOnboardingTtl = Duration.ofDays(7);
 
         // Issuance rate-limit (per tenant+purpose+target) — anti email-bombing / enumeration-via-issuance.
         private int issuanceMaxPerWindow = 3;

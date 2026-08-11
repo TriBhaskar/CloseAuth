@@ -71,6 +71,15 @@ public class SmtpAuthNotificationSender implements AuthNotificationSender {
                         + inviteUrl + "\n\nThis invitation will expire and can be used only once.");
     }
 
+    @Override
+    public void sendTenantAdminOnboardingLink(String target, String onboardingUrl, String tenantName) {
+        send(target, "TENANT_ADMIN_ONBOARDING", "You're set up as an administrator for " + tenantName + " on CloseAuth",
+                "A CloseAuth platform administrator has set you up as an administrator for " + tenantName
+                        + ". Click the link below to set your own password and sign in:\n\n" + onboardingUrl
+                        + "\n\nThis link will expire and can be used only once.\n\n"
+                        + "If you were not expecting this, contact your platform administrator.");
+    }
+
     /** Sends one plain-text message. The body carries the secret and is NEVER logged; only recipient + event are. */
     private void send(String to, String eventType, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();

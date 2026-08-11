@@ -13,6 +13,7 @@ import com.anterka.closeauthbackend.rbac.dto.TenantRoleView;
 import com.anterka.closeauthbackend.rbac.dto.UpdateTenantRoleCommand;
 import com.anterka.closeauthbackend.rbac.entity.TenantRole;
 import com.anterka.closeauthbackend.rbac.entity.UserTenantRole;
+import com.anterka.closeauthbackend.rbac.repository.TenantAdminCountProjection;
 import com.anterka.closeauthbackend.rbac.repository.TenantRoleRepository;
 import com.anterka.closeauthbackend.rbac.repository.UserTenantRoleRepository;
 import com.anterka.closeauthbackend.tenant.service.TenantService;
@@ -21,8 +22,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Tenant-role tier (§7.9): CRUD for tenant roles (system + custom), assignment/revocation, and the
@@ -170,6 +173,31 @@ public class TenantRoleService {
         return tenantRoleRepository.findByTenantIdAndName(context.tenantId(), SystemRoleNames.TENANT_ADMIN)
                 .map(role -> userTenantRoleRepository.countByTenantIdAndTenantRoleId(context.tenantId(), role.getId()))
                 .orElse(0L);
+    }
+
+    /**
+     * Number of users holding {@code TENANT_ADMIN} in the tenant who are ALSO {@code ACTIVE} — i.e. admins who can
+     * actually authenticate right now. Unlike {@link #countTenantAdmins}, a suspended/deleted holder's dormant
+     * assignment does not count. This is the semantics {@code TenantOnboardingService}'s "tenant already has an
+     * admin" guard (Phase 3, §2.9) and the platform tenant-list "has an admin" signal (§1.16) both want — a tenant
+     * whose only admin has gone dormant should read (and be treatable) as adminless, same as one with none at all.
+     */
+    @Transactional(readOnly = true)
+    public long countActiveTenantAdmins(TenantContext context) {
+        return tenantRoleRepository.findByTenantIdAndName(context.tenantId(), SystemRoleNames.TENANT_ADMIN)
+                .map(role -> userTenantRoleRepository.countActiveHoldersByTenantAndRole(context.tenantId(), role.getId()))
+                .orElse(0L);
+    }
+
+    /**
+     * Cross-tenant map of tenantId → active-{@code TENANT_ADMIN}-holder count, across EVERY tenant in one query
+     * (§1.16) — backs the platform tenant list's "has an admin" signal without an N+1 over
+     * {@link #countActiveTenantAdmins} per tenant. A tenant absent from the map has zero active admins.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, Long> countActiveAdminsPerTenant() {
+        return userTenantRoleRepository.countActiveAdminsPerTenant(SystemRoleNames.TENANT_ADMIN).stream()
+                .collect(Collectors.toMap(TenantAdminCountProjection::getTenantId, TenantAdminCountProjection::getAdminCount));
     }
 
     /**

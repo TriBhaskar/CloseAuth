@@ -47,4 +47,22 @@ public interface UserTenantRoleRepository extends JpaRepository<UserTenantRole, 
                    AND utr.tenant_role_id = :roleId AND u.status = 'ACTIVE')""",
             nativeQuery = true)
     boolean isActiveHolder(@Param("userId") UUID userId, @Param("tenantId") UUID tenantId, @Param("roleId") UUID roleId);
+
+    /**
+     * Per-tenant count of active {@code roleName} holders, across ALL tenants in one query (§1.16 of
+     * {@code docs/TENANT_ONBOARDING_UI_ANALYSIS.md}) — backs the platform tenant list's "has an admin" signal
+     * (caller passes {@code SystemRoleNames.TENANT_ADMIN}, kept a bind parameter rather than hardcoded here so the
+     * two can never drift apart). Additive alongside {@link #countActiveHoldersByTenantAndRole}, which is
+     * single-tenant-scoped and used by the last-admin invariant; this is the cross-tenant sibling the tenant list
+     * needs, avoiding an N+1 over tenants. A tenant with zero active holders is simply absent from the result —
+     * there is no zero-count row.
+     */
+    @Query(value = """
+            SELECT utr.tenant_id AS tenantId, count(*) AS adminCount
+              FROM user_tenant_roles utr
+              JOIN tenant_roles tr ON tr.id = utr.tenant_role_id
+              JOIN users u ON u.id = utr.user_id
+             WHERE tr.name = :roleName AND u.status = 'ACTIVE'
+             GROUP BY utr.tenant_id""", nativeQuery = true)
+    List<TenantAdminCountProjection> countActiveAdminsPerTenant(@Param("roleName") String roleName);
 }

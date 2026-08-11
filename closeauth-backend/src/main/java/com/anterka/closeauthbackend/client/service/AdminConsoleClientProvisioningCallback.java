@@ -62,7 +62,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminConsoleClientProvisioningCallback implements TenantProvisioningCallback {
 
-    private static final String CLIENT_ID_PREFIX = "admin-console-";
+    /**
+     * Public (not just this class's own use): {@code TenantOnboardingService} (Phase 3) derives the same
+     * {@code admin-console-{slug}} client id to pass as the {@code client_id} of the onboarding email's rotation
+     * link, so {@code PasswordRotationController}'s tenant resolution works identically to a normal login.
+     */
+    public static final String CLIENT_ID_PREFIX = "admin-console-";
 
     private final RegisteredClientRepository registeredClientRepository;
     private final TenantRepository tenantRepository;

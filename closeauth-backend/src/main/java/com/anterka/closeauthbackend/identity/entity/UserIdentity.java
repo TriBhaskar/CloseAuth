@@ -64,6 +64,19 @@ public class UserIdentity {
     @Column(name = "password_algo", length = 50)
     private String passwordAlgo;
 
+    /**
+     * Forced-rotation gate for a system-generated temp credential (§2.2 of the tenant-onboarding design). Set by
+     * {@code UserService.issueTempCredential} (Phase 3 issuance — bootstrap/reissue), read by
+     * {@code LoginPolicyService}'s shared credential-lifecycle gate, cleared by
+     * {@code UserService.completeForcedRotation} on a successful rotation.
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
+    /** Hard expiry of a system-generated temp credential (§2.3). Null for user-chosen passwords. */
+    @Column(name = "temp_credential_expires_at")
+    private Instant tempCredentialExpiresAt;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata")
     private String metadata;

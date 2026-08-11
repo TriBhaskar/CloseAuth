@@ -13,5 +13,7 @@ public enum OneTimeTokenPurpose {
     /** Opaque high-entropy link authorizing a password reset. */
     PASSWORD_RESET,
     /** Opaque high-entropy link authorizing registration into a tenant (invite-only mode). */
-    INVITE
+    INVITE,
+    /** Opaque high-entropy link letting a newly-provisioned tenant admin rotate their system-generated temp credential. */
+    TENANT_ADMIN_ONBOARDING
 }

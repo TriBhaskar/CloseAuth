@@ -44,4 +44,23 @@ public class RedisRateLimiter {
             return true;
         }
     }
+
+    /**
+     * Read-only variant of {@link #tryAcquire}: reports whether {@code key} is already at or over {@code limit}
+     * WITHOUT recording a hit (no {@code INCR}, no {@code EXPIRE}, never creates the key). Callers that only want
+     * to count specific outcomes (e.g. login: only failed attempts should consume budget, not successes) use this
+     * to gate, then call {@link #tryAcquire} themselves on whichever branch should actually record.
+     *
+     * @return {@code true} if the recorded count is already {@code >= limit}; {@code false} if under the limit,
+     *         the key doesn't exist yet, or Redis is unavailable (fail-open, matching {@link #tryAcquire}'s posture)
+     */
+    public boolean isLimited(String key, int limit) {
+        try {
+            String value = redisTemplate.opsForValue().get(key);
+            return value != null && Long.parseLong(value) >= limit;
+        } catch (RuntimeException redisDown) {
+            log.error("Redis unavailable — rate limiter FAIL-OPEN (read) for key '{}'.", key, redisDown);
+            return false;
+        }
+    }
 }

@@ -283,6 +283,52 @@ func (f *Fixtures) IssueInvite(ctx context.Context, platformToken, tenantID, ema
 	return created.ID, nil
 }
 
+// BootstrapTenantAdminResult is the temp credential + user identity created
+// by TenantOnboardingService.bootstrapFirstAdmin — what the password-
+// rotation proxy tests need to then drive a rotation-required login.
+type BootstrapTenantAdminResult struct {
+	UserID            string
+	Email             string
+	TemporaryPassword string
+}
+
+// BootstrapTenantAdmin drives the platform-admin "bootstrap first admin"
+// endpoint (POST /v1/platform/tenants/{tenantId}/bootstrap-admin,
+// @RequiresPlatformAdmin) — the ONLY way a user enters the
+// must_change_password state Phase 4a's password-rotation proxy tests need
+// to exercise the flow end to end. Mirrors TenantOnboardingService.
+// bootstrapFirstAdmin's own contract: 201, {user: {...}, temporaryPassword,
+// temporaryPasswordExpiresAt}.
+func (f *Fixtures) BootstrapTenantAdmin(ctx context.Context, platformToken, tenantID, email string) (BootstrapTenantAdminResult, error) {
+	resp, err := f.admin.PostJSON(ctx, platformToken, "/v1/platform/tenants/"+tenantID+"/bootstrap-admin", map[string]string{
+		"email": email,
+	})
+	if err != nil {
+		return BootstrapTenantAdminResult{}, fmt.Errorf("bootstrap tenant admin: %w", err)
+	}
+	if resp.StatusCode != 201 {
+		return BootstrapTenantAdminResult{}, fmt.Errorf("bootstrap tenant admin: %s", describeFailure(resp))
+	}
+	var created struct {
+		User struct {
+			ID    string `json:"id"`
+			Email string `json:"email"`
+		} `json:"user"`
+		TemporaryPassword string `json:"temporaryPassword"`
+	}
+	if err := resp.JSON(&created); err != nil {
+		return BootstrapTenantAdminResult{}, fmt.Errorf("bootstrap tenant admin: decode response: %w", err)
+	}
+	if created.TemporaryPassword == "" {
+		return BootstrapTenantAdminResult{}, fmt.Errorf("bootstrap tenant admin: response carried no temporaryPassword")
+	}
+	return BootstrapTenantAdminResult{
+		UserID:            created.User.ID,
+		Email:             created.User.Email,
+		TemporaryPassword: created.TemporaryPassword,
+	}, nil
+}
+
 func describeFailure(resp backend.APIResponse) string {
 	if problem, err := resp.Problem(); err == nil && problem.Code != "" {
 		return fmt.Sprintf("HTTP %d %s: %s", resp.StatusCode, problem.Code, problem.Detail)

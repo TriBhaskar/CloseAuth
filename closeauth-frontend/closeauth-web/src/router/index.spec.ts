@@ -245,3 +245,22 @@ describe('router platform-admin guard (UI-4)', () => {
     expect(loginRoute?.meta.requiresPlatformAdmin).toBeUndefined()
   })
 })
+
+// Phase 4a: the tenant-onboarding password-rotation landing page must be
+// reachable by an unauthenticated user with no session at all — no meta
+// flag, so the guard above should never even inspect it (the guard's early
+// exit at `if (!to.meta.requiresTenantAdmin) return true` applies to any
+// route lacking both meta flags).
+describe('router password-rotation route (Phase 4a)', () => {
+  it('resolves with no guard meta and no redirect', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fetch should not be called'))))
+
+    await router.push('/password-rotation?token=abc&client_id=admin-console-acme')
+
+    expect(router.currentRoute.value.path).toBe('/password-rotation')
+    const route = router.getRoutes().find((r) => r.path === '/password-rotation')
+    expect(route?.meta.requiresTenantAdmin).toBeUndefined()
+    expect(route?.meta.requiresPlatformAdmin).toBeUndefined()
+    expect(window.location.assign).not.toHaveBeenCalled()
+  })
+})

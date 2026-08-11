@@ -80,6 +80,7 @@ class IdentityFlowsIntegrationTest {
         @Override public void sendMagicLink(String target, String url) { magicLinks.put(target, url); }
         @Override public void sendPasswordResetLink(String target, String url) { resetLinks.put(target, url); }
         @Override public void sendInviteLink(String target, String url) { }
+        @Override public void sendTenantAdminOnboardingLink(String target, String url, String tenantName) { }
     }
 
     @TestConfiguration

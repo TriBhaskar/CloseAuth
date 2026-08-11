@@ -264,7 +264,7 @@ public class AuthorizationServerConfig {
                         // they enforce tenant-scoping internally and expose only non-sensitive data.
                         .requestMatchers("/login", "/logout", "/error", "/actuator/**",
                                 "/register", "/verify-email/**", "/magic-link/**", "/password-reset/**",
-                                "/branding", "/oauth2/consent").permitAll()
+                                "/password-rotation/**", "/branding", "/oauth2/consent").permitAll()
                         .anyRequest().authenticated())
                 // Same cross-origin-safe redirect as the @Order(1) chain above (this chain guards everything else via
                 // anyRequest().authenticated()) — must stay consistent, else this path would relocate the same bug.

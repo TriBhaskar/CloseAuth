@@ -45,6 +45,12 @@ type tenantViewBody struct {
 	Slug   string `json:"slug"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
+	// AdminCount is nil on provision/activate/suspend/delete responses (the
+	// backend leaves TenantView.adminCount unset there — see TenantView.java's
+	// doc comment) and populated only on GET /tenants and GET /tenants/{id}.
+	// Stage UI-4b's platform_onboarding_test.go is the first caller that
+	// reads it.
+	AdminCount *int64 `json:"adminCount"`
 }
 
 type platformAdminViewBody struct {

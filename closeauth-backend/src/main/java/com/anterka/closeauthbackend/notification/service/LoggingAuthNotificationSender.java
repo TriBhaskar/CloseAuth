@@ -37,4 +37,10 @@ public class LoggingAuthNotificationSender implements AuthNotificationSender {
     public void sendInviteLink(String target, String inviteUrl) {
         log.info("[notification] invite link delivered to {} (link not logged)", target);
     }
+
+    @Override
+    public void sendTenantAdminOnboardingLink(String target, String onboardingUrl, String tenantName) {
+        log.info("[notification] tenant-admin onboarding link delivered to {} for tenant {} (link not logged)",
+                target, tenantName);
+    }
 }

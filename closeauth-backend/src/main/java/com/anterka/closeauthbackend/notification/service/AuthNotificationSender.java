@@ -22,4 +22,17 @@ public interface AuthNotificationSender {
 
     /** Delivers an invitation URL (already containing the opaque invite token). */
     void sendInviteLink(String target, String inviteUrl);
+
+    /**
+     * Delivers a tenant-admin onboarding URL (Phase 3 of the tenant-onboarding design, §2.4/§2.9) — the
+     * {@code TENANT_ADMIN_ONBOARDING} rotation-page link returned by
+     * {@code PasswordRotationService.beginRotation}, sent when a platform admin bootstraps or reissues a
+     * tenant's first admin's temporary credential. Distinct from {@link #sendPasswordResetLink}: a different
+     * scenario (system-generated, admin-initiated, not self-requested) with its own copy.
+     *
+     * <p><b>Must NOT carry the temporary password</b> — only the link. The password is shown exactly once, in
+     * the API response to the platform admin who triggered issuance; the email is purely the recipient's own
+     * on-ramp to set their real password.
+     */
+    void sendTenantAdminOnboardingLink(String target, String onboardingUrl, String tenantName);
 }

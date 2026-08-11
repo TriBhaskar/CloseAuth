@@ -9,7 +9,12 @@ import type { AdminResult } from '@/api/tenantAdminProblem'
 // Mirrors tenant/enums/TenantStatus.java exactly.
 export type TenantStatus = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'DELETED'
 
-// Mirrors tenant/dto/TenantView.java exactly.
+// Mirrors tenant/dto/TenantView.java exactly. adminCount is nullable —
+// `null` means "not computed", NOT "unknown admin count coerced to zero".
+// Only GET /tenants and GET /tenants/{id} populate it (PlatformTenantController
+// joins TenantRoleService's active-admin count in); provision/activate/
+// suspend/delete return a bare TenantView with adminCount left null, so never
+// read it off a mutation response — re-list or re-get instead.
 export interface TenantView {
   id: string
   slug: string
@@ -18,6 +23,7 @@ export interface TenantView {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+  adminCount: number | null
 }
 
 // Mirrors common/web/PageView.java exactly — same shape tenantAdminUsers.ts

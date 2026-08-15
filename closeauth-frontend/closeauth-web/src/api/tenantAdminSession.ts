@@ -62,18 +62,6 @@ export async function fetchSession(slug: string): Promise<TenantAdminSessionStat
 }
 
 /**
- * POST /t/{slug}/api/signout — clears the BFF's own console session only.
- * Deliberately does NOT call the backend's /logout cascade (settled
- * decision — see handleAdminSignOut's doc comment on the Go side): signing
- * back in afterward is silent.
- */
-export async function signOut(slug: string): Promise<boolean> {
-  const result = await tenantAdminFetch(slug, '/signout', { method: 'POST' })
-  if (result.kind === 'reauth') return true
-  return result.response.ok
-}
-
-/**
  * POST /t/{slug}/api/denied/dismiss — the "try a different account" escape
  * hatch for the non-admin refusal loop (see TenantAdminDeniedView.vue).
  */

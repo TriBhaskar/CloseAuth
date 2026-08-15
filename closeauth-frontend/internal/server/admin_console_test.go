@@ -588,6 +588,162 @@ func TestAdminConsole_NonAdminUser_IsRefusedWithoutSessionOrLoop(t *testing.T) {
 	if !strings.Contains(repeatLocation, "/t/"+slug+"/denied") {
 		t.Fatalf("admin/login (repeat visit): Location = %q, want /t/%s/denied", repeatLocation, slug)
 	}
+}
+
+// TestAdminConsole_SignOut_EndsBackendSessionNotJustBFFSession proves the
+// product decision that changed after UI-4b: tenant-admin "Sign out" must
+// end the backend's whole CLOSEAUTH_SESSION (so a subsequent /admin/login
+// requires a real login again), not just the BFF's own cookies. Drives
+// GET /t/{slug}/admin/logout exactly as a browser would — a real navigation,
+// never fetch() — through the backend's RP-initiated GET /logout and back.
+func TestAdminConsole_SignOut_EndsBackendSessionNotJustBFFSession(t *testing.T) {
+	stack := testsupport.Get(t)
+	fixtures := testsupport.NewFixtures(stack)
+	ctx := context.Background()
+
+	platformToken, err := fixtures.PlatformAdminToken(ctx)
+	if err != nil {
+		t.Fatalf("mint platform admin token: %v", err)
+	}
+	tenantID, slug, err := fixtures.ProvisionActiveTenantWithSlug(ctx, platformToken)
+	if err != nil {
+		t.Fatalf("provision tenant: %v", err)
+	}
+	email := testsupport.Email("tenant-admin-logout")
+	password := "Tenant-Admin-Pw-123!"
+	userID, err := fixtures.CreateActiveUser(ctx, platformToken, tenantID, email, password)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := fixtures.AssignTenantAdmin(ctx, platformToken, tenantID, userID); err != nil {
+		t.Fatalf("assign TENANT_ADMIN: %v", err)
+	}
+	adminClientID := testsupport.AdminConsoleClientID(slug)
+
+	s := newAdminConsoleServer(stack, 30*time.Second)
+	stack.ServeBFF(t, s.RegisterRoutes())
+	bffBase := stack.BFFBaseURL()
+
+	client := newBrowserLikeClient(t)
+	returnTo := "/t/" + slug + "/console"
+
+	// ---- establish a real session, exactly like the login round-trip test ----
+	callbackURL := driveAdminLoginToCallback(t, client, bffBase, slug, adminClientID, email, password, returnTo)
+	callbackResp, err := client.Get(callbackURL)
+	if err != nil {
+		t.Fatalf("GET admin/callback: %v", err)
+	}
+	callbackResp.Body.Close()
+	if callbackResp.StatusCode != http.StatusFound {
+		t.Fatalf("admin/callback: status = %d, want 302", callbackResp.StatusCode)
+	}
+
+	sessionResp, err := client.Get(bffBase + "/t/" + slug + "/api/session")
+	if err != nil {
+		t.Fatalf("GET api/session (pre-logout): %v", err)
+	}
+	preLogoutBody, _ := readBody(sessionResp.Body)
+	var preLogout struct {
+		Authenticated bool `json:"authenticated"`
+	}
+	if err := json.Unmarshal([]byte(preLogoutBody), &preLogout); err != nil {
+		t.Fatalf("decode api/session (pre-logout): %v (body=%s)", err, preLogoutBody)
+	}
+	if !preLogout.Authenticated {
+		t.Fatalf("api/session (pre-logout): authenticated = false, want true — session never established")
+	}
+
+	// ---- GET /t/{slug}/admin/logout: the BFF's own cookies clear on THIS hop, before the backend is ever reached ----
+	logoutResp, err := client.Get(bffBase + "/t/" + slug + "/admin/logout")
+	if err != nil {
+		t.Fatalf("GET admin/logout: %v", err)
+	}
+	defer logoutResp.Body.Close()
+	if logoutResp.StatusCode != http.StatusFound {
+		t.Fatalf("admin/logout: status = %d, want 302", logoutResp.StatusCode)
+	}
+	var clearedBFFCookie *http.Cookie
+	for _, c := range logoutResp.Cookies() {
+		if c.Name == "bff_admin_session" {
+			clearedBFFCookie = c
+		}
+	}
+	if clearedBFFCookie == nil || clearedBFFCookie.MaxAge >= 0 {
+		t.Errorf("admin/logout: bff_admin_session cookie not cleared (MaxAge < 0), got %+v", clearedBFFCookie)
+	}
+	backendLogoutURL := logoutResp.Header.Get("Location")
+	if !strings.Contains(backendLogoutURL, "/logout") || strings.Contains(backendLogoutURL, "/t/"+slug) {
+		t.Fatalf("admin/logout: Location = %q, want the backend's own /logout endpoint", backendLogoutURL)
+	}
+
+	// ---- following through to the backend: the four-leg cascade runs, CLOSEAUTH_SESSION clears, and it redirects back ----
+	backendLogoutResp, err := client.Get(backendLogoutURL)
+	if err != nil {
+		t.Fatalf("GET backend /logout: %v", err)
+	}
+	defer backendLogoutResp.Body.Close()
+	if backendLogoutResp.StatusCode != http.StatusFound {
+		t.Fatalf("backend /logout: status = %d, want 302 (post_logout_redirect_uri was registered at provisioning)", backendLogoutResp.StatusCode)
+	}
+	var clearedBackendCookie *http.Cookie
+	for _, c := range backendLogoutResp.Cookies() {
+		if c.Name == "CLOSEAUTH_SESSION" {
+			clearedBackendCookie = c
+		}
+	}
+	if clearedBackendCookie == nil || clearedBackendCookie.MaxAge >= 0 {
+		t.Errorf("backend /logout: CLOSEAUTH_SESSION cookie not cleared (MaxAge < 0), got %+v", clearedBackendCookie)
+	}
+	landingURL := resolveLocation(bffBase, backendLogoutResp.Header.Get("Location"))
+	if landingURL != bffBase+returnTo {
+		t.Errorf("backend /logout redirected to %q, want %q (the console landing page)", landingURL, bffBase+returnTo)
+	}
+
+	// ---- api/session now reports anonymous (BFF cookie was cleared) ----
+	postLogoutSessionResp, err := client.Get(bffBase + "/t/" + slug + "/api/session")
+	if err != nil {
+		t.Fatalf("GET api/session (post-logout): %v", err)
+	}
+	postLogoutBody, _ := readBody(postLogoutSessionResp.Body)
+	var postLogout struct {
+		Authenticated bool `json:"authenticated"`
+	}
+	if err := json.Unmarshal([]byte(postLogoutBody), &postLogout); err != nil {
+		t.Fatalf("decode api/session (post-logout): %v (body=%s)", err, postLogoutBody)
+	}
+	if postLogout.Authenticated {
+		t.Errorf("api/session (post-logout): authenticated = true, want false")
+	}
+
+	// ---- THE load-bearing proof: /admin/login no longer resumes silently.
+	// Before this fix, CLOSEAUTH_SESSION would still be live and /oauth2/authorize
+	// would SSO-recognize it straight to a fresh code with zero /login hops
+	// (exactly what TestAdminConsole_SilentReauthorization_* proves for a
+	// still-valid session) — now it must land back on the BFF's login page.
+	resp1, err := client.Get(bffBase + "/t/" + slug + "/admin/login?returnTo=" + url.QueryEscape(returnTo))
+	if err != nil {
+		t.Fatalf("GET admin/login (post-logout): %v", err)
+	}
+	defer resp1.Body.Close()
+	if resp1.StatusCode != http.StatusFound {
+		t.Fatalf("admin/login (post-logout): status = %d, want 302", resp1.StatusCode)
+	}
+	authorizeURL := resp1.Header.Get("Location")
+
+	resp2, err := client.Get(authorizeURL)
+	if err != nil {
+		t.Fatalf("GET authorize (post-logout): %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusFound {
+		t.Fatalf("authorize (post-logout): status = %d, want 302", resp2.StatusCode)
+	}
+	resumedLocation := resp2.Header.Get("Location")
+	if !strings.Contains(resumedLocation, "/login") {
+		t.Fatalf("authorize (post-logout): Location = %q, want the BFF login page — CLOSEAUTH_SESSION must be genuinely dead, not silently SSO-resuming", resumedLocation)
+	}
+
+	t.Logf("sign-out ok: backend session revoked (four-leg cascade), BFF session cleared, SSO no longer resumes silently")
 
 	// ---- ESCAPE PROOF: dismissing the denial marker restores the ability to retry ----
 	csrfResp, err := client.Get(bffBase + "/api/csrf")

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { fetchSession, signOut as apiSignOut, type TenantAdminSessionState } from '@/api/tenantAdminSession'
+import { fetchSession, type TenantAdminSessionState } from '@/api/tenantAdminSession'
 
 // Stage UI-3a: the tenant-admin console's session store. Honors
 // stores/admin.ts's standing prohibition verbatim (that store is UI-3b's
@@ -29,10 +29,16 @@ export const useTenantAdminSessionStore = defineStore('tenantAdminSession', () =
     }
   }
 
-  async function signOut(): Promise<void> {
+  // A real top-level navigation, never fetch() — CLOSEAUTH_SESSION is
+  // SameSite=Lax, so only a genuine browser navigation to the BFF's
+  // GET /t/{slug}/admin/logout can end the backend session too (that
+  // handler clears the BFF's own cookies AND continues on through the
+  // backend's own /logout cascade). This is why signOut() doesn't return a
+  // result the caller can branch on — the page is already navigating away.
+  function signOut(): void {
     if (!slug.value) return
-    await apiSignOut(slug.value)
     state.value = { kind: 'anonymous' }
+    window.location.assign(`/t/${slug.value}/admin/logout`)
   }
 
   return { slug, state, isLoading, load, signOut }

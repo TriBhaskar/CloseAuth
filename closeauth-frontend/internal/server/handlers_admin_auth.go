@@ -183,6 +183,38 @@ func (s *Server) handleAdminAuthStart(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authorizeURL, http.StatusFound)
 }
 
+// handleAdminLogout is a real top-level browser navigation (never fetch() —
+// see this file's header comment on why: CLOSEAUTH_SESSION is SameSite=Lax).
+// Unlike handleAdminSignOut (POST /t/{slug}/api/signout, which only clears
+// the BFF's own cookies — see that handler's doc comment), this is the
+// "actually log me out" path the tenant-admin console's Sign out action
+// uses: it clears the BFF's cookies AND sends the browser on to the
+// backend's own GET /logout (RP-initiated logout, LogoutController), which
+// runs the four-leg session-revocation cascade and clears CLOSEAUTH_SESSION,
+// then redirects back to this slug's console landing page — where the
+// SPA immediately finds itself anonymous instead of silently SSO-resuming.
+func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if !validSlug(slug) {
+		http.Redirect(w, r, "/t/unknown/auth-error?reason=invalid_slug", http.StatusFound)
+		return
+	}
+	bffCfg := s.bffConfig()
+	isProd := bffCfg.IsProduction
+	middleware.ClearAdminSession(w, slug, isProd)
+	middleware.ClearOAuthContext(w, slug, isProd)
+	middleware.ClearAdminDenied(w, slug, isProd)
+
+	if s.oauthClient == nil {
+		http.Redirect(w, r, "/t/"+slug+"/console", http.StatusFound)
+		return
+	}
+
+	clientID := bffCfg.AdminClientID(slug)
+	postLogoutRedirectURI := bffCfg.BaseURL + "/t/" + slug + "/console"
+	http.Redirect(w, r, s.oauthClient.LogoutURL(clientID, postLogoutRedirectURI), http.StatusFound)
+}
+
 func (s *Server) handleAdminCallback(w http.ResponseWriter, r *http.Request) {
 	bffCfg := s.bffConfig()
 	query := r.URL.Query()

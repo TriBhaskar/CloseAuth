@@ -226,6 +226,26 @@ func (c *OAuthClient) AuthorizeURL(clientID, scope string, pkce PKCE, state stri
 	return c.url("/oauth2/authorize") + "?" + q.Encode()
 }
 
+// LogoutURL builds the absolute GET /logout URL for clientID, carrying the
+// given post_logout_redirect_uri — WITHOUT performing the request. Like
+// AuthorizeURL, this must be handed to the BROWSER as a real top-level
+// navigation, never fetched server-side or called via fetch() from the SPA:
+// CLOSEAUTH_SESSION is SameSite=Lax, so only a genuine top-level GET
+// navigation carries it across the origin boundary to the backend (see
+// LogoutController's class javadoc, "GET as well as POST", on the backend
+// side of this same reasoning). postLogoutRedirectURI must exactly match a
+// URI registered on clientID's postLogoutRedirectUris (or redirectUris) —
+// LogoutController's open-redirect guard does a literal string match, so any
+// other value is silently ignored (204, no redirect) rather than honored.
+func (c *OAuthClient) LogoutURL(clientID, postLogoutRedirectURI string) string {
+	q := url.Values{}
+	q.Set("client_id", clientID)
+	if postLogoutRedirectURI != "" {
+		q.Set("post_logout_redirect_uri", postLogoutRedirectURI)
+	}
+	return c.url("/logout") + "?" + q.Encode()
+}
+
 // Authorize hits GET /oauth2/authorize carrying jar, WITHOUT logging in, and
 // classifies the response. It does not mutate jar; the result carries the
 // (possibly updated) jar to thread into a follow-up call.

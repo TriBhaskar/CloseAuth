@@ -90,6 +90,12 @@ public class AdminConsoleClientProvisioningCallback implements TenantProvisionin
                 .clientAuthenticationMethod(ClientAuthenticationMethod.NONE) // public: no secret, ever
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE) // ONLY grant — no refresh_token
                 .redirectUri(properties.getBff().getAdminCallback())
+                // Registered so LogoutController's open-redirect guard (isRegistered) accepts it: the Go BFF's
+                // full-logout flow (GET /t/{slug}/admin/logout) sends the browser here as the exact, static
+                // post_logout_redirect_uri — the console's own landing path, so the SPA's router guard immediately
+                // re-detects "anonymous" and offers a fresh login rather than the SSO-silent one this cascade just
+                // ended.
+                .postLogoutRedirectUri(properties.getBff().getBaseUrl() + "/t/" + tenant.getSlug() + "/console")
                 .scope("openid")
                 .scope("profile")
                 .clientSettings(clientSettings.build())

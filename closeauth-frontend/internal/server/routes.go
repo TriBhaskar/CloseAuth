@@ -83,13 +83,20 @@ import (
 // page/size, see that file's auditFilterQuery).
 //
 // Deliberately NOT in UI-3e or earlier: a platform-admin console (that's
-// UI-4, immediately below), the invites surface (INVITE_ONLY registration
+// UI-4, immediately below), and the invites surface (INVITE_ONLY registration
 // mode exists and is settable via this stage's registration-config PUT, but
-// issuing/listing invites has no console route), and calling the backend's
-// POST /logout cascade on sign-out (handlers_admin_session.go's
-// handleAdminSignOut clears only the BFF's own cookies — the settled
-// decision is that "sign out" here ends the console session, not the
-// tenant's whole SSO session).
+// issuing/listing invites has no console route).
+//
+// Revised: sign-out DOES now end the backend's whole SSO session, not just
+// the BFF's console session — the product decision changed after UI-4b
+// shipped (tenant-admin login was never meant to behave like end-user SSO).
+// GET /t/{slug}/admin/logout (handleAdminLogout, handlers_admin_auth.go) is
+// the real "Sign out" action: a top-level navigation through the backend's
+// own GET /logout (LogoutController's four-leg cascade), because
+// CLOSEAUTH_SESSION is SameSite=Lax and no fetch()/POST from this origin can
+// ever carry it. POST /t/{slug}/api/signout (handlers_admin_session.go's
+// handleAdminSignOut) still exists as a BFF-cookies-only primitive, but the
+// SPA no longer uses it as the sign-out button's action.
 //
 // Stage UI-4 adds the platform-admin console — genuinely NOT a bigger UI-3:
 // platform admins are a separate principal type (platform_admins table,
@@ -132,6 +139,16 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Surface 1 — hosted end-user auth pages: pure relay to the real backend,
 	// no BFF-side session/CSRF state (see handlers_auth_proxy.go).
 	// ──────────────────────────────────────────────────────────────────────────
+	// GET /login is a real full-page browser navigation, not a fetch(): it's
+	// where closeauth.bff.login-page sends the browser when SAS's
+	// unauthenticated-entry-point redirect fires (see this file's header
+	// comment, "Cross-origin login continuity" in CLAUDE.md) — including for
+	// the admin-console client's /oauth2/authorize hits, not just Surface 1's
+	// hosted end-user login. Without this, chi matches the "/login" node
+	// registered below for POST and returns 405 instead of falling through
+	// to the SPA catch-all, since NotFound only fires when NO method matches
+	// the path at all.
+	r.Get("/login", static.SPAHandler().ServeHTTP)
 	r.Post("/login", s.handleLoginProxy)
 	r.Post("/logout", s.handleLogoutProxy)
 	r.Get("/branding", s.handleBrandingProxy)
@@ -192,6 +209,12 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// same-process HTTP call. See handlers_admin_auth.go.
 		tr.Get("/admin/login", s.handleAdminAuthStart)
 		tr.Get("/admin/reauth", s.handleAdminAuthStart)
+
+		// A real top-level navigation too, for the same SameSite=Lax reason —
+		// see handleAdminLogout's doc comment. This is the console's actual
+		// "Sign out" action; POST /api/signout below only ever clears the
+		// BFF's own cookies and cannot reach CLOSEAUTH_SESSION at all.
+		tr.Get("/admin/logout", s.handleAdminLogout)
 
 		tr.Route("/api", func(ar chi.Router) {
 			ar.Use(middleware.CSRFTokenMiddleware(bffCfg.IsProduction))

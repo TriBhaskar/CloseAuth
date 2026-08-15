@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,6 +32,14 @@ import java.util.Optional;
  * back-channel URI) and full RP-initiated OIDC semantics ({@code id_token_hint} validation) are not implemented here;
  * the client back-channel URIs are not yet modelled. The session-revocation cascade — the security-relevant half — is
  * complete. TODO(6b/later): back-channel notification.
+ *
+ * <p><b>GET as well as POST:</b> a cross-origin caller (e.g. the Go BFF fronting the tenant-admin console — see
+ * {@code CLOSEAUTH_CROSS_ORIGIN_LOGIN_DESIGN.md}) cannot reach this endpoint with {@code CLOSEAUTH_SESSION} attached
+ * via {@code fetch()} or a cross-site form POST: the cookie is {@code SameSite=Lax}, which is only sent on a
+ * top-level GET navigation, exactly like the {@code /oauth2/authorize} redirect this cookie already relies on (see
+ * {@link SessionCookieManager}). GET is safe here without CSRF protection for the same reason POST already has none
+ * on this chain (see {@code AuthorizationServerConfig}'s {@code defaultSecurityFilterChain} javadoc): the only effect
+ * is ending the caller's own session, never a state change useful to force onto a victim.
  */
 @RestController
 @RequiredArgsConstructor
@@ -48,7 +57,21 @@ public class LogoutController {
             @RequestParam(value = "client_id", required = false) String clientId,
             HttpServletRequest request,
             HttpServletResponse response) {
+        return doLogout(postLogoutRedirectUri, clientId, request, response);
+    }
 
+    /** See class javadoc, "GET as well as POST". */
+    @GetMapping("/logout")
+    public ResponseEntity<Void> logoutViaNavigation(
+            @RequestParam(value = "post_logout_redirect_uri", required = false) String postLogoutRedirectUri,
+            @RequestParam(value = "client_id", required = false) String clientId,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        return doLogout(postLogoutRedirectUri, clientId, request, response);
+    }
+
+    private ResponseEntity<Void> doLogout(String postLogoutRedirectUri, String clientId,
+                                          HttpServletRequest request, HttpServletResponse response) {
         cookieManager.readSessionKey(request).ifPresent(sessionKey ->
                 sessionService.revokeSession(sessionKey).ifPresent(revoked -> { // Stage 5 four-leg cascade
                     log.info("Logout: session revoked (cascade applied)");

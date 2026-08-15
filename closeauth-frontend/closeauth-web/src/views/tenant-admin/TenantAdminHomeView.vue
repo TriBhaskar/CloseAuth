@@ -25,9 +25,8 @@ onMounted(async () => {
   isPinging.value = false
 })
 
-async function handleSignOut(): Promise<void> {
-  await store.signOut()
-  window.location.assign('/')
+function handleSignOut(): void {
+  store.signOut()
 }
 </script>
 

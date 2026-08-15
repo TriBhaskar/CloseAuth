@@ -1,5 +1,5 @@
 #==================================================================
-#CloseAuth - Docker Compose
+# CloseAuth - Docker Compose
 #==================================================================
 
 services:
@@ -35,9 +35,32 @@ services:
       timeout: 5s
       retries: 5
 
-#  ----------------------------------------------------------------------
-#  Application Services
-#  ----------------------------------------------------------------------
+  # ----------------------------------------------------------------------
+  # Developer Tooling (opt-in: docker compose --profile tools up -d)
+  # ----------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:9.4
+    container_name: closeauth-pgadmin
+    restart: unless-stopped
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@closeauth.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-closeauth}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  #  ----------------------------------------------------------------------
+  #  Application Services
+  #  ----------------------------------------------------------------------
   closeauth-backend:
     image: closeauth-backend:0.0.1-SNAPSHOT
     container_name: closeauth-backend
@@ -46,12 +69,12 @@ services:
     ports:
       - "${BACKEND_PORT:-9000}:9000"
     environment:
-       SPRING_PROFILES_ACTIVE: docker
-       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-closeauth}
-       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-closeauth}
-       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
-       SPRING_DATA_REDIS_HOST: redis
-       SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-closeauth}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-closeauth}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,18 +89,18 @@ services:
     ports:
       - "${FRONTEND_PORT:-8080}:8080"
     environment:
-       PORT: 8080
-       ENVIRONMENT: production
-       DB_HOST: postgres
-       DB_PORT: ${POSTGRES_PORT:-5432}
-       DB_NAME: ${POSTGRES_DB:-closeauth}
-       DB_USER: ${POSTGRES_USER:-closeauth}
-       DB_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
-       DB_SSLMODE: disable
-       OAUTH2_SERVER_URL: http://closeauth-backend:${BACKEND_PORT:-9000}
-       DEFAULT_CLIENT_ID: admin-client
-       DEFAULT_CLIENT_SECRET: admin-secret-for-creation
-       DEFAULT_SCOPE: client.create
+      PORT: 8080
+      ENVIRONMENT: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-closeauth}
+      DB_USER: ${POSTGRES_USER:-closeauth}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-closeauth}
+      DB_SSLMODE: disable
+      OAUTH2_SERVER_URL: http://closeauth-backend:9000
+      DEFAULT_CLIENT_ID: admin-client
+      DEFAULT_CLIENT_SECRET: admin-secret-for-creation
+      DEFAULT_SCOPE: client.create
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,3 +110,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  pgadmin_data:

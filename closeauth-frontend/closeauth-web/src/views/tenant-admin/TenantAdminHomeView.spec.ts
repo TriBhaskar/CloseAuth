@@ -97,17 +97,9 @@ describe('TenantAdminHomeView', () => {
     expect(wrapper.text()).not.toContain('Backend confirmed')
   })
 
-  it('sign-out posts to /signout and navigates home', async () => {
-    const signoutFetch = vi.fn().mockResolvedValue({ ok: true, status: 204, json: () => Promise.resolve({}) })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string) => {
-        if (url === '/t/acme/api/ping') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, tenantId: 'tenant-1' }) })
-        }
-        if (url === '/t/acme/api/signout') return signoutFetch()
-        return Promise.reject(new Error(`unexpected fetch: ${url}`))
-      }),
+  it('sign-out navigates to the backend logout route, not a fetch() call', async () => {
+    stubFetch(() =>
+      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, tenantId: 'tenant-1' }) }),
     )
 
     const router = await createHomeRouter()
@@ -121,7 +113,9 @@ describe('TenantAdminHomeView', () => {
     await wrapper.find('#tenant-admin-home-signout').trigger('click')
     await flushPromises()
 
-    expect(signoutFetch).toHaveBeenCalledTimes(1)
-    expect(window.location.assign).toHaveBeenCalledWith('/')
+    // A real top-level navigation, never fetch() — CLOSEAUTH_SESSION is
+    // SameSite=Lax and only a genuine browser navigation to
+    // GET /t/{slug}/admin/logout can end the backend session too.
+    expect(window.location.assign).toHaveBeenCalledWith('/t/acme/admin/logout')
   })
 })

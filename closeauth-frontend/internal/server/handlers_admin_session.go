@@ -65,11 +65,15 @@ func (s *Server) handleAdminSession(w http.ResponseWriter, r *http.Request) {
 	writeJSONOK(w, resp)
 }
 
-// handleAdminSignOut clears the BFF's own cookies for slug only — it
-// deliberately does NOT call the backend's POST /logout (the four-leg revoke
-// cascade). Settled decision: "sign out" here ends the console session, not
-// the tenant's whole SSO session, so signing back in afterward is silent
-// (the backend's CLOSEAUTH_SESSION cookie is untouched).
+// handleAdminSignOut clears the BFF's own cookies for slug only, and does
+// NOT touch the backend's CLOSEAUTH_SESSION or run its four-leg revoke
+// cascade — it couldn't anyway, since this is reached via fetch() and
+// CLOSEAUTH_SESSION is SameSite=Lax (never attached cross-site to anything
+// but a top-level navigation). It's a BFF-cookies-only primitive now, kept
+// for callers that only need that; the console's actual "Sign out" button
+// uses GET /t/{slug}/admin/logout (handleAdminLogout, handlers_admin_auth.go)
+// instead, which ends the whole backend session too — see routes.go's header
+// comment for the full picture.
 func (s *Server) handleAdminSignOut(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if !validSlug(slug) {

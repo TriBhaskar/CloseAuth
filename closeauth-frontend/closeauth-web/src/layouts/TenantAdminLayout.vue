@@ -30,9 +30,8 @@ const sidebarCollapsed = ref(false)
 // email is simply not shown, never a fabricated placeholder.
 const email = computed(() => (store.state.kind === 'active' ? store.state.email : ''))
 
-async function handleSignOut(): Promise<void> {
-  await store.signOut()
-  window.location.assign('/')
+function handleSignOut(): void {
+  store.signOut()
 }
 </script>
 

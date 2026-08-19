@@ -14,6 +14,12 @@ import jakarta.validation.constraints.Size;
  * @param lastName     optional
  * @param phone        optional
  * @param inviteToken  required only in INVITE_ONLY mode (the raw invite token from the invitation link); ignored otherwise
+ * @param clientId     FE-2d: system-derived (from the request's own {@code client_id} param, not user input) — carried
+ *                     so {@code EmailVerifiedRegistrationStrategy} can build a tenant-namespaced verification link
+ *                     without widening {@code RegistrationStrategy}'s shared interface for the one mode that needs it.
+ *                     Never validated (not user-authored); null only in a test double that doesn't care.
+ * @param tenantSlug   FE-2d: system-derived, resolved by {@code RegistrationController} alongside {@code clientId} —
+ *                     same reasoning.
  */
 public record RegisterUserCommand(
         @NotBlank @Email @Size(max = 255) String email,
@@ -21,5 +27,7 @@ public record RegisterUserCommand(
         String firstName,
         String lastName,
         String phone,
-        String inviteToken) {
+        String inviteToken,
+        String clientId,
+        String tenantSlug) {
 }

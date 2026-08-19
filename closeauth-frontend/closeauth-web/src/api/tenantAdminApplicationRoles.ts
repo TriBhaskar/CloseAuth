@@ -18,9 +18,10 @@
 //     so a caller here should treat the error defensively (a written
 //     explanation, never a form-field binding) rather than map it.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 import type { PageView } from '@/api/tenantAdminUsers'
 import type { ScopeView } from '@/api/tenantAdminResourceServers'
+import type { RoleAssigneeView } from '@/api/tenantAdminRoles'
 
 // Mirrors rbac/dto/ApplicationRoleView.java exactly. Jackson serializes the
 // record's isDefault()/isSystem() accessors as "isDefault"/"isSystem" — see
@@ -146,6 +147,23 @@ export async function removeScopeFromRole(slug: string, rsId: string, roleId: st
     { method: 'DELETE' },
   )
   return parseAdminResult<void>(result)
+}
+
+/**
+ * FE-4b (spec §6.4.5): every user currently holding this application role
+ * (ApplicationRoleController.assignees). Same shape as getRoleAssignees in
+ * tenantAdminRoles.ts — batch-resolved to email/name server-side.
+ */
+export async function getApplicationRoleAssignees(
+  slug: string,
+  rsId: string,
+  roleId: string,
+): Promise<AdminResult<RoleAssigneeView[]>> {
+  const result = await tenantAdminFetch(
+    slug,
+    `/resource-servers/${encodeURIComponent(rsId)}/roles/${encodeURIComponent(roleId)}/assignees`,
+  )
+  return parseAdminResult<RoleAssigneeView[]>(result)
 }
 
 // ---- user assignment ------------------------------------------------------

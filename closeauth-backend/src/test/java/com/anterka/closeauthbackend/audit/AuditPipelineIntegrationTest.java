@@ -84,7 +84,7 @@ class AuditPipelineIntegrationTest {
 
     @Test
     void committedBusinessActionDrainsToAuditEvents() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("audit-" + rnd(), "Audit Co"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("Audit Co"));
         tenantService.activateTenant(tenant.id());
         tenantService.suspendTenant(tenant.id()); // emits TENANT_SUSPENDED inside the business transaction
 
@@ -160,7 +160,7 @@ class AuditPipelineIntegrationTest {
     // ---- helpers ----------------------------------------------------------
 
     private TenantView suspendedTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("audit-" + rnd(), "Audit Co"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("Audit Co"));
         tenantService.activateTenant(tenant.id());
         tenantService.suspendTenant(tenant.id());
         return tenant;

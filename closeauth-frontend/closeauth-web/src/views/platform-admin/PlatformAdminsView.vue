@@ -1,27 +1,39 @@
 <script setup lang="ts">
-// Stage UI-4: the platform console's platform-admin management surface —
-// list, a create dialog, suspend/activate, and role assign/revoke. Roles are
-// readable via GET /admins/{id}/roles (the UI-4 backend addition,
-// PlatformAdminManagementController.roles) — without it this view could not
-// show who actually holds PLATFORM_ADMIN, the single fact that determines
-// console access.
+// Stage UI-4 / FE-3c: the platform console's platform-admin management
+// surface — list, a create dialog, suspend/activate (both confirmed, matching
+// FE-3a's tenant-list precedent), and role assign/revoke.
 //
-// No detail route (same "deliberately small" discipline as
-// PlatformTenantsView.vue): role management happens inline, per row, via an
-// expand-in-place panel rather than a separate page.
-import { onMounted, reactive, ref, watch } from 'vue'
+// FE-3c decisions:
+//  - Role assignment is a "Manage roles" dialog (checkboxes + an explicit
+//    Save), not an inline checkbox grid mutating on contact, and not an
+//    overflow menu — ui/dropdown-menu/* still has zero real consumers
+//    anywhere in this codebase, and FE-3a already reasoned through (and
+//    disclosed) why hand-rolling that primitive's first adoption via h()
+//    render functions, unverifiable without a browser, is disproportionate
+//    risk for a presentational requirement. Same call here.
+//  - Self-lockout guard: the signed-in admin's own row can't Suspend itself,
+//    and its own PLATFORM_ADMIN checkbox is disabled in the roles dialog —
+//    mirrored independently by the backend (PlatformAdminService.suspend/
+//    revokeRole now take the acting admin's id and refuse self-targeting
+//    regardless of how many other admins remain).
+//  - The create dialog's copy is intentionally NOT spec's literal "defaults
+//    to read-only access" — there is no read-only platform tier; a zero-role
+//    admin is refused at the BFF boundary before any session exists at all.
+//    The existing, accurate copy ("cannot sign in... until PLATFORM_ADMIN is
+//    assigned") stays.
+import { computed, defineComponent, h, reactive, ref, watch, type PropType, type VNode } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import QueryState from '@/components/admin/QueryState.vue'
-import AdminPagination from '@/components/admin/AdminPagination.vue'
-import FormField from '@/components/admin/FormField.vue'
-import ConfirmDialog from '@/components/admin/ConfirmDialog.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import FormField from '@/components/common/FormField.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
+import StateBadge, { platformAdminStatusTone } from '@/components/common/StateBadge.vue'
+import RelativeTime from '@/components/common/RelativeTime.vue'
+import { describeAdminError, type AdminResult } from '@/api/problem'
+import { usePlatformAdminSessionStore } from '@/stores/platformAdmin'
 import {
   activateAdmin,
   assignRole,
@@ -31,11 +43,13 @@ import {
   revokeRole,
   suspendAdmin,
   PLATFORM_ROLES,
-  type PlatformAdminStatus,
   type PlatformAdminView,
   type PlatformRoleName,
 } from '@/api/platformAdmins'
 import type { PageView } from '@/api/platformAdminTenants'
+
+const sessionStore = usePlatformAdminSessionStore()
+const ownAdminId = computed(() => (sessionStore.state.kind === 'active' ? sessionStore.state.adminId : null))
 
 const page = ref(0)
 const pageData = ref<PageView<PlatformAdminView> | null>(null)
@@ -68,9 +82,7 @@ async function load(): Promise<void> {
       break
     case 'reauth':
       // Never actually produced on this surface — parsePlatformResult maps a
-      // session-expired outcome to the 'error' arm below instead (there is
-      // no silent-navigation path here; see platformAdminClient.ts's header
-      // comment). Kept only so the switch is exhaustive over AdminResult<T>.
+      // session-expired outcome to the 'error' arm below instead.
       break
     default:
       pageData.value = null
@@ -80,19 +92,14 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load)
+void load()
 watch(page, load)
 
-function statusVariant(status: PlatformAdminStatus): 'default' | 'destructive' | 'outline' {
-  switch (status) {
-    case 'ACTIVE':
-      return 'default'
-    case 'SUSPENDED':
-      return 'destructive'
-    case 'DELETED':
-      return 'outline'
-  }
-}
+const dataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
+  if (isLoading.value) return 'loading'
+  if (errorMessage.value) return 'error'
+  return 'loaded'
+})
 
 function fullName(admin: PlatformAdminView): string {
   return [admin.firstName, admin.lastName].filter(Boolean).join(' ') || '—'
@@ -151,7 +158,6 @@ async function handleCreate(): Promise<void> {
         createBanner.value = result.code === 'platform_admin.email_exists' ? 'A platform admin with this email already exists.' : result.message
         break
       case 'reauth':
-        // Never actually produced on this surface — see load()'s identical comment.
         break
       default:
         createBanner.value = describeAdminError(result)
@@ -162,27 +168,32 @@ async function handleCreate(): Promise<void> {
   }
 }
 
-// ---- lifecycle actions ----------------------------------------------------
+// ---- lifecycle actions (suspend/activate, both confirmed) ----------------
 
 const actionPending = ref(false)
 const actionError = ref('')
-const confirmAdminId = ref<string | null>(null)
+const confirmState = ref<{ adminId: string; email: string; action: 'suspend' | 'activate' } | null>(null)
 
-function startSuspend(adminId: string): void {
+function startAction(admin: PlatformAdminView, action: 'suspend' | 'activate'): void {
   if (actionPending.value) return
   actionError.value = ''
-  confirmAdminId.value = adminId
+  confirmState.value = { adminId: admin.id, email: admin.email, action }
 }
 
-async function runSuspend(adminId: string): Promise<void> {
-  if (actionPending.value) return
+function cancelAction(): void {
+  confirmState.value = null
+}
+
+async function confirmAction(): Promise<void> {
+  if (!confirmState.value || actionPending.value) return
+  const { adminId, action } = confirmState.value
   actionError.value = ''
   actionPending.value = true
   try {
-    const result = await suspendAdmin(adminId)
+    const result = action === 'suspend' ? await suspendAdmin(adminId) : await activateAdmin(adminId)
     switch (result.kind) {
       case 'ok':
-        confirmAdminId.value = null
+        confirmState.value = null
         await load()
         break
       case 'conflict':
@@ -192,10 +203,15 @@ async function runSuspend(adminId: string): Promise<void> {
             : result.message
         break
       case 'reauth':
-        // Never actually produced on this surface — see load()'s identical comment.
         break
       default:
-        actionError.value = describeAdminError(result)
+        // Rare race: the frontend guard already disables self-targeting
+        // Suspend, but the backend's own independent check is what actually
+        // guarantees this can never succeed.
+        actionError.value =
+          result.code === 'platform_admin.self_action_refused'
+            ? "You can't do that to your own account."
+            : describeAdminError(result)
         break
     }
   } finally {
@@ -203,54 +219,184 @@ async function runSuspend(adminId: string): Promise<void> {
   }
 }
 
-async function runActivate(adminId: string): Promise<void> {
-  if (actionPending.value) return
-  actionError.value = ''
-  actionPending.value = true
-  try {
-    const result = await activateAdmin(adminId)
-    // 'reauth' is excluded explicitly (never actually produced on this
-    // surface — see load()'s comment) so describeAdminError's narrower
-    // parameter type accepts the rest.
-    if (result.kind !== 'ok' && result.kind !== 'reauth') actionError.value = describeAdminError(result)
-    else if (result.kind === 'ok') await load()
-  } finally {
-    actionPending.value = false
+const confirmTitle = computed(() =>
+  confirmState.value?.action === 'suspend' ? `Suspend ${confirmState.value.email}?` : `Activate ${confirmState.value?.email}?`,
+)
+const confirmDescription = computed(() =>
+  confirmState.value?.action === 'suspend'
+    ? 'Takes effect immediately: their live token is revoked within seconds, not at its 5-minute expiry.'
+    : 'This admin will be able to sign in again (if they hold at least one platform role).',
+)
+
+// ---- role assignment: a Save-gated "Manage roles" dialog ------------------
+
+interface RolesDialogState {
+  adminId: string
+  email: string
+  initialRoles: string[]
+  selected: Set<string>
+}
+
+const rolesDialogState = ref<RolesDialogState | null>(null)
+const rolesDialogPending = ref(false)
+const rolesDialogError = ref('')
+
+function openRolesDialog(admin: PlatformAdminView): void {
+  const current = rolesByAdmin.value[admin.id] ?? []
+  rolesDialogState.value = { adminId: admin.id, email: admin.email, initialRoles: current, selected: new Set(current) }
+  rolesDialogError.value = ''
+}
+
+function closeRolesDialog(): void {
+  rolesDialogState.value = null
+}
+
+function toggleRoleCheckbox(role: PlatformRoleName, checked: boolean): void {
+  if (!rolesDialogState.value) return
+  if (checked) rolesDialogState.value.selected.add(role)
+  else rolesDialogState.value.selected.delete(role)
+}
+
+function describeRoleError(result: AdminResult<void>): string {
+  switch (result.kind) {
+    case 'conflict':
+      return result.code === 'platform_admin.last_admin'
+        ? 'This is the last active PLATFORM_ADMIN. Assign PLATFORM_ADMIN to another active admin before revoking it here.'
+        : result.message
+    case 'ok':
+    case 'reauth':
+      return ''
+    default:
+      return result.code === 'platform_admin.self_action_refused'
+        ? "You can't remove your own PLATFORM_ADMIN role."
+        : describeAdminError(result)
   }
 }
 
-// ---- role assignment -----------------------------------------------------
-
-const roleActionPending = ref(false)
-const roleActionError = ref('')
-
-async function toggleRole(adminId: string, role: PlatformRoleName, currentlyHeld: boolean): Promise<void> {
-  if (roleActionPending.value) return
-  roleActionError.value = ''
-  roleActionPending.value = true
+async function saveRoles(): Promise<void> {
+  if (!rolesDialogState.value || rolesDialogPending.value) return
+  const { adminId, initialRoles, selected } = rolesDialogState.value
+  rolesDialogError.value = ''
+  rolesDialogPending.value = true
   try {
-    const result = currentlyHeld ? await revokeRole(adminId, role) : await assignRole(adminId, role)
-    switch (result.kind) {
-      case 'ok':
-        await loadRolesFor(adminId)
-        break
-      case 'conflict':
-        roleActionError.value =
-          result.code === 'platform_admin.last_admin'
-            ? 'This is the last active PLATFORM_ADMIN. Assign PLATFORM_ADMIN to another active admin before revoking it here.'
-            : result.message
-        break
-      case 'reauth':
-        // Never actually produced on this surface — see load()'s identical comment.
-        break
-      default:
-        roleActionError.value = describeAdminError(result)
-        break
+    const toAssign = PLATFORM_ROLES.filter((r) => selected.has(r) && !initialRoles.includes(r))
+    const toRevoke = PLATFORM_ROLES.filter((r) => !selected.has(r) && initialRoles.includes(r))
+    for (const role of toAssign) {
+      const result = await assignRole(adminId, role)
+      if (result.kind !== 'ok') {
+        rolesDialogError.value = describeRoleError(result)
+        return
+      }
     }
+    for (const role of toRevoke) {
+      const result = await revokeRole(adminId, role)
+      if (result.kind !== 'ok') {
+        rolesDialogError.value = describeRoleError(result)
+        return
+      }
+    }
+    await loadRolesFor(adminId)
+    rolesDialogState.value = null
   } finally {
-    roleActionPending.value = false
+    rolesDialogPending.value = false
   }
 }
+
+// ---- DataTable columns ----------------------------------------------------
+
+const AdminActionsCell = defineComponent({
+  props: { admin: { type: Object as PropType<PlatformAdminView>, required: true } },
+  setup(props) {
+    return (): VNode => {
+      const admin = props.admin
+      const isSelf = admin.id === ownAdminId.value
+      const children: VNode[] = []
+
+      if (admin.status === 'SUSPENDED') {
+        children.push(
+          h(
+            Button,
+            {
+              id: `admin-action-activate-${admin.id}`,
+              size: 'sm',
+              variant: 'outline',
+              disabled: actionPending.value,
+              onClick: () => startAction(admin, 'activate'),
+            },
+            { default: () => 'Activate' },
+          ),
+        )
+      } else if (admin.status === 'ACTIVE') {
+        children.push(
+          h(
+            Button,
+            {
+              id: `admin-action-suspend-${admin.id}`,
+              size: 'sm',
+              variant: 'destructive',
+              disabled: actionPending.value || isSelf,
+              title: isSelf ? "You can't suspend your own account." : undefined,
+              onClick: () => startAction(admin, 'suspend'),
+            },
+            { default: () => 'Suspend' },
+          ),
+        )
+      }
+
+      if (admin.status !== 'DELETED') {
+        children.push(
+          h(
+            Button,
+            {
+              id: `admin-manage-roles-${admin.id}`,
+              size: 'sm',
+              variant: 'outline',
+              disabled: rolesLoading.value[admin.id],
+              onClick: () => openRolesDialog(admin),
+            },
+            { default: () => 'Manage roles' },
+          ),
+        )
+      }
+
+      if (children.length === 0) {
+        return h('span', { class: 'text-xs text-muted-foreground' }, 'No actions (terminal)')
+      }
+      return h('div', { class: 'flex flex-wrap items-center gap-2' }, children)
+    }
+  },
+})
+
+const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
+  { id: 'email', header: 'Email', cell: ({ row }) => row.original.email },
+  { id: 'name', header: 'Name', cell: ({ row }) => fullName(row.original) },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: ({ row }) => h(StateBadge, { tone: platformAdminStatusTone(row.original.status), label: row.original.status }),
+  },
+  {
+    id: 'roles',
+    header: 'Roles',
+    cell: ({ row }) => {
+      const admin = row.original
+      if (rolesLoading.value[admin.id]) return h('span', { class: 'text-xs text-muted-foreground' }, 'Loading…')
+      const roles = rolesByAdmin.value[admin.id] ?? []
+      if (roles.length === 0) return h('span', { class: 'text-xs text-muted-foreground' }, 'No roles — cannot sign in yet')
+      return h('span', { class: 'text-xs font-mono' }, roles.join(', '))
+    },
+  },
+  {
+    id: 'lastLogin',
+    header: 'Last login',
+    cell: ({ row }) => (row.original.lastLoginAt ? h(RelativeTime, { value: row.original.lastLoginAt }) : h('span', { class: 'text-sm' }, 'Never')),
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    cell: ({ row }) => h(AdminActionsCell, { admin: row.original }),
+  },
+])
 </script>
 
 <template>
@@ -346,96 +492,78 @@ async function toggleRole(adminId: string, role: PlatformRoleName, currentlyHeld
       {{ createSuccessMessage }}
     </p>
     <p v-if="actionError" role="alert" class="text-sm text-destructive">{{ actionError }}</p>
-    <p v-if="roleActionError" role="alert" class="text-sm text-destructive">{{ roleActionError }}</p>
 
-    <QueryState :loading="isLoading" :error="errorMessage">
-      <div class="flex flex-col gap-4">
-        <div class="rounded-lg border border-border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead>Last login</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableEmpty v-if="pageData && pageData.items.length === 0" :colspan="6">
-                No platform admins yet.
-              </TableEmpty>
-              <TableRow v-for="admin in pageData?.items ?? []" :key="admin.id" :data-admin-id="admin.id">
-                <TableCell>{{ admin.email }}</TableCell>
-                <TableCell>{{ fullName(admin) }}</TableCell>
-                <TableCell><Badge :variant="statusVariant(admin.status)">{{ admin.status }}</Badge></TableCell>
-                <TableCell>
-                  <div v-if="rolesLoading[admin.id]" class="text-xs text-muted-foreground">Loading…</div>
-                  <div v-else class="flex flex-col gap-1">
-                    <p v-if="(rolesByAdmin[admin.id] ?? []).length === 0" class="text-xs text-muted-foreground">
-                      No roles — cannot sign in yet
-                    </p>
-                    <div v-for="role in PLATFORM_ROLES" :key="role" class="flex items-center gap-1.5">
-                      <Checkbox
-                        :id="`role-${admin.id}-${role}`"
-                        :model-value="(rolesByAdmin[admin.id] ?? []).includes(role)"
-                        :disabled="roleActionPending"
-                        @update:model-value="() => toggleRole(admin.id, role, (rolesByAdmin[admin.id] ?? []).includes(role))"
-                      />
-                      <Label :for="`role-${admin.id}-${role}`" class="text-xs font-mono">{{ role }}</Label>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>{{ admin.lastLoginAt ? new Date(admin.lastLoginAt).toLocaleString() : 'Never' }}</TableCell>
-                <TableCell>
-                  <div class="flex items-center gap-2">
-                    <Button
-                      v-if="admin.status === 'SUSPENDED'"
-                      :id="`admin-action-activate-${admin.id}`"
-                      size="sm"
-                      variant="outline"
-                      :disabled="actionPending"
-                      @click="runActivate(admin.id)"
-                    >
-                      Activate
-                    </Button>
-                    <Button
-                      v-else-if="admin.status === 'ACTIVE'"
-                      :id="`admin-action-suspend-${admin.id}`"
-                      size="sm"
-                      variant="destructive"
-                      :disabled="actionPending"
-                      @click="startSuspend(admin.id)"
-                    >
-                      Suspend
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-
-        <AdminPagination
-          v-if="pageData"
-          :page="pageData.page"
-          :size="pageData.size"
-          :total-elements="pageData.totalElements"
-          :total-pages="pageData.totalPages"
-          @update:page="(p) => (page = p)"
-        />
-      </div>
-    </QueryState>
+    <DataTable
+      :columns="columns"
+      :data="pageData?.items ?? []"
+      :row-key="(a: PlatformAdminView) => a.id"
+      :state="dataTableState"
+      :row-attrs="(a: PlatformAdminView) => ({ 'data-admin-id': a.id })"
+      :page="pageData?.page ?? 0"
+      :size="pageData?.size ?? 20"
+      :total-elements="pageData?.totalElements ?? 0"
+      :total-pages="pageData?.totalPages ?? 0"
+      :error-message="errorMessage ?? undefined"
+      empty-title="No platform admins yet."
+      empty-description="Create one to get started."
+      search-placeholder="Search admins…"
+      @update:page="(p: number) => (page = p)"
+      @retry="load"
+    >
+      <template #action>
+        <Button type="button" @click="isCreateOpen = true">New platform admin</Button>
+      </template>
+    </DataTable>
 
     <ConfirmDialog
-      :open="confirmAdminId !== null"
-      title="Suspend this platform admin?"
-      description="Takes effect immediately: their live token is revoked within seconds, not at its 5-minute expiry."
-      confirm-label="Suspend"
+      :open="confirmState !== null"
+      :title="confirmTitle"
+      :description="confirmDescription"
+      :confirm-label="confirmState?.action === 'suspend' ? 'Suspend' : 'Activate'"
+      :destructive="confirmState?.action === 'suspend'"
       :pending="actionPending"
-      @update:open="(open: boolean) => { if (!open) confirmAdminId = null }"
-      @confirm="() => confirmAdminId && runSuspend(confirmAdminId)"
+      @update:open="(open: boolean) => { if (!open) cancelAction() }"
+      @confirm="confirmAction"
     />
+
+    <!-- FE-3c: role assign/revoke as a deliberate, Save-gated second step —
+         never a checkbox that mutates on contact. -->
+    <Dialog :open="rolesDialogState !== null" @update:open="(open: boolean) => { if (!open) closeRolesDialog() }">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage roles — {{ rolesDialogState?.email }}</DialogTitle>
+          <DialogDescription>
+            Changes take effect only when you click Save. Assigning PLATFORM_ADMIN lets this admin sign in;
+            revoking it (if it's their only role) locks them out.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div v-if="rolesDialogState" class="flex flex-col gap-2">
+          <div v-for="role in PLATFORM_ROLES" :key="role" class="flex items-center gap-2">
+            <Checkbox
+              :id="`roles-dialog-${role}`"
+              :model-value="rolesDialogState.selected.has(role)"
+              :disabled="rolesDialogPending || (role === 'PLATFORM_ADMIN' && rolesDialogState.adminId === ownAdminId)"
+              @update:model-value="(v) => toggleRoleCheckbox(role, Boolean(v))"
+            />
+            <Label :for="`roles-dialog-${role}`" class="font-mono text-sm">{{ role }}</Label>
+            <span v-if="role === 'PLATFORM_ADMIN' && rolesDialogState.adminId === ownAdminId" class="text-xs text-muted-foreground">
+              You can't remove your own PLATFORM_ADMIN role.
+            </span>
+          </div>
+        </div>
+
+        <p v-if="rolesDialogError" role="alert" class="text-sm text-destructive">{{ rolesDialogError }}</p>
+
+        <DialogFooter>
+          <Button id="roles-dialog-cancel" type="button" variant="outline" :disabled="rolesDialogPending" @click="closeRolesDialog">
+            Cancel
+          </Button>
+          <Button id="roles-dialog-save" type="button" :disabled="rolesDialogPending" @click="saveRoles">
+            {{ rolesDialogPending ? 'Saving…' : 'Save' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

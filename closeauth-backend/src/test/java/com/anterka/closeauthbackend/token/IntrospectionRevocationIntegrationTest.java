@@ -68,10 +68,10 @@ class IntrospectionRevocationIntegrationTest {
 
     /** @return the tenant id, having registered a confidential client under it. */
     private UUID tenantWithClient(String clientId) {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("acme-" + rnd(), "Acme"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("Acme"));
         tenantService.activateTenant(tenant.id());
         var created = clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
-                clientId, "M2M Client", false, List.of("client_credentials"), List.of(SCOPE), null, false, true));
+                clientId, "M2M Client", false, List.of("client_credentials"), List.of(SCOPE), null, null, false, true));
         clientSecrets.put(clientId, created.clientSecret());
         return tenant.id();
     }

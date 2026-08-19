@@ -38,7 +38,8 @@ public class PasswordResetController {
             @RequestParam("email") String email,
             @RequestParam("client_id") String clientId) {
         tenantResolver.resolveTenantId(clientId).ifPresent(tenantId ->
-                passwordResetService.requestReset(TenantContext.of(tenantId), email, clientId));
+                passwordResetService.requestReset(
+                        TenantContext.of(tenantId), email, clientId, tenantResolver.resolveTenantSlug(clientId).orElse(null)));
         // Always 200 — never reveal whether the account exists.
         return ResponseEntity.ok().build();
     }

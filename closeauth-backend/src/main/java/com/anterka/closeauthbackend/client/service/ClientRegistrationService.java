@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -57,6 +58,10 @@ public class ClientRegistrationService {
     private final ClientSecretGenerator clientSecretGenerator;
     private final CloseAuthProperties properties;
     private final AuditEmitter auditEmitter;
+    // FE-4d: the concrete type, not the RegisteredClientRepository interface above — Spring resolves this to the
+    // SAME singleton bean (TenantAwareRegisteredClientRepository implements RegisteredClientRepository), just typed
+    // narrowly enough to reach countByTenantId, which isn't part of SAS's own interface.
+    private final TenantAwareRegisteredClientRepository tenantAwareRegisteredClientRepository;
 
     @Transactional
     public ClientCreatedView registerClient(TenantContext context, RegisterClientCommand command) {
@@ -95,8 +100,13 @@ public class ClientRegistrationService {
         }
 
         String rawSecret = clientSecretGenerator.generate();
+        // Rebuild ClientSettings from the existing map (preserving TENANT_ID) rather than a fresh builder, then
+        // stamp/overwrite SECRET_ROTATED_AT — FE-4c's Credentials tab reads this for "last rotated."
+        ClientSettings.Builder clientSettings = ClientSettings.withSettings(existing.getClientSettings().getSettings());
+        CloseAuthClientSettings.withSecretRotatedAt(clientSettings, Instant.now());
         RegisteredClient rotated = RegisteredClient.from(existing)
                 .clientSecret(passwordEncoder.encode(rawSecret))
+                .clientSettings(clientSettings.build())
                 .build();
         registeredClientRepository.save(rotated);
 
@@ -117,6 +127,11 @@ public class ClientRegistrationService {
         return client;
     }
 
+    /** FE-4d: the overview's Clients count tile — see {@link TenantAwareRegisteredClientRepository#countByTenantId}. */
+    public long countClients(TenantContext context) {
+        return tenantAwareRegisteredClientRepository.countByTenantId(context.tenantId());
+    }
+
     private RegisteredClient buildRegisteredClient(TenantContext context, RegisterClientCommand command, String rawSecret) {
         RegisteredClient.Builder builder = RegisteredClient.withId(UUID.randomUUID().toString())
                 .clientId(command.clientId())
@@ -135,6 +150,9 @@ public class ClientRegistrationService {
         }
         if (!CollectionUtils.isEmpty(command.redirectUris())) {
             command.redirectUris().forEach(builder::redirectUri);
+        }
+        if (!CollectionUtils.isEmpty(command.postLogoutUris())) {
+            command.postLogoutUris().forEach(builder::postLogoutRedirectUri);
         }
 
         ClientSettings.Builder clientSettings = ClientSettings.builder()

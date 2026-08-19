@@ -8,6 +8,7 @@ import com.anterka.closeauthbackend.identity.entity.User;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.repository.UserRepository;
 import com.anterka.closeauthbackend.rbac.service.TenantRoleService;
+import com.anterka.closeauthbackend.session.service.AuthServerSessionService;
 import com.anterka.closeauthbackend.tenant.service.TenantService;
 import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import jakarta.validation.Validation;
@@ -32,8 +33,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * The 7b security wiring on user deactivation (§7.8): suspending/deleting a user (1) is refused if they are the last
- * {@code TENANT_ADMIN} (last-admin invariant, 3c-ii → 409) and (2) writes the token-revocation marker (4b-ii) so their
- * live tokens die — not merely at expiry. Parallel to 7a's platform-admin proof.
+ * {@code TENANT_ADMIN} (last-admin invariant, 3c-ii → 409), (2) writes the token-revocation marker (4b-ii) so their
+ * live tokens die — not merely at expiry, and (3, FE-4a) revokes their Auth Server SSO sessions too, so an existing
+ * browser session doesn't keep working on idle-timeout alone. Parallel to 7a's platform-admin proof.
  */
 class UserDeactivationWiringTest {
 
@@ -44,6 +46,7 @@ class UserDeactivationWiringTest {
     private UserRepository userRepository;
     private TenantRoleService tenantRoleService;
     private TokenRevocationService tokenRevocationService;
+    private AuthServerSessionService sessionService;
     private UserService userService;
 
     @BeforeEach
@@ -52,10 +55,11 @@ class UserDeactivationWiringTest {
         TenantService tenantService = Mockito.mock(TenantService.class);
         tenantRoleService = Mockito.mock(TenantRoleService.class);
         tokenRevocationService = Mockito.mock(TokenRevocationService.class);
+        sessionService = Mockito.mock(AuthServerSessionService.class);
         PasswordEncoder encoder = new DelegatingPasswordEncoder("bcrypt", Map.of("bcrypt", new BCryptPasswordEncoder(4)));
         CommandValidator validator = new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         userService = new UserService(userRepository, tenantService, new PasswordHasher(encoder), validator,
-                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService,
+                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService, sessionService,
                 org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
 
         User active = new User();
@@ -66,21 +70,23 @@ class UserDeactivationWiringTest {
     }
 
     @Test
-    void suspendingANonLastAdminRevokesTheirTokens() {
+    void suspendingANonLastAdminRevokesTheirTokensAndSessions() {
         when(tenantRoleService.isLastTenantAdmin(ctx, userId)).thenReturn(false);
 
         userService.suspendUser(ctx, userId);
 
         verify(tokenRevocationService).revokeAllUserTokens(tenantId, userId); // live tokens die now
+        verify(sessionService).revokeAllUserSessions(tenantId, userId); // SSO sessions die now too
     }
 
     @Test
-    void deletingANonLastAdminRevokesTheirTokens() {
+    void deletingANonLastAdminRevokesTheirTokensAndSessions() {
         when(tenantRoleService.isLastTenantAdmin(ctx, userId)).thenReturn(false);
 
         userService.deleteUser(ctx, userId);
 
         verify(tokenRevocationService).revokeAllUserTokens(tenantId, userId);
+        verify(sessionService).revokeAllUserSessions(tenantId, userId);
     }
 
     @Test
@@ -91,10 +97,11 @@ class UserDeactivationWiringTest {
                 .isInstanceOf(LastTenantAdminException.class);
 
         verify(tokenRevocationService, never()).revokeAllUserTokens(any(), any()); // refused before any mutation
+        verify(sessionService, never()).revokeAllUserSessions(any(), any());
     }
 
     @Test
-    void activatingAUserNeverRevokesTokens() {
+    void activatingAUserNeverRevokesTokensOrSessions() {
         User suspended = new User();
         suspended.setId(userId);
         suspended.setTenantId(tenantId);
@@ -104,6 +111,7 @@ class UserDeactivationWiringTest {
         userService.activateUser(ctx, userId);
 
         verify(tokenRevocationService, never()).revokeAllUserTokens(any(), any());
+        verify(sessionService, never()).revokeAllUserSessions(any(), any());
         assertThat(suspended.getStatus()).isEqualTo(UserStatus.ACTIVE);
     }
 }

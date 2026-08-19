@@ -50,8 +50,11 @@ public class RegistrationController {
         if (tenantId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
+        // FE-2d: resolved here (not inside a strategy) so EmailVerifiedRegistrationStrategy can build a
+        // tenant-namespaced verification link without widening RegistrationStrategy's shared interface.
+        String tenantSlug = tenantResolver.resolveTenantSlug(clientId).orElse(null);
         RegistrationResult result = registrationService.register(TenantContext.of(tenantId.get()),
-                new RegisterUserCommand(email, password, firstName, lastName, phone, inviteToken));
+                new RegisterUserCommand(email, password, firstName, lastName, phone, inviteToken, clientId, tenantSlug));
         return ResponseEntity.ok(result);
     }
 }

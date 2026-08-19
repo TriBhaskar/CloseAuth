@@ -1,0 +1,44 @@
+package com.anterka.closeauthbackend.client.service;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/** FE-4d: {@link TenantAwareRegisteredClientRepository#countByTenantId} — the console overview's Clients tile. */
+class TenantAwareRegisteredClientRepositoryTest {
+
+    @Test
+    void countByTenantIdReturnsTheQueriedCount() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        UUID tenantId = UUID.randomUUID();
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT COUNT(*) FROM oauth2_registered_client WHERE tenant_id = ?"),
+                eq(Integer.class), any(Object[].class)))
+                .thenReturn(3);
+
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        assertThat(repository.countByTenantId(tenantId)).isEqualTo(3);
+        verify(jdbcTemplate).queryForObject(
+                "SELECT COUNT(*) FROM oauth2_registered_client WHERE tenant_id = ?", Integer.class, tenantId);
+    }
+
+    @Test
+    void countByTenantIdReturnsZeroRatherThanNull() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Integer.class), any(Object[].class)))
+                .thenReturn(null);
+
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        assertThat(repository.countByTenantId(UUID.randomUUID())).isZero();
+    }
+}

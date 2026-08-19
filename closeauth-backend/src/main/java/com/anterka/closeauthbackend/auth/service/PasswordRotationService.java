@@ -72,11 +72,14 @@ public class PasswordRotationService {
      * <p>Called from two on-ramps: {@code LoginController} on a proven-but-gated login (an
      * {@code authorizeQuery} to resume), and {@code TenantOnboardingService} at credential-issuance time
      * (Phase 3 bootstrap/reissue — no interrupted login, so {@code authorizeQuery} is {@code null} and the
-     * caller emails the returned URL instead of redirecting to it).
+     * caller emails the returned URL instead of redirecting to it). {@code tenantSlug} (BE-B) namespaces the
+     * returned URL's path — {@code LoginController} resolves it from {@code clientId} via
+     * {@link AuthFlowTenantResolver}; {@code TenantOnboardingService} already holds the tenant entity and passes
+     * {@code tenant.getSlug()} directly. {@code null} degrades to the un-namespaced path.
      */
     @Transactional
     public String beginRotation(TenantContext context, UUID userId, String email, String clientId,
-                                String authorizeQuery) {
+                                String authorizeQuery, String tenantSlug) {
         String target = normalize(email);
         CloseAuthProperties.OneTimeToken cfg = properties.getOneTimeToken();
         oneTimeTokenService.invalidateForTarget(OneTimeTokenPurpose.TENANT_ADMIN_ONBOARDING, context.tenantId(), target);
@@ -84,7 +87,7 @@ public class PasswordRotationService {
                 OneTimeTokenPurpose.TENANT_ADMIN_ONBOARDING, context.tenantId(), userId, target, null,
                 OneTimeTokenFormat.OPAQUE_LINK, cfg.getTenantAdminOnboardingTtl()));
         log.info("Password rotation onboarding token issued for user {} in tenant {}", userId, context.tenantId());
-        return rotationPageUrl(raw.rawSecret(), clientId, authorizeQuery);
+        return rotationPageUrl(raw.rawSecret(), clientId, authorizeQuery, tenantSlug);
     }
 
     /**
@@ -142,14 +145,17 @@ public class PasswordRotationService {
         }
     }
 
-    private String rotationPageUrl(String rawSecret, String clientId, String authorizeQuery) {
-        // {bff.baseUrl}/password-rotation — the SPA-facing rotation page (phase 4a builds the view; the BFF's
-        // SPAHandler already serves index.html for this path today, see the plan §9 — no backend change needed
-        // again later for this route to resolve). authorizeQuery is handed in ALREADY percent-encoded (built by
-        // LoginController.buildAuthorizeQuery, unchanged) — enc() here encodes it ONCE MORE as a single opaque query
-        // parameter value; never re-encode on the way back out (see completeRotation / LoginSuccessResponder).
-        StringBuilder url = new StringBuilder(properties.getBff().getBaseUrl())
-                .append("/password-rotation?token=").append(enc(rawSecret));
+    private String rotationPageUrl(String rawSecret, String clientId, String authorizeQuery, String tenantSlug) {
+        // {bff.baseUrl}/t/{slug}/password-rotation — the SPA-facing rotation page (BE-B: tenant-namespaced per spec
+        // §2.2; tenantSlug == null degrades to the un-namespaced path). authorizeQuery is handed in ALREADY
+        // percent-encoded (built by LoginController.buildAuthorizeQuery, unchanged) — enc() here encodes it ONCE
+        // MORE as a single opaque query parameter value; never re-encode on the way back out (see completeRotation /
+        // LoginSuccessResponder).
+        StringBuilder url = new StringBuilder(properties.getBff().getBaseUrl());
+        if (tenantSlug != null) {
+            url.append("/t/").append(tenantSlug);
+        }
+        url.append("/password-rotation?token=").append(enc(rawSecret));
         if (clientId != null) {
             url.append("&client_id=").append(enc(clientId));
         }

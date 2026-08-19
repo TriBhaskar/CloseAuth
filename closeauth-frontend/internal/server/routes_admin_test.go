@@ -379,9 +379,47 @@ func TestValidUUID(t *testing.T) {
 	}
 }
 
+// TestUserFilterQuery_AllowListsOnlyTheDocumentedFilters is the cheap,
+// always-run structural counterpart of the Docker-gated paging test — proves
+// userFilterQuery forwards page/size + status/role/q and silently drops
+// anything else, mirroring auditQuery's own allow-list shape.
+func TestUserFilterQuery_AllowListsOnlyTheDocumentedFilters(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet,
+		"http://example.test/t/acme/api/users?page=1&size=10&status=ACTIVE&role=TENANT_ADMIN&q=ada&sort=email&bogus=1",
+		nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	got := userFilterQuery(req)
+
+	want := map[string]string{"page": "1", "size": "10", "status": "ACTIVE", "role": "TENANT_ADMIN", "q": "ada"}
+	for k, v := range want {
+		if got.Get(k) != v {
+			t.Errorf("userFilterQuery()[%q] = %q, want %q", k, got.Get(k), v)
+		}
+	}
+	for _, dropped := range []string{"sort", "bogus"} {
+		if got.Has(dropped) {
+			t.Errorf("userFilterQuery() forwarded %q, want it silently dropped", dropped)
+		}
+	}
+}
+
 func TestValidSlug(t *testing.T) {
-	valid := []string{"acme", "t-c9224622", "a", strings.Repeat("a", 63)}
-	invalid := []string{"", "Acme", "acme_corp", "-acme", strings.Repeat("a", 64), "acme/../etc"}
+	// Bug fix (found via manual testing against a real ten_-prefixed
+	// tenant): the pattern originally had no ten_-prefixed alternative at
+	// all, so a real post-BE-A tenant slug like "ten_rohit" failed this
+	// check and broke handleAdminCallback's own slug extraction —
+	// see slugPattern's own doc comment for the full story.
+	valid := []string{
+		"acme", "t-c9224622", "a", strings.Repeat("a", 63), // legacy bare shape, still accepted
+		"ten_acme-inc", "ten_rohit", "ten_a1", // ten_-prefixed, the real post-BE-A production shape
+	}
+	invalid := []string{
+		"", "Acme", "acme_corp", "-acme", strings.Repeat("a", 64), "acme/../etc",
+		"TEN_acme", "ten_", // malformed ten_-prefixed shapes: wrong case, no suffix at all
+	}
 
 	for _, s := range valid {
 		if !validSlug(s) {
@@ -459,8 +497,10 @@ func TestAdminRolesRoutes_MissingSession_Returns401(t *testing.T) {
 	rsID := "33333333-3333-3333-3333-333333333333"
 	paths := []string{
 		"/t/acme/api/roles/" + roleID,
+		"/t/acme/api/roles/" + roleID + "/assignees",
 		"/t/acme/api/resource-servers/" + rsID + "/roles",
 		"/t/acme/api/resource-servers/" + rsID + "/roles/" + roleID,
+		"/t/acme/api/resource-servers/" + rsID + "/roles/" + roleID + "/assignees",
 		"/t/acme/api/resource-servers/" + rsID + "/roles/" + roleID + "/scopes",
 		"/t/acme/api/users/" + userID + "/application-roles?resourceServerId=" + rsID,
 	}
@@ -499,6 +539,66 @@ func TestAdminRolesRoutes_MutatingWithoutCSRFToken_Returns403(t *testing.T) {
 		{http.MethodDelete, "/t/acme/api/resource-servers/" + rsID + "/roles/" + roleID + "/scopes/" + scopeID},
 		{http.MethodPost, "/t/acme/api/users/" + userID + "/application-roles/" + roleID},
 		{http.MethodDelete, "/t/acme/api/users/" + userID + "/application-roles/" + roleID},
+	}
+	for _, c := range cases {
+		req, err := http.NewRequest(c.method, ts.URL+c.path, nil)
+		if err != nil {
+			t.Fatalf("build %s %s: %v", c.method, c.path, err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", c.method, c.path, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s: status = %d, want 403 (missing CSRF token)", c.method, c.path, resp.StatusCode)
+		}
+	}
+}
+
+// TestAdminUserSessionsAndInvitesRoutes_MissingSession_Returns401 is the
+// FE-4a counterpart of TestAdminUsersRoutes_MissingSession_Returns401 — the
+// new Sessions-tab and invitation routes must sit inside the same
+// RequireAdminSession-guarded group as every other UI-3b/3d route.
+func TestAdminUserSessionsAndInvitesRoutes_MissingSession_Returns401(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	userID := "11111111-1111-1111-1111-111111111111"
+	paths := []string{
+		"/t/acme/api/users/" + userID + "/sessions",
+		"/t/acme/api/invites",
+	}
+	for _, p := range paths {
+		resp, err := http.Get(ts.URL + p)
+		if err != nil {
+			t.Fatalf("GET %s: %v", p, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("GET %s: status = %d, want 401 (no session)", p, resp.StatusCode)
+		}
+	}
+}
+
+// TestAdminUserSessionsAndInvitesRoutes_MutatingWithoutCSRFToken_Returns403
+// is the FE-4a counterpart of TestAdminUsersRoutes_MutatingWithoutCSRFToken_Returns403.
+func TestAdminUserSessionsAndInvitesRoutes_MutatingWithoutCSRFToken_Returns403(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	userID := "11111111-1111-1111-1111-111111111111"
+	sessionID := "22222222-2222-2222-2222-222222222222"
+	inviteID := "33333333-3333-3333-3333-333333333333"
+
+	cases := []struct{ method, path string }{
+		{http.MethodPost, "/t/acme/api/users/with-temp-credential"},
+		{http.MethodDelete, "/t/acme/api/users/" + userID + "/sessions/" + sessionID},
+		{http.MethodDelete, "/t/acme/api/users/" + userID + "/sessions"},
+		{http.MethodPost, "/t/acme/api/invites"},
+		{http.MethodDelete, "/t/acme/api/invites/" + inviteID},
 	}
 	for _, c := range cases {
 		req, err := http.NewRequest(c.method, ts.URL+c.path, nil)
@@ -587,5 +687,83 @@ func TestPlatformRoutes_MutatingWithoutCSRFToken_Returns403(t *testing.T) {
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s %s: status = %d, want 403 (missing CSRF token)", c.method, c.path, resp.StatusCode)
 		}
+	}
+}
+
+// TestMeRoutes_MissingSession_Returns401 is FE-4d's counterpart of
+// TestAdminUserSessionsAndInvitesRoutes_MissingSession_Returns401 — proves
+// the four self-service /me/** routes are gated at all (by
+// RequireTenantSession, not RequireAdminSession — but with no cookie at
+// all, both gates refuse identically: 401 unauthenticated).
+func TestMeRoutes_MissingSession_Returns401(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	// GET only here — the mutating routes (DELETE .../sessions/{id}, POST
+	// .../change-password) hit CSRFValidationMiddleware first (mounted at
+	// the ar router level, ahead of RequireTenantSession), so a sessionless
+	// mutating request 403s before the session check ever runs. That
+	// ordering is proven by TestMeRoutes_MutatingWithoutCSRFToken_Returns403
+	// below, same split TestAdminUserSessionsAndInvitesRoutes_* already uses.
+	paths := []string{
+		"/t/acme/api/me",
+		"/t/acme/api/me/sessions",
+	}
+	for _, p := range paths {
+		resp, err := http.Get(ts.URL + p)
+		if err != nil {
+			t.Fatalf("GET %s: %v", p, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("GET %s: status = %d, want 401 (no session)", p, resp.StatusCode)
+		}
+	}
+}
+
+// TestMeRoutes_MutatingWithoutCSRFToken_Returns403 is FE-4d's counterpart of
+// TestAdminUserSessionsAndInvitesRoutes_MutatingWithoutCSRFToken_Returns403.
+func TestMeRoutes_MutatingWithoutCSRFToken_Returns403(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	sessionID := "11111111-1111-1111-1111-111111111111"
+	cases := []struct{ method, path string }{
+		{http.MethodPost, "/t/acme/api/me/change-password"},
+		{http.MethodDelete, "/t/acme/api/me/sessions/" + sessionID},
+	}
+	for _, c := range cases {
+		req, err := http.NewRequest(c.method, ts.URL+c.path, nil)
+		if err != nil {
+			t.Fatalf("build %s %s: %v", c.method, c.path, err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", c.method, c.path, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s: status = %d, want 403 (missing CSRF token)", c.method, c.path, resp.StatusCode)
+		}
+	}
+}
+
+// TestAdminClientCountRoute_MissingSession_Returns401 is FE-4d's counterpart
+// covering the new /clients/count tile-backing route (admin-gated, unlike
+// /me/** above — it lives in the existing pr.Group).
+func TestAdminClientCountRoute_MissingSession_Returns401(t *testing.T) {
+	s := &Server{authProxy: proxy.New("http://localhost:9999")}
+	ts := httptest.NewServer(s.RegisterRoutes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/t/acme/api/clients/count")
+	if err != nil {
+		t.Fatalf("GET clients/count: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("GET clients/count: status = %d, want 401 (no session)", resp.StatusCode)
 	}
 }

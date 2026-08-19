@@ -83,11 +83,39 @@ class EmailVerificationServiceTest {
     }
 
     @Test
-    void invalidCodeReturnsGenericFailure() {
+    void aNotFoundOrWrongPurposeOrWrongTenantCodeCollapsesToTheGenericInvalidOutcome() {
+        // FE-2d: EXPIRED/ALREADY_USED get their own outcomes below — everything else still collapses, exactly as
+        // the primitive's own ConsumeResult javadoc requires (no further enumeration of "why").
+        for (ConsumeResult.FailureReason reason : new ConsumeResult.FailureReason[] {
+                ConsumeResult.FailureReason.NOT_FOUND,
+                ConsumeResult.FailureReason.WRONG_PURPOSE,
+                ConsumeResult.FailureReason.WRONG_TENANT,
+        }) {
+            when(oneTimeTokenService.consumeCode(any(), any(), any(), any())).thenReturn(ConsumeResult.failure(reason));
+            assertThat(service.verify(ctx, "a@x.com", "000000")).isEqualTo(VerificationOutcome.INVALID);
+        }
+        verify(userService, never()).markEmailVerified(any(), any());
+    }
+
+    // FE-2d (spec §6.2.4): the one documented exception to ConsumeResult's blanket collapse rule — see
+    // EmailVerificationService's own class javadoc for why this is safe for this flow specifically.
+    @Test
+    void anExpiredCodeReturnsTheDistinctExpiredOutcome() {
         when(oneTimeTokenService.consumeCode(any(), any(), any(), any()))
                 .thenReturn(ConsumeResult.failure(ConsumeResult.FailureReason.EXPIRED));
-        assertThat(service.verify(ctx, "a@x.com", "000000")).isEqualTo(VerificationOutcome.INVALID);
+        assertThat(service.verify(ctx, "a@x.com", "000000")).isEqualTo(VerificationOutcome.EXPIRED);
         verify(userService, never()).markEmailVerified(any(), any());
+    }
+
+    @Test
+    void anAlreadyUsedCodeReturnsTheDistinctAlreadyUsedOutcomeWithNoReVerificationAttempt() {
+        when(oneTimeTokenService.consumeCode(any(), any(), any(), any()))
+                .thenReturn(ConsumeResult.failure(ConsumeResult.FailureReason.ALREADY_USED));
+        assertThat(service.verify(ctx, "a@x.com", "000000")).isEqualTo(VerificationOutcome.ALREADY_USED);
+        // A failed ConsumeResult carries no userId — there is nothing to act on, so nothing should be attempted.
+        verify(userService, never()).markEmailVerified(any(), any());
+        verify(userService, never()).activateUser(any(), any());
+        verify(userService, never()).getUserById(any(), any());
     }
 
     @Test
@@ -100,9 +128,9 @@ class EmailVerificationServiceTest {
     @Test
     void issuanceRateLimitDropsSilently() {
         when(rateLimiter.tryAcquire(any(), anyInt(), any())).thenReturn(false);
-        service.requestVerification(ctx, userId, "a@x.com");
+        service.requestVerification(ctx, userId, "a@x.com", "client-1", "ten_acme");
         verify(oneTimeTokenService, never()).issue(any());
-        verify(notifier, never()).sendEmailVerificationCode(any(), any());
+        verify(notifier, never()).sendEmailVerificationCode(any(), any(), any());
     }
 
     @Test
@@ -113,24 +141,57 @@ class EmailVerificationServiceTest {
         when(oneTimeTokenService.issue(any()))
                 .thenReturn(new RawOneTimeToken(code, UUID.randomUUID(), Instant.now().plus(Duration.ofMinutes(10))));
         doThrow(new NotificationDeliveryException("EMAIL_VERIFICATION", "a@x.com", new RuntimeException("smtp down")))
-                .when(notifier).sendEmailVerificationCode(any(), eq(code));
+                .when(notifier).sendEmailVerificationCode(any(), eq(code), any());
 
         Logger logger = (Logger) LoggerFactory.getLogger(EmailVerificationService.class);
         ListAppender<ILoggingEvent> logs = new ListAppender<>();
         logs.start();
         logger.addAppender(logs);
         try {
-            assertThatCode(() -> service.requestVerification(ctx, userId, "a@x.com")).doesNotThrowAnyException();
+            assertThatCode(() -> service.requestVerification(ctx, userId, "a@x.com", "client-1", "ten_acme"))
+                    .doesNotThrowAnyException();
         } finally {
             logger.detachAppender(logs);
         }
 
-        verify(notifier).sendEmailVerificationCode(any(), eq(code)); // delivery WAS attempted (token still issued)
+        // delivery WAS attempted (token still issued) — the built verifyUrl carries the code, so it must never be
+        // logged either (asserted below alongside the raw code).
+        verify(notifier).sendEmailVerificationCode(eq("a@x.com"), eq(code), any());
         assertThat(logs.list).noneMatch(e -> e.getFormattedMessage().contains(code)); // but the code is never logged
+    }
+
+    @Test
+    void requestVerificationBuildsATenantNamespacedVerifyUrlCarryingTheCode() {
+        String code = "424242";
+        when(oneTimeTokenService.issue(any()))
+                .thenReturn(new RawOneTimeToken(code, UUID.randomUUID(), Instant.now().plus(Duration.ofMinutes(10))));
+
+        service.requestVerification(ctx, userId, "a@x.com", "client-1", "ten_acme");
+
+        org.mockito.ArgumentCaptor<String> urlCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(notifier).sendEmailVerificationCode(eq("a@x.com"), eq(code), urlCaptor.capture());
+        String url = urlCaptor.getValue();
+        assertThat(url).contains("/t/ten_acme/verify-email");
+        assertThat(url).contains("code=" + code);
+        assertThat(url).contains("email=a%40x.com");
+        assertThat(url).contains("client_id=client-1");
+    }
+
+    @Test
+    void requestVerificationDegradesToTheUnNamespacedPathWhenTenantSlugIsNull() {
+        String code = "424242";
+        when(oneTimeTokenService.issue(any()))
+                .thenReturn(new RawOneTimeToken(code, UUID.randomUUID(), Instant.now().plus(Duration.ofMinutes(10))));
+
+        service.requestVerification(ctx, userId, "a@x.com", "client-1", null);
+
+        org.mockito.ArgumentCaptor<String> urlCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(notifier).sendEmailVerificationCode(eq("a@x.com"), eq(code), urlCaptor.capture());
+        assertThat(urlCaptor.getValue()).doesNotContain("/t/");
     }
 
     private UserView user(UserStatus status) {
         return new UserView(userId, tenantId, "a@x.com", false, null, false, "F", "L", status,
-                null, Instant.now(), Instant.now());
+                null, Instant.now(), Instant.now(), null, null);
     }
 }

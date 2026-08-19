@@ -9,8 +9,11 @@ import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
 import com.anterka.closeauthbackend.tenant.dto.BrandingView;
 import com.anterka.closeauthbackend.tenant.dto.UpdateBrandingCommand;
+import com.anterka.closeauthbackend.tenant.entity.Tenant;
 import com.anterka.closeauthbackend.tenant.entity.TenantBranding;
+import com.anterka.closeauthbackend.tenant.enums.RegistrationMode;
 import com.anterka.closeauthbackend.tenant.repository.TenantBrandingRepository;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +38,8 @@ public class TenantBrandingService {
     private final CommandValidator commandValidator;
     private final CloseAuthProperties properties;
     private final AuditEmitter auditEmitter;
+    private final TenantRepository tenantRepository;
+    private final RegistrationConfigService registrationConfigService;
 
     /** Public resolution: a tenant's branding with platform defaults for null fields (never any tenant internals). */
     @Transactional(readOnly = true)
@@ -46,7 +51,7 @@ public class TenantBrandingService {
     public BrandingView platformDefault() {
         CloseAuthProperties.Branding d = properties.getBranding();
         return new BrandingView(d.getDefaultLogoUrl(), d.getPrimaryColor(), d.getBackgroundColor(),
-                d.getAccentColor(), d.getCompanyNameFallback());
+                d.getAccentColor(), d.getCompanyNameFallback(), null, null);
     }
 
     /** Admin read of a tenant's (resolved) branding — Stage 7 endpoint. */
@@ -78,12 +83,21 @@ public class TenantBrandingService {
 
     private BrandingView toView(TenantBranding b) {
         CloseAuthProperties.Branding d = properties.getBranding();
+        // BE-B: the public Tenant ID, for ConsentView.vue's two-hop redirect — see BrandingView's own javadoc for
+        // why this is safe to expose from an otherwise deliberately internals-free response.
+        String tenantSlug = tenantRepository.findById(b.getTenantId()).map(Tenant::getSlug).orElse(null);
+        // FE-2b: the login page's Create-an-account link needs this to decide its own visibility (spec §6.2.2) —
+        // see BrandingView's own javadoc for why exposing it here is safe. resolveMode always returns a real value
+        // for an existing tenant (platform-default fallback if the row predates Stage 6b-i), never null.
+        RegistrationMode registrationMode = registrationConfigService.resolveMode(b.getTenantId());
         return new BrandingView(
                 b.getLogoUrl() != null ? b.getLogoUrl() : d.getDefaultLogoUrl(),
                 b.getPrimaryColor() != null ? b.getPrimaryColor() : d.getPrimaryColor(),
                 b.getBackgroundColor() != null ? b.getBackgroundColor() : d.getBackgroundColor(),
                 b.getAccentColor() != null ? b.getAccentColor() : d.getAccentColor(),
-                b.getCompanyName() != null ? b.getCompanyName() : d.getCompanyNameFallback());
+                b.getCompanyName() != null ? b.getCompanyName() : d.getCompanyNameFallback(),
+                tenantSlug,
+                registrationMode);
     }
 
     /** A logo URL must be a well-formed absolute <b>https</b> URL (http would be mixed-content on the https page). */

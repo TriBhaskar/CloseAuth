@@ -167,7 +167,8 @@ class AdminApiIntegrationTest {
         assertThat(introspect(client[0], client[1], token).get("active")).isEqualTo(Boolean.TRUE);
 
         // Suspending writes the sub-keyed platform-admin revocation marker.
-        platformAdminService.suspend(admin.id());
+        // (Acting as a different admin here — this test is about the revocation marker, not self-lockout.)
+        platformAdminService.suspend(admin.id(), java.util.UUID.randomUUID());
 
         // After suspend: the admin API REJECTS the still-unexpired token (401) — killed within the TTL, not at expiry.
         assertThat(get("/v1/platform/me", token).statusCode()).isEqualTo(401);
@@ -241,11 +242,11 @@ class AdminApiIntegrationTest {
     /** Registers a confidential client (able to authenticate to {@code /oauth2/introspect}). @return {clientId, secret}. */
     private String[] introspectionClient() {
         String clientId = "introspect-" + rnd();
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("acme-" + rnd(), "Acme"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("Acme"));
         tenantService.activateTenant(tenant.id());
         ClientCreatedView created = clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
                 clientId, "Introspect Client", false, List.of("client_credentials"),
-                List.of("introspect:read"), null, false, true));
+                List.of("introspect:read"), null, null, false, true));
         return new String[]{clientId, created.clientSecret()};
     }
 

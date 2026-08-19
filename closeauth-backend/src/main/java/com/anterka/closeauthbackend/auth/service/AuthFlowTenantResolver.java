@@ -1,6 +1,8 @@
 package com.anterka.closeauthbackend.auth.service;
 
 import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
+import com.anterka.closeauthbackend.tenant.entity.Tenant;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
@@ -25,6 +27,7 @@ import java.util.UUID;
 public class AuthFlowTenantResolver {
 
     private final RegisteredClientRepository registeredClientRepository;
+    private final TenantRepository tenantRepository;
 
     /** The registered client for a public {@code client_id}, or empty if unknown. */
     public Optional<RegisteredClient> findClient(String clientId) {
@@ -37,5 +40,15 @@ public class AuthFlowTenantResolver {
     /** The tenant owning the given {@code client_id}, or empty if the client is unknown / carries no tenant. */
     public Optional<UUID> resolveTenantId(String clientId) {
         return findClient(clientId).map(CloseAuthClientSettings::getTenantId);
+    }
+
+    /**
+     * BE-B: the tenant's public Tenant ID (slug) for a {@code client_id}, or empty if the client is unknown or its
+     * tenant has since been deleted. Used only to build the tenant-namespaced hosted-auth URL a browser is sent to
+     * (the login redirect, the password-reset/rotation emails) — never for authentication itself, which stays keyed
+     * on {@link #resolveTenantId(String)}'s UUID.
+     */
+    public Optional<String> resolveTenantSlug(String clientId) {
+        return resolveTenantId(clientId).flatMap(tenantRepository::findById).map(Tenant::getSlug);
     }
 }

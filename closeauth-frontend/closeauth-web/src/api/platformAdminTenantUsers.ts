@@ -6,7 +6,7 @@
 // tenant id on this surface to scope onto.
 import { platformAdminFetch } from '@/api/platformAdminClient'
 import { parsePlatformResult } from '@/api/platformAdminProblem'
-import type { AdminResult } from '@/api/tenantAdminProblem'
+import type { AdminResult } from '@/api/problem'
 import { DEFAULT_PAGE_SIZE, type PageView } from '@/api/platformAdminTenants'
 
 // Mirrors identity/enums/UserStatus.java exactly.

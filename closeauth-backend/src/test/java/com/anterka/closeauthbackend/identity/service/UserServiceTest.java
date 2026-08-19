@@ -66,8 +66,10 @@ class UserServiceTest {
                 Mockito.mock(com.anterka.closeauthbackend.rbac.service.TenantRoleService.class);
         com.anterka.closeauthbackend.token.service.TokenRevocationService tokenRevocationService =
                 Mockito.mock(com.anterka.closeauthbackend.token.service.TokenRevocationService.class);
+        com.anterka.closeauthbackend.session.service.AuthServerSessionService sessionService =
+                Mockito.mock(com.anterka.closeauthbackend.session.service.AuthServerSessionService.class);
         userService = new UserService(userRepository, tenantService, hasher, commandValidator,
-                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService,
+                new UserStateMachine(), List.of(), tenantRoleService, tokenRevocationService, sessionService,
                 org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
@@ -330,6 +332,38 @@ class UserServiceTest {
             assertThatThrownBy(() -> userService.deleteUser(ctxA, user.getId()))
                     .isInstanceOf(InvalidUserStateTransitionException.class);
         }
+    }
+
+    // ---- getUsersByIds (FE-4b: backs the role-assignees reads) -----------
+
+    @Test
+    void getUsersByIdsResolvesEveryMatchingTenantUser() {
+        User a = userWithStatus(UserStatus.ACTIVE);
+        User b = userWithStatus(UserStatus.ACTIVE);
+        when(userRepository.findAllById(List.of(a.getId(), b.getId()))).thenReturn(List.of(a, b));
+
+        List<UserView> result = userService.getUsersByIds(ctxA, List.of(a.getId(), b.getId()));
+
+        assertThat(result).extracting(UserView::id).containsExactlyInAnyOrder(a.getId(), b.getId());
+    }
+
+    @Test
+    void getUsersByIdsFiltersOutAUserFromAnotherTenantDefensively() {
+        // Simulates the id list somehow containing a cross-tenant id — findAllById itself doesn't scope by
+        // tenant, so the service must re-filter (the same "isolation enforced in layers" discipline every
+        // other tenant-owned read here follows).
+        User inTenant = userWithStatus(UserStatus.ACTIVE);
+        User otherTenant = new User();
+        otherTenant.setId(UUID.randomUUID());
+        otherTenant.setTenantId(TENANT_B);
+        otherTenant.setEmail("other@x.com");
+        otherTenant.setStatus(UserStatus.ACTIVE);
+        when(userRepository.findAllById(List.of(inTenant.getId(), otherTenant.getId())))
+                .thenReturn(List.of(inTenant, otherTenant));
+
+        List<UserView> result = userService.getUsersByIds(ctxA, List.of(inTenant.getId(), otherTenant.getId()));
+
+        assertThat(result).extracting(UserView::id).containsExactly(inTenant.getId());
     }
 
     // ---- helpers ----------------------------------------------------------

@@ -16,12 +16,13 @@
 // a genuine network/transport failure (authMagicLink.ts's boolean `false`).
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import AuthLayout from '@/layouts/AuthLayout.vue'
+import AuthShell from '@/shells/AuthShell.vue'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { useOAuthTheme } from '@/composables/useOAuthTheme'
+import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
 import { requestMagicLink } from '@/api/authMagicLink'
+import { hostedAuthPath } from '@/lib/hostedAuthPath'
 
 const route = useRoute()
 
@@ -30,8 +31,11 @@ const clientId = computed(() => {
   return typeof raw === 'string' ? raw : ''
 })
 
-const { branding, hasLogo } = useOAuthTheme(clientId.value)
-const companyLabel = computed(() => branding.value.companyName || 'CloseAuth')
+const loginPath = computed(() => hostedAuthPath(route, '/login'))
+
+function companyLabel(branding: Branding): string {
+  return branding.companyName || 'CloseAuth'
+}
 
 const email = ref('')
 const isSubmitting = ref(false)
@@ -56,13 +60,14 @@ async function handleSubmit(): Promise<void> {
 </script>
 
 <template>
-  <AuthLayout>
+  <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
+  <AuthShell>
     <template #above>
       <div class="flex flex-col items-center gap-2 text-center">
         <img
           v-if="hasLogo"
           :src="branding.logoUrl"
-          :alt="companyLabel"
+          :alt="companyLabel(branding)"
           class="h-10 w-auto object-contain"
         >
         <h1 class="text-xl font-semibold tracking-tight">Sign in with a link</h1>
@@ -73,9 +78,9 @@ async function handleSubmit(): Promise<void> {
     <!-- Success: enumeration-safe confirmation, identical whether or not the account exists -->
     <div v-if="isSent" class="flex flex-col gap-4 text-center">
       <p class="text-sm text-foreground">
-        If that email has an account, we've sent a sign-in link to it. Check your inbox.
+        If that account exists, a sign-in link is on its way.
       </p>
-      <RouterLink to="/login">
+      <RouterLink :to="loginPath">
         <Button variant="ghost" class="w-full">Back to sign in</Button>
       </RouterLink>
     </div>
@@ -99,9 +104,10 @@ async function handleSubmit(): Promise<void> {
         {{ isSubmitting ? 'Sending…' : 'Email me a link' }}
       </Button>
 
-      <RouterLink to="/login" class="text-sm text-center text-muted-foreground hover:underline">
+      <RouterLink :to="loginPath" class="text-sm text-center text-muted-foreground hover:underline">
         Back to sign in
       </RouterLink>
     </form>
-  </AuthLayout>
+  </AuthShell>
+  </TenantBrandingProvider>
 </template>

@@ -13,7 +13,7 @@
 // <select> of exactly these four options is what actually prevents an admin
 // from ever triggering the 500, not any client-side validation.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 
 // Mirrors tenant/enums/RegistrationMode.java exactly — the FULL set, no more.
 export type RegistrationMode = 'OPEN' | 'EMAIL_VERIFIED' | 'ADMIN_APPROVED' | 'INVITE_ONLY'

@@ -2,7 +2,7 @@
 // internal/server/handlers_admin_audit.go's /t/{slug}/api/audit-events GET
 // route. No mutations — this module has no POST/PUT/DELETE at all.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 import type { PageView } from '@/api/tenantAdminUsers'
 
 // Mirrors audit/dto/AuditEventView.java exactly. The DTO is
@@ -65,7 +65,7 @@ export async function listAuditEvents(
 
 /**
  * audit.invalid_* 400s (AuditQueryParams.java) carry an empty exception
- * context — no `errors` map, only a `code` (tenantAdminProblem.ts's `error`
+ * context — no `errors` map, only a `code` (problem.ts's `error`
  * kind, UI-3e's `code` addition) — so this maps each onto the filter field
  * it concerns, same shape as tenantAdminRoles.ts's TENANT_ROLE_CONFLICT_FIELDS.
  */

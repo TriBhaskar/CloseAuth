@@ -400,7 +400,7 @@ class AuthCodeFlowIntegrationTest {
     private String currentEmail; // the email of the user provisioned for the current flow
 
     private UUID activeTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("t-" + rnd(), "T"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
         tenantService.activateTenant(tenant.id());
         return tenant.id();
     }
@@ -418,6 +418,7 @@ class AuthCodeFlowIntegrationTest {
                 List.of("authorization_code", "refresh_token"),
                 List.of("openid", "profile"),
                 List.of(REDIRECT),
+                null,
                 true, true)); // requireProofKey (PKCE), trusted
         clientSecrets.put(clientId, created.clientSecret());
         return clientId;

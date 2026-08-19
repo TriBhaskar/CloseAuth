@@ -23,7 +23,7 @@
 //     stage report as a backend follow-up candidate, not fixed here) — the
 //     settings form must say so in a hint, not paper over it.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 
 // Mirrors tenant/dto/BrandingView.java exactly. All five fields are always
 // present on the wire (BrandingView is not @JsonInclude(NON_NULL)) — unset
@@ -64,7 +64,7 @@ export async function updateBranding(slug: string, payload: UpdateBrandingPayloa
  * empty CloseAuthDomainException context — TenantBrandingService.invalid)
  * — parseAdminResult's `error` kind, not `validationErrors`. This maps both
  * onto the logo field so the settings form can land them there instead of a
- * generic banner, using the `code` field tenantAdminProblem.ts's `error`
+ * generic banner, using the `code` field problem.ts's `error`
  * kind now carries (UI-3e addition).
  */
 export const BRANDING_ERROR_FIELDS: Record<string, string> = {

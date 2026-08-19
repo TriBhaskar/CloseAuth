@@ -1,0 +1,6 @@
+/* Entry point imported once, from main.ts. Order matters: base.css pulls in
+ * Tailwind itself, tokens.css and type.css extend its @theme — importing
+ * Tailwind after either would drop their theme contributions. */
+@import './base.css';
+@import './tokens.css';
+@import './type.css';

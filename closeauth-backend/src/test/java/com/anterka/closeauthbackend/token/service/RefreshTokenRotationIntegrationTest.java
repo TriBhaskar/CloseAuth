@@ -54,7 +54,7 @@ class RefreshTokenRotationIntegrationTest {
     }
 
     private UUID newActiveTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("t-" + rnd(), "T"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
         tenantService.activateTenant(tenant.id());
         return tenant.id();
     }
@@ -67,7 +67,7 @@ class RefreshTokenRotationIntegrationTest {
     private String newClient(TenantContext ctx) {
         String clientId = "c-" + rnd();
         return clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, false, List.of("client_credentials"), List.of("read"), null, false, true)).client().id();
+                clientId, clientId, false, List.of("client_credentials"), List.of("read"), null, null, false, true)).client().id();
     }
 
     private RefreshTokenIssuance issuance(String hash) {

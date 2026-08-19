@@ -1,6 +1,8 @@
 package com.anterka.closeauthbackend.auth.service;
 
 import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
+import com.anterka.closeauthbackend.tenant.entity.Tenant;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -10,6 +12,7 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,12 +27,14 @@ class AuthFlowTenantResolverTest {
     private final UUID tenantId = UUID.randomUUID();
 
     private RegisteredClientRepository registeredClientRepository;
+    private TenantRepository tenantRepository;
     private AuthFlowTenantResolver resolver;
 
     @BeforeEach
     void setUp() {
         registeredClientRepository = Mockito.mock(RegisteredClientRepository.class);
-        resolver = new AuthFlowTenantResolver(registeredClientRepository);
+        tenantRepository = Mockito.mock(TenantRepository.class);
+        resolver = new AuthFlowTenantResolver(registeredClientRepository, tenantRepository);
     }
 
     @Test
@@ -48,6 +53,30 @@ class AuthFlowTenantResolverTest {
     void blankClientIdResolvesToNoTenant() {
         assertThat(resolver.resolveTenantId("")).isEmpty();
         assertThat(resolver.resolveTenantId(null)).isEmpty();
+    }
+
+    @Test
+    void resolvesTheSlugOfAClientsOwningTenant() {
+        when(registeredClientRepository.findByClientId("acme-app")).thenReturn(clientWithTenant(tenantId));
+        Tenant tenant = Mockito.mock(Tenant.class);
+        when(tenant.getSlug()).thenReturn("ten_acme-inc");
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+        assertThat(resolver.resolveTenantSlug("acme-app")).contains("ten_acme-inc");
+    }
+
+    @Test
+    void unknownClientResolvesToNoSlug() {
+        when(registeredClientRepository.findByClientId("nope")).thenReturn(null);
+        assertThat(resolver.resolveTenantSlug("nope")).isEmpty();
+    }
+
+    @Test
+    void aClientWhoseTenantHasSinceBeenDeletedResolvesToNoSlug() {
+        when(registeredClientRepository.findByClientId("acme-app")).thenReturn(clientWithTenant(tenantId));
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.empty());
+
+        assertThat(resolver.resolveTenantSlug("acme-app")).isEmpty();
     }
 
     private RegisteredClient clientWithTenant(UUID tenant) {

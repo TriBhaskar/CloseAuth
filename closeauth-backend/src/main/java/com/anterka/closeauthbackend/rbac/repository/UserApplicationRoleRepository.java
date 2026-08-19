@@ -20,4 +20,7 @@ public interface UserApplicationRoleRepository extends JpaRepository<UserApplica
     List<UserApplicationRole> findByUserIdAndResourceServerId(UUID userId, UUID resourceServerId);
 
     Optional<UserApplicationRole> findByUserIdAndApplicationRoleId(UUID userId, UUID applicationRoleId);
+
+    /** FE-4b: the reverse of {@link #findByUserId} — every holder of one application role, for its assignees list. */
+    List<UserApplicationRole> findByApplicationRoleId(UUID applicationRoleId);
 }

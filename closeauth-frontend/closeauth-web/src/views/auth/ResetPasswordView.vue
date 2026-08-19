@@ -29,12 +29,13 @@
 // element ids identical, so ResetPasswordView.spec.ts required no edits.
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import AuthLayout from '@/layouts/AuthLayout.vue'
+import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
-import NewPasswordFields from '@/components/auth/NewPasswordFields.vue'
-import { useOAuthTheme } from '@/composables/useOAuthTheme'
+import NewPasswordFields from '@/components/common/NewPasswordFields.vue'
+import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
 import { confirmPasswordReset } from '@/api/authPasswordReset'
 import { readForgotPasswordQuery } from '@/api/helpers/passwordResetContext'
+import { hostedAuthPath } from '@/lib/hostedAuthPath'
 
 const route = useRoute()
 
@@ -47,24 +48,33 @@ const clientId = computed(() => {
   return typeof raw === 'string' ? raw : ''
 })
 
-const { branding, hasLogo } = useOAuthTheme(clientId.value)
-const companyLabel = computed(() => branding.value.companyName || 'CloseAuth')
+function companyLabel(branding: Branding): string {
+  return branding.companyName || 'CloseAuth'
+}
 
 const bannerMessage = ref('')
 const isSubmitting = ref(false)
 const isReset = ref(false)
+// FE-2e (spec §6.2.6): only the `invalid` outcome gets a "Request a new
+// one" recovery action — a genuine network/transport failure isn't about
+// the link being bad, so a plain retry (resubmit the same form) is the
+// more honest affordance there, not a link to request a fresh one.
+const showRequestNew = ref(false)
+const forgotPasswordPath = computed(() => hostedAuthPath(route, '/forgot-password'))
 
 // Best-effort restore: a saved query string (client_id, redirect_uri,
 // state, ...) from the same browser session, or an empty string if none —
 // see this file's header comment for why a bare fallback is fine.
 const loginHref = computed(() => {
   const savedQuery = readForgotPasswordQuery()
-  return savedQuery ? `/login${savedQuery}` : '/login'
+  const base = hostedAuthPath(route, '/login')
+  return savedQuery ? `${base}${savedQuery}` : base
 })
 
 async function handleSubmit(password: string): Promise<void> {
   if (isSubmitting.value) return
   bannerMessage.value = ''
+  showRequestNew.value = false
 
   isSubmitting.value = true
   try {
@@ -80,8 +90,14 @@ async function handleSubmit(password: string): Promise<void> {
         break
       case 'invalid':
         // Generic, enumeration-safe — never says whether the token was
-        // invalid, expired, or already used.
-        bannerMessage.value = 'This reset link is invalid or has expired. Please request a new one.'
+        // invalid, expired, or already used (the backend collapses all
+        // three; see PasswordResetService). "Expired" is the blanket copy
+        // for this one outcome — by far the most common real reason a
+        // token fails, and this flow's high-entropy token makes
+        // distinguishing further pointless either way (unlike email
+        // verification's low-entropy code, FE-2d).
+        bannerMessage.value = 'This reset link has expired.'
+        showRequestNew.value = true
         break
       case 'error':
       default:
@@ -95,36 +111,47 @@ async function handleSubmit(password: string): Promise<void> {
 </script>
 
 <template>
-  <AuthLayout>
+  <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
+  <AuthShell>
     <template #above>
       <div class="flex flex-col items-center gap-2 text-center">
         <img
           v-if="hasLogo"
           :src="branding.logoUrl"
-          :alt="companyLabel"
+          :alt="companyLabel(branding)"
           class="h-10 w-auto object-contain"
         >
-        <h1 class="text-xl font-semibold tracking-tight">Set a new password for {{ companyLabel }}</h1>
+        <h1 class="text-xl font-semibold tracking-tight">Set a new password for {{ companyLabel(branding) }}</h1>
         <p class="text-sm text-muted-foreground">Choose a new password for your account.</p>
       </div>
     </template>
 
     <!-- Success: the same "please log in" outcome as registration/verification -->
     <div v-if="isReset" class="flex flex-col gap-4 text-center">
-      <p class="text-sm text-foreground">Your password has been reset. You can now sign in.</p>
+      <p class="text-sm font-semibold text-foreground">Password updated</p>
+      <p class="text-sm text-foreground">You've been signed out on all devices.</p>
       <RouterLink :to="loginHref">
         <Button class="w-full">Continue to sign in</Button>
       </RouterLink>
     </div>
 
-    <NewPasswordFields
-      v-else
-      id-prefix="reset-password"
-      submit-label="Reset password"
-      submitting-label="Resetting…"
-      :is-submitting="isSubmitting"
-      :banner-message="bannerMessage"
-      @submit="handleSubmit"
-    />
-  </AuthLayout>
+    <template v-else>
+      <NewPasswordFields
+        id-prefix="reset-password"
+        submit-label="Reset password"
+        submitting-label="Resetting…"
+        :is-submitting="isSubmitting"
+        :banner-message="bannerMessage"
+        @submit="handleSubmit"
+      />
+      <RouterLink
+        v-if="showRequestNew"
+        :to="forgotPasswordPath"
+        class="text-sm text-center text-muted-foreground hover:underline"
+      >
+        Request a new one
+      </RouterLink>
+    </template>
+  </AuthShell>
+  </TenantBrandingProvider>
 </template>

@@ -18,6 +18,7 @@ import com.anterka.closeauthbackend.rbac.entity.ApplicationRoleScope;
 import com.anterka.closeauthbackend.rbac.entity.UserApplicationRole;
 import com.anterka.closeauthbackend.rbac.repository.ApplicationRoleRepository;
 import com.anterka.closeauthbackend.rbac.repository.ApplicationRoleScopeRepository;
+import com.anterka.closeauthbackend.rbac.repository.ScopeRoleCountProjection;
 import com.anterka.closeauthbackend.rbac.repository.UserApplicationRoleRepository;
 import com.anterka.closeauthbackend.resourceserver.dto.ScopeView;
 import com.anterka.closeauthbackend.resourceserver.entity.ResourceServer;
@@ -30,7 +31,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Application-role tier (§7.9): RS-scoped roles, their scope bundles, and assignment. Permissions-are-scopes:
@@ -211,6 +214,36 @@ public class ApplicationRoleService {
                 .map(ApplicationRole::getName)
                 .sorted()
                 .toList();
+    }
+
+    /**
+     * FE-4b: the reverse of {@link #getApplicationRolesForUser} — every user holding one application role, for
+     * its assignees list (spec §6.4.5). Returns bare user ids; the caller (controller layer) resolves these
+     * against {@code UserService}, same "decorate at the boundary" convention as {@link TenantRoleService
+     * #getAssigneeUserIds}. {@code loadRoleInResourceServer} tenant/RS-scopes the role first, exactly like
+     * {@link #getApplicationRole} — a role id from another tenant or the wrong RS 404s before this ever queries
+     * {@code userApplicationRoleRepository}.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> getAssigneeUserIds(TenantContext context, UUID resourceServerId, UUID applicationRoleId) {
+        loadResourceServerOrThrow(context, resourceServerId);
+        loadRoleInResourceServer(resourceServerId, applicationRoleId);
+        return userApplicationRoleRepository.findByApplicationRoleId(applicationRoleId).stream()
+                .map(UserApplicationRole::getUserId)
+                .toList();
+    }
+
+    /**
+     * FE-4b (spec §6.4.4): scopeId → count of application roles (of this resource server) bundling it, for the
+     * scope catalog's "where used" column — the roles half only (the client-grant half is a tracked, deferred
+     * gap; see the FE-4b plan section). One query for the whole catalog, not per scope. A scope absent from the
+     * map is bundled into zero roles.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, Long> countRoleUsageByResourceServer(TenantContext context, UUID resourceServerId) {
+        loadResourceServerOrThrow(context, resourceServerId);
+        return applicationRoleScopeRepository.countRoleUsageByResourceServer(resourceServerId).stream()
+                .collect(Collectors.toMap(ScopeRoleCountProjection::getScopeId, ScopeRoleCountProjection::getRoleCount));
     }
 
     // ---- Internals --------------------------------------------------------

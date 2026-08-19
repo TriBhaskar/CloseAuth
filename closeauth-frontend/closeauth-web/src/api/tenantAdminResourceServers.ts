@@ -3,11 +3,16 @@
 // /t/{slug}/api/resource-servers/** surface. Unlike clients, the backend
 // exposes full CRUD here, so this module is a plain, complete wrapper.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 import type { PageView } from '@/api/tenantAdminUsers'
 
 // Mirrors resourceserver/dto/ResourceServerView.java exactly. Scopes are
 // fetched separately (listScopes) — this view never embeds them.
+//
+// FE-4b: scopeCount is server-decorated from a single bulk query (spec
+// §6.4.4's list "Scope count" column) — never null in practice (the list
+// endpoint always populates it), but typed nullable to match the backend's
+// own "not computed" convention.
 export interface ResourceServerView {
   id: string
   tenantId: string
@@ -17,9 +22,17 @@ export interface ResourceServerView {
   autoCreated: boolean
   createdAt: string
   updatedAt: string | null
+  scopeCount: number | null
 }
 
 // Mirrors resourceserver/dto/ScopeView.java exactly.
+//
+// FE-4b: usedByRoleCount is server-decorated (never computed client-side) —
+// count of application roles bundling this scope (spec §6.4.4's "where
+// used," roles half only; the client-grant half is a tracked, deferred
+// gap — see the FE-4b plan section). null means "not computed" (never
+// treated as 0); the list endpoint always populates it, so in practice
+// every ScopeView this module returns carries a real number.
 export interface ScopeView {
   id: string
   resourceServerId: string
@@ -28,6 +41,7 @@ export interface ScopeView {
   isDefault: boolean
   requiresConsent: boolean
   createdAt: string
+  usedByRoleCount: number | null
 }
 
 export const DEFAULT_PAGE_SIZE = 20

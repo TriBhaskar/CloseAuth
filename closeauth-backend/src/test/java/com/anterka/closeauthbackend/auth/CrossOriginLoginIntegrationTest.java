@@ -82,7 +82,8 @@ class CrossOriginLoginIntegrationTest {
         registry.add("closeauth.session.cookie.secure", () -> "false");
         // A deliberately distinct, "foreign" origin standing in for the real BFF — proves the entry point actually
         // redirects to THIS configured value (not a same-origin/relative fallback) and never needs to be reachable.
-        registry.add("closeauth.bff.login-page", () -> "http://bff.example.invalid:8088/login");
+        // BE-B: there is no more closeauth.bff.login-page property — the login redirect is built dynamically per
+        // tenant (base-url + /t/{slug}/login) by TenantAwareLoginRedirectEntryPoint.
         registry.add("closeauth.bff.base-url", () -> "http://bff.example.invalid:8088");
     }
 
@@ -94,7 +95,7 @@ class CrossOriginLoginIntegrationTest {
     private static final String PASSWORD = "password123";
     // UI-3c: the backend now generates each client's secret; capture per clientId rather than a shared constant.
     private final java.util.Map<String, String> clientSecrets = new java.util.HashMap<>();
-    private static final String BFF_LOGIN_PAGE = "http://bff.example.invalid:8088/login";
+    private static final String BFF_BASE_URL = "http://bff.example.invalid:8088";
     private final ObjectMapper json = new ObjectMapper();
 
     private String base() {
@@ -103,7 +104,9 @@ class CrossOriginLoginIntegrationTest {
 
     @Test
     void coldUnauthenticatedAuthorizeCarriesQueryToLoginThenResumesAndIssuesRealTokens() throws Exception {
-        UUID tenantId = activeTenant();
+        TenantView provisioned = activeTenant();
+        UUID tenantId = provisioned.id();
+        String tenantSlug = provisioned.slug();
         TenantContext ctx = TenantContext.of(tenantId);
         String email = "cross-origin-" + rnd() + "@x.com";
         UUID userId = userService.createUserWithPassword(ctx, new CreateUserWithPasswordCommand(
@@ -128,10 +131,10 @@ class CrossOriginLoginIntegrationTest {
         HttpResponse<String> authorize = get(client, base() + "/oauth2/authorize?" + originalQuery, null);
         assertThat(authorize.statusCode()).isEqualTo(302);
         String loginRedirect = location(authorize);
-        // The entry-point fix: redirect target is the configured BFF login page (a genuinely different, unreachable
-        // "foreign" origin — proving this is NOT a same-origin/relative "/login" fallback), with the ORIGINAL query
-        // string appended verbatim.
-        assertThat(loginRedirect).isEqualTo(BFF_LOGIN_PAGE + "?" + originalQuery);
+        // The entry-point fix: redirect target is the tenant-namespaced BFF login page (a genuinely different,
+        // unreachable "foreign" origin — proving this is NOT a same-origin/relative "/login" fallback), built from
+        // the resolved tenant's slug (BE-B), with the ORIGINAL query string appended verbatim.
+        assertThat(loginRedirect).isEqualTo(BFF_BASE_URL + "/t/" + tenantSlug + "/login?" + originalQuery);
 
         // Note (confirmed by running this test): Spring Security's ExceptionTranslationFilter still transparently
         // creates its OWN servlet session + "SESSION" cookie here — that is the framework's default
@@ -285,10 +288,10 @@ class CrossOriginLoginIntegrationTest {
 
     // ============================ provisioning ============================
 
-    private UUID activeTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("t-" + rnd(), "T"));
+    private TenantView activeTenant() {
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
         tenantService.activateTenant(tenant.id());
-        return tenant.id();
+        return tenant;
     }
 
     private String authCodeClient(TenantContext ctx) {
@@ -298,6 +301,7 @@ class CrossOriginLoginIntegrationTest {
                 List.of("authorization_code", "refresh_token"),
                 List.of("openid", "profile"),
                 List.of(REDIRECT),
+                null,
                 true, true)); // requireProofKey (PKCE), trusted
         clientSecrets.put(clientId, created.clientSecret());
         return clientId;

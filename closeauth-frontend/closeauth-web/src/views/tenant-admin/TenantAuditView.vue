@@ -32,8 +32,8 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import QueryState from '@/components/admin/QueryState.vue'
 import AdminPagination from '@/components/admin/AdminPagination.vue'
-import FormField from '@/components/admin/FormField.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import FormField from '@/components/common/FormField.vue'
+import { describeAdminError } from '@/api/problem'
 import {
   listAuditEvents,
   describeAuditActor,

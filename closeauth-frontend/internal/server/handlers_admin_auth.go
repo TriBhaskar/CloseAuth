@@ -35,7 +35,22 @@ import (
 // self-heals through the existing UI-2 login machinery (see the stage plan's
 // "Loop prevention" section).
 
-var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+// slugPattern accepts BOTH the legacy operator-typed slug shape (bare
+// alnum-hyphen — still used throughout this codebase's own test fixtures,
+// e.g. "acme") and BE-A's real ten_-prefixed production shape (e.g.
+// "ten_acme-inc", underscore included). Bug fix: this pattern originally had
+// no ten_-prefixed alternative at all, so EVERY real post-BE-A tenant slug
+// (which always contains an underscore) failed validSlug — silently
+// breaking the entire admin-console login callback (handleAdminCallback's
+// own slug-extraction check) for any genuinely provisioned tenant. Never
+// caught earlier because BE-A's own checkpoint had no ten_-prefixed tenant
+// to test end-to-end against; this is the first real one. Kept permissive
+// on the legacy shape too, rather than narrowing to ten_-only, since dozens
+// of existing test fixtures across this package use bare slugs like "acme"
+// and narrowing now would be unrelated, high-risk mechanical churn — tracked
+// as a future cleanup, not required for correctness (no real production
+// tenant can ever be bare-shaped after BE-A).
+var slugPattern = regexp.MustCompile(`^(ten_[a-z0-9][a-z0-9-]{1,45}|[a-z0-9][a-z0-9-]{0,62})$`)
 
 // uuidPattern matches a canonical (hyphenated, case-insensitive) UUID —
 // deliberately not validating the version/variant nibbles, since the backend
@@ -154,32 +169,15 @@ func (s *Server) handleAdminAuthStart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pkce, err := backend.NewPKCE()
+	// FE-2a: PKCE + state + the OAuthContext cookie + the authorize URL are
+	// built by the shared helper in handlers_authorize_start.go — the SAME
+	// core POST /api/auth/authorize/start uses for the unauthenticated
+	// tenant resolver, against the SAME admin-console-{slug} client.
+	authorizeURL, err := s.startAuthorizeFlow(w, slug, returnTo, attempt)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal_error", "Failed to start the login flow.")
 		return
 	}
-	state, err := middleware.NewState(slug)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal_error", "Failed to start the login flow.")
-		return
-	}
-
-	oauthCtx := &middleware.OAuthContext{
-		ClientID:     clientID,
-		RedirectURI:  bffCfg.AdminCallbackURL(),
-		Scope:        bffCfg.AdminScope,
-		State:        state,
-		CodeVerifier: pkce.Verifier,
-		ReturnTo:     returnTo,
-		Attempt:      attempt,
-	}
-	if err := middleware.SaveOAuthContext(w, slug, oauthCtx, bffCfg.IsProduction); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal_error", "Failed to start the login flow.")
-		return
-	}
-
-	authorizeURL := s.oauthClient.AuthorizeURL(clientID, bffCfg.AdminScope, pkce, state)
 	http.Redirect(w, r, authorizeURL, http.StatusFound)
 }
 
@@ -206,12 +204,16 @@ func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	middleware.ClearAdminDenied(w, slug, isProd)
 
 	if s.oauthClient == nil {
-		http.Redirect(w, r, "/t/"+slug+"/console", http.StatusFound)
+		http.Redirect(w, r, "/t/"+slug+"/logged-out", http.StatusFound)
 		return
 	}
 
+	// FE-2a (spec §2.2): the real post-logout landing is the dedicated
+	// /logged-out screen, not /console. AdminConsoleClientProvisioningCallback
+	// (Java) registers both URIs on the client — /console stays registered
+	// too, so this only ever needs the one target here, never a fallback.
 	clientID := bffCfg.AdminClientID(slug)
-	postLogoutRedirectURI := bffCfg.BaseURL + "/t/" + slug + "/console"
+	postLogoutRedirectURI := bffCfg.BaseURL + "/t/" + slug + "/logged-out"
 	http.Redirect(w, r, s.oauthClient.LogoutURL(clientID, postLogoutRedirectURI), http.StatusFound)
 }
 
@@ -264,25 +266,26 @@ func (s *Server) handleAdminCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The verification triple — authorization ≠ authentication. A valid
-	// token from a successful login does NOT mean admin access: the token's
-	// client_id must be exactly this slug's admin-console client (the
-	// cryptographic slug binding — Option A registers one client per
-	// tenant), tenant_id must be present, and tenant_roles must contain
-	// TENANT_ADMIN. Any failure here means NO session is created.
+	// The binding pair — this token must genuinely belong to THIS tenant's
+	// admin-console client: client_id must be exactly this slug's
+	// admin-console client (the cryptographic slug binding — Option A
+	// registers one client per tenant), and tenant_id must be present.
+	// Any failure here means NO session is created.
+	//
+	// FE-4d: a TENANT_ADMIN role is deliberately NOT required for session
+	// creation anymore — spec §6.4.8 wants /account reachable by every
+	// tenant user, admin or not. The session carries tenant_roles as-is
+	// (possibly empty); admin-CRUD routes (RequireAdminSession) and the new
+	// self-service routes (RequireTenantSession) each independently gate on
+	// what they actually need — session CREATION here is authentication
+	// only, not authorization. This is authorization ≠ authentication carried
+	// one layer deeper than before, not abandoned.
 	expectedClientID := bffCfg.AdminClientID(slug)
 	tenantRoles := claims.StringSlice("tenant_roles")
-	isTenantAdmin := false
-	for _, role := range tenantRoles {
-		if role == "TENANT_ADMIN" {
-			isTenantAdmin = true
-			break
-		}
-	}
-	if claims.String("client_id") != expectedClientID || claims.String("tenant_id") == "" || !isTenantAdmin {
+	if claims.String("client_id") != expectedClientID || claims.String("tenant_id") == "" {
 		middleware.ClearOAuthContext(w, slug, bffCfg.IsProduction)
-		_ = middleware.SetAdminDenied(w, slug, "not_tenant_admin", claims.String("sub"), bffCfg.IsProduction)
-		http.Redirect(w, r, "/t/"+slug+"/denied?reason=not_tenant_admin", http.StatusFound)
+		_ = middleware.SetAdminDenied(w, slug, "invalid_client_binding", claims.String("sub"), bffCfg.IsProduction)
+		http.Redirect(w, r, "/t/"+slug+"/denied?reason=invalid_client_binding", http.StatusFound)
 		return
 	}
 

@@ -37,7 +37,7 @@ class RegistrationServiceTest {
         when(config.resolveMode(tenantId)).thenReturn(RegistrationMode.EMAIL_VERIFIED);
 
         RegistrationService service = new RegistrationService(List.of(open, emailVerified), config, tenantService, validator);
-        RegisterUserCommand command = new RegisterUserCommand("a@x.com", "password123", "F", "L", null, null);
+        RegisterUserCommand command = new RegisterUserCommand("a@x.com", "password123", "F", "L", null, null, "client-1", "ten_acme");
         RegistrationResult expected = new RegistrationResult(UUID.randomUUID(), UserStatus.PENDING,
                 RegistrationMode.EMAIL_VERIFIED, true);
         when(emailVerified.register(ctx, command)).thenReturn(expected);

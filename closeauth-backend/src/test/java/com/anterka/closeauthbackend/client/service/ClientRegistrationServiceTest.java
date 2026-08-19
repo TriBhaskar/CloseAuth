@@ -54,7 +54,8 @@ class ClientRegistrationServiceTest {
         service = new ClientRegistrationService(registeredClientRepository, resourceServerService,
                 tenantService, commandValidator, passwordEncoder, new ClientSecretGenerator(),
                 new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
-                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class));
+                org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class),
+                Mockito.mock(TenantAwareRegisteredClientRepository.class));
     }
 
     // ---- registration: secret generation (UI-3c) --------------------------
@@ -62,7 +63,7 @@ class ClientRegistrationServiceTest {
     @Test
     void registeringConfidentialClientPersistsWithTenantAndTriggersAutoCreate() {
         var command = new RegisterClientCommand("todomaster-spa", "TodoMaster SPA", false,
-                List.of("client_credentials"), List.of("read"), null, false, true);
+                List.of("client_credentials"), List.of("read"), null, null, false, true);
 
         ClientCreatedView result = service.registerClient(ctx, command);
 
@@ -92,9 +93,9 @@ class ClientRegistrationServiceTest {
         // otherwise-identical registrations still get two DIFFERENT generated secrets, proving genuine randomness
         // rather than a fixed/derived value.
         var command = new RegisterClientCommand("app-a", "App A", false,
-                List.of("client_credentials"), null, null, false, true);
+                List.of("client_credentials"), null, null, null, false, true);
         var command2 = new RegisterClientCommand("app-b", "App B", false,
-                List.of("client_credentials"), null, null, false, true);
+                List.of("client_credentials"), null, null, null, false, true);
 
         ClientCreatedView first = service.registerClient(ctx, command);
         ClientCreatedView second = service.registerClient(ctx, command2);
@@ -109,7 +110,7 @@ class ClientRegistrationServiceTest {
     @Test
     void registeringPublicClient_NoSecretGeneratedAuthMethodNone() {
         var command = new RegisterClientCommand("public-spa", "Public SPA", true,
-                List.of("authorization_code"), null, List.of("http://127.0.0.1/callback"), true, true);
+                List.of("authorization_code"), null, List.of("http://127.0.0.1/callback"), null, true, true);
 
         ClientCreatedView result = service.registerClient(ctx, command);
 
@@ -119,6 +120,51 @@ class ClientRegistrationServiceTest {
         RegisteredClient saved = clientCaptor.getValue();
         assertThat(saved.getClientAuthenticationMethods()).containsExactly(ClientAuthenticationMethod.NONE);
         assertThat(saved.getClientSecret()).isNull();
+    }
+
+    // ---- FE-4d: client count -----------------------------------------------
+
+    @Test
+    void countClientsDelegatesToTenantAwareRepository() {
+        TenantAwareRegisteredClientRepository tenantAware = Mockito.mock(TenantAwareRegisteredClientRepository.class);
+        when(tenantAware.countByTenantId(TENANT)).thenReturn(5);
+        ClientRegistrationService withRealCount = new ClientRegistrationService(registeredClientRepository,
+                resourceServerService, Mockito.mock(TenantService.class),
+                new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator()),
+                Mockito.mock(PasswordEncoder.class), new ClientSecretGenerator(),
+                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
+                Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class), tenantAware);
+
+        assertThat(withRealCount.countClients(ctx)).isEqualTo(5L);
+    }
+
+    // ---- FE-4c: post-logout URIs, secret-rotation metadata ----------------
+
+    @Test
+    void registeringClientPersistsPostLogoutUris() {
+        var command = new RegisterClientCommand("web-app", "Web App", false,
+                List.of("authorization_code", "refresh_token"), List.of("read"),
+                List.of("https://app.example.com/callback"), List.of("https://app.example.com/logged-out"),
+                true, true);
+
+        service.registerClient(ctx, command);
+
+        ArgumentCaptor<RegisteredClient> clientCaptor = ArgumentCaptor.forClass(RegisteredClient.class);
+        verify(registeredClientRepository).save(clientCaptor.capture());
+        assertThat(clientCaptor.getValue().getPostLogoutRedirectUris())
+                .containsExactly("https://app.example.com/logged-out");
+    }
+
+    @Test
+    void newlyRegisteredClientHasNoSecretRotationTimestamp() {
+        var command = new RegisterClientCommand("todomaster-spa", "TodoMaster SPA", false,
+                List.of("client_credentials"), List.of("read"), null, null, false, true);
+
+        service.registerClient(ctx, command);
+
+        ArgumentCaptor<RegisteredClient> clientCaptor = ArgumentCaptor.forClass(RegisteredClient.class);
+        verify(registeredClientRepository).save(clientCaptor.capture());
+        assertThat(CloseAuthClientSettings.getSecretRotatedAt(clientCaptor.getValue())).isNull();
     }
 
     // ---- regeneration (UI-3c) ----------------------------------------------
@@ -141,6 +187,22 @@ class ClientRegistrationServiceTest {
         assertThat(rotated.getId()).isEqualTo(existing.getId());
         assertThat(rotated.getClientSecret()).isEqualTo("{bcrypt}" + result.clientSecret());
         assertThat(rotated.getClientSecret()).isNotEqualTo(existing.getClientSecret());
+    }
+
+    @Test
+    void regenerateClientSecret_StampsRotationTimestampAndPreservesTenantId() {
+        RegisteredClient existing = confidentialClient(TENANT, "{bcrypt}old-encoded-secret");
+        when(registeredClientRepository.findById(existing.getId())).thenReturn(existing);
+        assertThat(CloseAuthClientSettings.getSecretRotatedAt(existing)).isNull();
+
+        service.regenerateClientSecret(ctx, existing.getId());
+
+        ArgumentCaptor<RegisteredClient> clientCaptor = ArgumentCaptor.forClass(RegisteredClient.class);
+        verify(registeredClientRepository).save(clientCaptor.capture());
+        RegisteredClient rotated = clientCaptor.getValue();
+        assertThat(CloseAuthClientSettings.getSecretRotatedAt(rotated)).isNotNull();
+        // TENANT_ID must survive the ClientSettings rebuild — losing it here would break tenant-scoped lookup.
+        assertThat(CloseAuthClientSettings.getTenantId(rotated)).isEqualTo(TENANT);
     }
 
     @Test

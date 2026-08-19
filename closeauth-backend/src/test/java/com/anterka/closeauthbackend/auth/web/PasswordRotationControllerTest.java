@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -105,6 +106,28 @@ class PasswordRotationControllerTest {
                         .param("password", "new-password-123")
                         .param("client_id", "client-1"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // FE-2.5 (spec §6.2.7): the literal security-property proof — "no route,
+    // no store state, and no BFF response in this flow exposes a session or
+    // token before confirm succeeds." A failed confirm must never carry a
+    // Set-Cookie, and the SAME loginSuccessResponder that establishes the
+    // session on success (see the test below) must never even be invoked.
+    @Test
+    void invalidTokenNeverEstablishesASessionOrSetsACookie() throws Exception {
+        when(rotationService.completeRotation(any(), eq("bad-tok"), any()))
+                .thenReturn(new RotationResult(RotationOutcome.INVALID, null));
+
+        mockMvc.perform(post("/password-rotation/confirm")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("token", "bad-tok")
+                        .param("password", "new-password-123")
+                        .param("client_id", "client-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        verify(loginSuccessResponder, never())
+                .establishSessionAndResolveRedirect(any(), any(), any(), any(), any(), anyBoolean(), any());
     }
 
     @Test

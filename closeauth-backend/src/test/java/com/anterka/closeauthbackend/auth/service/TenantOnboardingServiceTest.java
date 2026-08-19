@@ -98,7 +98,7 @@ class TenantOnboardingServiceTest {
         adminRole.setName(SystemRoleNames.TENANT_ADMIN);
         when(tenantRoleRepository.findByTenantIdAndName(tenantId, SystemRoleNames.TENANT_ADMIN))
                 .thenReturn(Optional.of(adminRole));
-        when(passwordRotationService.beginRotation(any(), any(), any(), any(), any()))
+        when(passwordRotationService.beginRotation(any(), any(), any(), any(), any(), any()))
                 .thenReturn("http://localhost:8080/password-rotation?token=raw");
     }
 
@@ -172,6 +172,54 @@ class TenantOnboardingServiceTest {
                 .isInstanceOf(NotificationDeliveryException.class);
     }
 
+    // ---- createUserWithTempCredential (FE-4a) ----------------------------------
+
+    @Test
+    void createWithTempCredentialUsesTheSameGeneratedPasswordForCreationAndIssuance() {
+        TenantAdminBootstrappedView result = service.createUserWithTempCredential(
+                TenantContext.of(tenantId), tempCredentialCommand(null));
+
+        ArgumentCaptor<CreateUserWithPasswordCommand> createCaptor =
+                ArgumentCaptor.forClass(CreateUserWithPasswordCommand.class);
+        verify(userService).createUserWithPassword(any(), createCaptor.capture());
+        assertThat(createCaptor.getValue().password()).isEqualTo("generated-temp-pw");
+        assertThat(createCaptor.getValue().initialStatus()).isEqualTo(UserStatus.ACTIVE);
+
+        verify(userService).issueTempCredential(any(), any(), eq("generated-temp-pw"), any());
+        assertThat(result.temporaryPassword()).isEqualTo("generated-temp-pw");
+        // No email, no client id — unlike bootstrap, this mode never sends an onboarding link.
+        verify(notifier, never()).sendTenantAdminOnboardingLink(any(), any(), any());
+        verify(passwordRotationService, never()).beginRotation(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createWithTempCredentialAssignsTheOptionalInitialRoleInTheSameCall() {
+        UUID roleId = UUID.randomUUID();
+
+        service.createUserWithTempCredential(TenantContext.of(tenantId), tempCredentialCommand(roleId));
+
+        verify(tenantRoleService).assignTenantRole(any(), eq(userId), eq(roleId), eq(null));
+    }
+
+    @Test
+    void createWithTempCredentialSkipsRoleAssignmentWhenNoInitialRoleGiven() {
+        service.createUserWithTempCredential(TenantContext.of(tenantId), tempCredentialCommand(null));
+
+        verify(tenantRoleService, never()).assignTenantRole(any(), any(), any(), any());
+    }
+
+    @Test
+    void createWithTempCredentialPropagatesTheTenantGuardOnANonActiveTenant() {
+        when(tenantService.requireActiveTenant(any()))
+                .thenThrow(new TenantSuspendedException(tenantId, TenantStatus.SUSPENDED));
+
+        assertThatThrownBy(() -> service.createUserWithTempCredential(
+                TenantContext.of(tenantId), tempCredentialCommand(null)))
+                .isInstanceOf(TenantSuspendedException.class);
+
+        verify(userService, never()).createUserWithPassword(any(), any());
+    }
+
     // ---- reissueOnboardingCredential ------------------------------------------
 
     @Test
@@ -209,7 +257,7 @@ class TenantOnboardingServiceTest {
         verify(userService).issueTempCredential(any(), eq(userId), eq("generated-temp-pw"), any());
         // Reissue relies on beginRotation's own invalidate-then-issue pairing — proven by PasswordRotationServiceTest;
         // here we only assert it was actually called (the shared primitive, not a second implementation).
-        verify(passwordRotationService).beginRotation(any(), eq(userId), eq("a@x.com"), any(), eq(null));
+        verify(passwordRotationService).beginRotation(any(), eq(userId), eq("a@x.com"), any(), eq(null), eq(tenantSlug));
         verify(notifier).sendTenantAdminOnboardingLink(eq("a@x.com"), any(), eq(tenantName));
     }
 
@@ -219,6 +267,11 @@ class TenantOnboardingServiceTest {
         return new BootstrapAdminCommand("new-admin@x.com", "First", "Last");
     }
 
+    private com.anterka.closeauthbackend.auth.dto.CreateUserWithTempCredentialCommand tempCredentialCommand(UUID initialRoleId) {
+        return new com.anterka.closeauthbackend.auth.dto.CreateUserWithTempCredentialCommand(
+                "new-user@x.com", "First", "Last", null, initialRoleId);
+    }
+
     private TenantView activeTenant() {
         return new TenantView(tenantId, tenantSlug, tenantName, TenantStatus.ACTIVE, Instant.now(), Instant.now(),
                 null, null);
@@ -226,7 +279,7 @@ class TenantOnboardingServiceTest {
 
     private UserView userView(String email) {
         return new UserView(userId, tenantId, email, false, null, false, "First", "Last", UserStatus.ACTIVE,
-                null, Instant.now(), Instant.now());
+                null, Instant.now(), Instant.now(), null, null);
     }
 
     /** Matches any audit event of the same type as the sample — the payload's exact expiresAt isn't asserted here. */

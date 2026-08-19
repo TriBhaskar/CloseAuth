@@ -65,4 +65,17 @@ public interface UserTenantRoleRepository extends JpaRepository<UserTenantRole, 
              WHERE tr.name = :roleName AND u.status = 'ACTIVE'
              GROUP BY utr.tenant_id""", nativeQuery = true)
     List<TenantAdminCountProjection> countActiveAdminsPerTenant(@Param("roleName") String roleName);
+
+    /**
+     * Every (user, held tenant-role name) pair in the tenant, one row per assignment — FE-4a's bulk read for the
+     * users list's Roles column, avoiding an N+1 of {@code getTenantRolesForUser} per row. A user with no tenant
+     * roles is simply absent; the caller groups rows by {@code userId}.
+     */
+    @Query(value = """
+            SELECT utr.user_id AS userId, tr.name AS roleName
+              FROM user_tenant_roles utr
+              JOIN tenant_roles tr ON tr.id = utr.tenant_role_id
+             WHERE utr.tenant_id = :tenantId
+             ORDER BY tr.name""", nativeQuery = true)
+    List<UserTenantRoleNameProjection> findTenantRoleNamesByTenant(@Param("tenantId") UUID tenantId);
 }

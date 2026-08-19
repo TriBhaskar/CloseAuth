@@ -263,10 +263,10 @@ public class CloseAuthProperties {
     public static class Bff {
         /**
          * Base URL of the BFF server (e.g., http://localhost:8080).
-         * login-page and consent-page are derived from this in application.properties.
+         * consent-page is derived from this in application.properties. login-page is gone (BE-B) — the login
+         * redirect is now built dynamically per tenant by TenantAwareLoginRedirectEntryPoint.
          */
         private String baseUrl = "http://localhost:8080";
-        private String loginPage;
         private String consentPage;
         /**
          * Redirect URI for the (future, UI-3) tenant-admin dashboard's OAuth2 authorization-code + PKCE login flow,

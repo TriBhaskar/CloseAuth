@@ -1,9 +1,18 @@
 <script setup lang="ts">
-// Stage UI-3a: the non-admin refusal page. Reached when a callback's
-// verification triple fails (authenticated, but no TENANT_ADMIN on this
-// tenant — authorization ≠ authentication) or when a denial marker
-// short-circuits a repeat /admin/login visit (see
-// internal/server/handlers_admin_auth.go's "loop break A").
+// Stage UI-3a: the callback-refusal page. Reached when a callback's binding
+// checks fail or when a denial marker short-circuits a repeat /admin/login
+// visit (see internal/server/handlers_admin_auth.go's "loop break A").
+//
+// FE-4d: this page is no longer reached for "authenticated but not
+// TENANT_ADMIN" — that case now gets a real session and lands on /account
+// instead (spec §6.4.8). The remaining, much rarer reason
+// (invalid_client_binding) is a genuine integrity failure: the token's
+// client_id/tenant_id doesn't match this tenant's admin-console client at
+// all — essentially unreachable in honest use. not_tenant_admin is STILL a
+// valid reason here too, but from a different, unrelated source: an
+// already-established admin session whose TENANT_ADMIN role gets revoked
+// mid-session (admin_api_result.go's writeAdminAPIResult) — that
+// mid-session re-verification is untouched by this session's fix.
 //
 // Deliberately lives OUTSIDE the guarded route subtree (see
 // router/index.ts) and does NOTHING automatically on mount — no
@@ -13,7 +22,7 @@
 // account" action below, which dismisses the denial marker first.
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import AuthLayout from '@/layouts/AuthLayout.vue'
+import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
 import { dismissDenial } from '@/api/tenantAdminSession'
 
@@ -27,6 +36,8 @@ const reason = computed(() => {
 const MESSAGES: Record<string, string> = {
   not_tenant_admin:
     'You signed in successfully, but this account does not have TENANT_ADMIN access to this tenant.',
+  invalid_client_binding:
+    'Something is wrong with this sign-in — the account or client does not match this tenant. Try signing in again.',
 }
 
 const message = computed(() => MESSAGES[reason.value] ?? MESSAGES.not_tenant_admin)
@@ -40,7 +51,7 @@ async function handleTryDifferentAccount(): Promise<void> {
 </script>
 
 <template>
-  <AuthLayout>
+  <AuthShell>
     <template #above>
       <div class="flex flex-col items-center gap-2 text-center">
         <h1 class="text-xl font-semibold tracking-tight">Access denied</h1>
@@ -54,5 +65,5 @@ async function handleTryDifferentAccount(): Promise<void> {
       </Button>
       <RouterLink to="/" class="text-sm text-muted-foreground hover:underline">Back to home</RouterLink>
     </div>
-  </AuthLayout>
+  </AuthShell>
 </template>

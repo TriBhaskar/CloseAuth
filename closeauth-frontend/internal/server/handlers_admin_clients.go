@@ -53,6 +53,23 @@ func (s *Server) handleAdminClientCreate(w http.ResponseWriter, r *http.Request)
 	s.writeAdminAPIResult(w, slug, session, resp)
 }
 
+// handleAdminClientCount backs the console overview's Clients tile (FE-4d) —
+// the smallest possible slice of the still-blocked client list gap. Plain
+// relay, same shape as every other handler in this file.
+func (s *Server) handleAdminClientCount(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	resp, err := s.adminClient.Get(r.Context(), session.AccessToken, "/v1/tenants/"+session.TenantID+"/clients/count")
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
+
 func (s *Server) handleAdminClientGet(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	session, ok := s.adminSessionOrError(w, r)

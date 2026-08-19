@@ -64,6 +64,16 @@ function stubLoginFetch(handler: (init: RequestInit) => { ok: boolean; status: n
 }
 
 describe('PlatformLoginView', () => {
+  it('FE-3a: spec-literal "Platform sign in" title and a "back to workspace sign-in" link to /', async () => {
+    const router = await createLoginRouter()
+    const wrapper = mount(PlatformLoginView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Platform sign in')
+    const backLink = wrapper.findAll('a').find((a) => a.text().includes('Back to workspace sign-in'))
+    expect(backLink?.attributes('href')).toBe('/')
+  })
+
   it('successful login pushes to returnTo, client-side (no window.location.assign)', async () => {
     stubLoginFetch(() => ({
       ok: true,

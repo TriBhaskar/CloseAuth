@@ -1,7 +1,7 @@
 // Stage UI-3c: the tenant-admin console's client-registration API layer,
 // talking to internal/server/handlers_admin_clients.go's
 // /t/{slug}/api/clients/** surface. Built on tenantAdminFetch
-// (tenantAdminClient.ts) and parseAdminResult (tenantAdminProblem.ts), same
+// (tenantAdminClient.ts) and parseAdminResult (problem.ts), same
 // as tenantAdminUsers.ts.
 //
 // No listClients: the backend has none (TenantClientController implements
@@ -9,11 +9,15 @@
 // tenant-scoped list/delete; flagged, not silently built around). See
 // TenantClientsView.vue for how the surface handles that honestly.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 
 // Mirrors client/dto/ClientView.java exactly. Never carries a secret.
 // publicClient (UI-3c) is what tells the detail view whether "regenerate
 // secret" is even a meaningful action to offer — a public client has none.
+//
+// FE-4c additions: postLogoutRedirectUris, createdAt (free — SAS already
+// tracks client_id_issued_at), secretRotatedAt (null until the first
+// regenerateClientSecret call — see CloseAuthClientSettings.java).
 export interface ClientView {
   id: string
   clientId: string
@@ -23,6 +27,9 @@ export interface ClientView {
   grantTypes: string[]
   scopes: string[]
   redirectUris: string[]
+  postLogoutRedirectUris: string[]
+  createdAt: string
+  secretRotatedAt: string | null
 }
 
 // Mirrors client/dto/ClientCreatedView.java and client/dto/ClientSecretView.java
@@ -43,6 +50,10 @@ export interface ClientCredentials {
 // server-side and ignores any caller-supplied value (ClientSecretGenerator).
 // publicClient defaults to false server-side if omitted, but this SPA always
 // sends it explicitly — the create form has no "unset" state.
+//
+// FE-4c: postLogoutUris added (optional, same laxity as redirectUris — no
+// frontend-independent format validation happens server-side; the wizard is
+// responsible for shape checks before submission).
 export interface RegisterClientPayload {
   clientId: string
   clientName: string
@@ -50,6 +61,7 @@ export interface RegisterClientPayload {
   grantTypes: string[]
   scopes?: string[]
   redirectUris?: string[]
+  postLogoutUris?: string[]
   requireProofKey: boolean
   trusted: boolean
 }
@@ -74,6 +86,17 @@ export async function registerClient(
 export async function getClient(slug: string, recordId: string): Promise<AdminResult<ClientView>> {
   const result = await tenantAdminFetch(slug, `/clients/${encodeURIComponent(recordId)}`)
   return parseAdminResult<ClientView>(result)
+}
+
+// FE-4d: the console overview's Clients tile — the smallest possible slice
+// of the still-blocked full-list gap (a number, no rows, no secrets).
+export interface ClientCountView {
+  count: number
+}
+
+export async function getClientCount(slug: string): Promise<AdminResult<ClientCountView>> {
+  const result = await tenantAdminFetch(slug, '/clients/count')
+  return parseAdminResult<ClientCountView>(result)
 }
 
 /**

@@ -7,6 +7,7 @@ import com.anterka.closeauthbackend.common.exception.TenantSlugConflictException
 import com.anterka.closeauthbackend.common.exception.TenantSuspendedException;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
+import com.anterka.closeauthbackend.tenant.dto.EntryResolutionView;
 import com.anterka.closeauthbackend.tenant.dto.ProvisionTenantCommand;
 import com.anterka.closeauthbackend.tenant.dto.TenantView;
 import com.anterka.closeauthbackend.tenant.entity.Tenant;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -47,6 +49,7 @@ public class TenantService {
     private final List<TenantProvisioningCallback> provisioningCallbacks;
     private final TenantStateMachine stateMachine;
     private final CommandValidator commandValidator;
+    private final TenantSlugGenerator tenantSlugGenerator;
     /** 7b/IT-9 integration: kill a tenant's live access tokens on suspension/deletion (parallel to UserService). */
     private final TokenRevocationService tokenRevocationService;
     private final AuditEmitter auditEmitter;
@@ -57,9 +60,11 @@ public class TenantService {
 
     /**
      * Provisions a new tenant in status {@code PROVISIONING} (it does NOT auto-activate;
-     * call {@link #activateTenant(UUID)} to move it to {@code ACTIVE}).
+     * call {@link #activateTenant(UUID)} to move it to {@code ACTIVE}). The public Tenant ID is
+     * server-derived from {@code command.name()} by {@link TenantSlugGenerator} — see spec §1.2.
      *
-     * @throws TenantSlugConflictException if the slug is already taken (category CONFLICT)
+     * @throws TenantSlugConflictException if a unique Tenant ID could not be generated
+     *                                      (category CONFLICT, practically unreachable)
      */
     @Transactional
     public TenantView provisionTenant(ProvisionTenantCommand command) {
@@ -67,12 +72,10 @@ public class TenantService {
         // same Bean Validation annotations the Stage 7 HTTP edge enforces. Defense-in-depth.
         commandValidator.validate(command);
 
-        if (tenantRepository.existsBySlug(command.slug())) {
-            throw new TenantSlugConflictException(command.slug());
-        }
+        String slug = tenantSlugGenerator.generate(command.name(), tenantRepository::existsBySlug);
 
         Tenant tenant = new Tenant();
-        tenant.setSlug(command.slug());
+        tenant.assignSlug(slug);
         tenant.setName(command.name());
         tenant.setStatus(TenantStatus.PROVISIONING);
         Tenant saved = tenantRepository.save(tenant);
@@ -166,6 +169,25 @@ public class TenantService {
     @Transactional(readOnly = true)
     public boolean existsBySlug(String slug) {
         return tenantRepository.existsBySlug(slug);
+    }
+
+    /**
+     * FE-2a (spec §6.1): the public, unauthenticated workspace-entry resolution — deliberately
+     * {@code Optional}-returning, never throwing, unlike {@link #getTenantBySlug}: this is a
+     * pre-authentication existence probe, not an authenticated lookup, so a miss is not
+     * exceptional and must never surface a {@code TenantNotFoundException}'s stack trace or
+     * problem-detail body to an anonymous caller.
+     *
+     * <p>Not-found and every non-{@code ACTIVE} status ({@code PROVISIONING}, {@code SUSPENDED},
+     * the soft-deleted {@code DELETED}) collapse into the same empty {@code Optional} — the
+     * enumeration-safety requirement ("a suspended tenant must not be distinguishable from a
+     * nonexistent one") falls out of this method's shape rather than being a branch the caller
+     * has to get right.
+     */
+    @Transactional(readOnly = true)
+    public Optional<EntryResolutionView> resolveActiveTenantBySlug(String slug) {
+        return tenantRepository.findEntryResolutionBySlug(slug)
+                .filter(view -> view.status() == TenantStatus.ACTIVE);
     }
 
     // ---------------------------------------------------------------------

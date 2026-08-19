@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -31,6 +32,7 @@ public class Tenant {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Setter(AccessLevel.NONE)
     @Column(nullable = false, unique = true, length = 63)
     private String slug;
 
@@ -49,6 +51,18 @@ public class Tenant {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    /**
+     * The public Tenant ID is assigned exactly once, at provisioning ({@code TenantService}).
+     * Immutable thereafter (spec §1.2: "no edit affordance anywhere") — there is deliberately no
+     * {@code setSlug}.
+     */
+    public void assignSlug(String slug) {
+        if (this.slug != null) {
+            throw new IllegalStateException("Tenant slug is immutable and already assigned: " + this.slug);
+        }
+        this.slug = slug;
+    }
 
     @PrePersist
     void onCreate() {

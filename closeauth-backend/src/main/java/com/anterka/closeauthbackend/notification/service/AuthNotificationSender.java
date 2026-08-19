@@ -11,8 +11,11 @@ package com.anterka.closeauthbackend.notification.service;
  */
 public interface AuthNotificationSender {
 
-    /** Delivers a short numeric email-verification code. */
-    void sendEmailVerificationCode(String target, String code);
+    /**
+     * Delivers a short numeric email-verification code, plus a clickable link that auto-consumes the SAME code
+     * (FE-2d, spec §6.2.4's "link" entry — not a second, separate secret; see EmailVerificationService).
+     */
+    void sendEmailVerificationCode(String target, String code, String verifyUrl);
 
     /** Delivers a magic-link login URL (already containing the opaque token). */
     void sendMagicLink(String target, String magicLinkUrl);

@@ -1,34 +1,61 @@
 <script setup lang="ts">
-// Stage UI-3a built this shell RouterView-only, deliberately WITHOUT a
-// sidebar: with exactly one destination (the console landing page), porting
-// AppSidebar.vue — whose nav items are hardcoded `/admin/*` constants under
-// a "Platform" label — would have been premature (and wrong: this is the
-// TENANT_ADMIN tree, not the platform one). UI-3a's comment here said "fork
-// or parameterize AppSidebar when there's real navigation to show."
+// FE-1.10: thin composition root over the shared shells/ConsoleShell.vue —
+// this file now owns only what's genuinely tenant-console-specific (nav
+// items, the session store, sign-out), not shell/responsive-layout logic,
+// which moved into ConsoleShell once it stopped needing to be duplicated
+// against layouts/PlatformAdminLayout.vue.
 //
-// Stage UI-3b: there is now (Users, with clients/roles/branding/audit to
-// follow) — forked into TenantAdminSidebar.vue rather than parameterizing
-// AppSidebar, for the same reason UI-3a gave: AppSidebar's nav shape is
-// platform-specific and it's currently used only by the orphaned, unrouted
-// AdminLayout.vue, so a shared-nav abstraction would be speculative.
-import { computed, ref } from 'vue'
+// FE-4d: this layout is now shared by BOTH /console (admin-only content)
+// and /account (spec §6.4.8 — every tenant user, admin or not). navItems
+// becomes role-conditional rather than a second layout being invented: an
+// admin sees the existing full nav plus a new "My account" item; a
+// non-admin sees only "My account" (nothing else is reachable to them
+// regardless — every /console/* route redirects a non-admin to /account
+// via requiresTenantAdmin, so listing those items would be a dead end).
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { LogOut, Moon, Sun } from 'lucide-vue-next'
+import { KeyRound, LogOut, ScrollText, ServerCog, Settings, ShieldCheck, ShieldEllipsis, User, Users } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import TenantAdminSidebar from '@/components/app/TenantAdminSidebar.vue'
-import { useColorScheme } from '@/composables/useColorScheme'
+import ConsoleShell from '@/shells/ConsoleShell.vue'
+import type { ConsoleNavItem } from '@/shells/ConsoleNavList.vue'
 import { useTenantAdminSessionStore } from '@/stores/tenantAdmin'
 
 const route = useRoute()
 const slug = computed(() => String(route.params.slug ?? ''))
 const store = useTenantAdminSessionStore()
-const { isDark, toggle } = useColorScheme()
-const sidebarCollapsed = ref(false)
 
 // No 'admin@closeauth.dev'-style fallback (a habit of the orphaned
 // AdminLayout.vue this deliberately does not repeat) — an unauthenticated
 // email is simply not shown, never a fabricated placeholder.
 const email = computed(() => (store.state.kind === 'active' ? store.state.email : ''))
+
+const isTenantAdmin = computed(
+  () => store.state.kind === 'active' && store.state.tenantRoles.includes('TENANT_ADMIN'),
+)
+
+// FE-4a (spec §4.2): grouped nav — DIRECTORY / APPLICATIONS / OPERATIONS.
+// Order within OPERATIONS also changed to match spec's own wireframe
+// (Audit log, then Settings — previously Settings, then Audit log).
+// FE-4d: "My account" is always present (admin or not); the rest is
+// admin-only.
+const navItems = computed<ConsoleNavItem[]>(() => {
+  const accountItem: ConsoleNavItem = { label: 'My account', icon: User, path: `/t/${slug.value}/account` }
+  if (!isTenantAdmin.value) return [accountItem]
+  return [
+    { label: 'Users', icon: Users, path: `/t/${slug.value}/console/users`, group: 'Directory' },
+    { label: 'Clients', icon: KeyRound, path: `/t/${slug.value}/console/clients`, group: 'Applications' },
+    {
+      label: 'Resource servers',
+      icon: ServerCog,
+      path: `/t/${slug.value}/console/resource-servers`,
+      group: 'Applications',
+    },
+    { label: 'Roles', icon: ShieldEllipsis, path: `/t/${slug.value}/console/roles`, group: 'Applications' },
+    { label: 'Audit log', icon: ScrollText, path: `/t/${slug.value}/console/audit`, group: 'Operations' },
+    { label: 'Settings', icon: Settings, path: `/t/${slug.value}/console/settings`, group: 'Operations' },
+    accountItem,
+  ]
+})
 
 function handleSignOut(): void {
   store.signOut()
@@ -36,29 +63,19 @@ function handleSignOut(): void {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-foreground flex">
-    <TenantAdminSidebar v-model="sidebarCollapsed" :slug="slug" />
-    <div class="flex flex-col flex-1 min-w-0">
-      <header class="h-14 flex items-center justify-between px-6 border-b border-border shrink-0">
-        <div class="flex items-center gap-3">
-          <span class="text-lg font-semibold tracking-tighter">CloseAuth</span>
-          <span class="text-sm text-muted-foreground font-mono">/ {{ slug }}</span>
-        </div>
-        <div class="flex items-center gap-3">
-          <span v-if="email" class="text-sm text-muted-foreground">{{ email }}</span>
-          <Button variant="ghost" size="icon-sm" aria-label="Toggle dark mode" @click="toggle">
-            <Moon v-if="!isDark" class="size-4" />
-            <Sun v-else class="size-4" />
-          </Button>
-          <Button variant="ghost" size="sm" @click="handleSignOut">
-            <LogOut class="size-4" />
-            Sign out
-          </Button>
-        </div>
-      </header>
-      <main class="flex-grow p-6 overflow-auto">
-        <RouterView />
-      </main>
-    </div>
-  </div>
+  <ConsoleShell
+    :nav-items="navItems"
+    :mark-icon="ShieldCheck"
+    identity-label="Console"
+    :identity-tenant-id="slug"
+  >
+    <template #topbar-actions>
+      <span v-if="email" class="text-sm text-muted-foreground">{{ email }}</span>
+      <Button variant="ghost" size="sm" @click="handleSignOut">
+        <LogOut class="size-4" />
+        Sign out
+      </Button>
+    </template>
+    <RouterView />
+  </ConsoleShell>
 </template>

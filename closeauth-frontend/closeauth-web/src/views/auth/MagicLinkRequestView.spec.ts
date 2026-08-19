@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
+import { createPinia, type Pinia } from 'pinia'
 import MagicLinkRequestView from './MagicLinkRequestView.vue'
 
 // Stage UI-2c-i, Deliverable 3's required component tests (Vue Test Utils,
@@ -31,11 +32,11 @@ async function createMagicLinkRouter(query = '') {
     history: createWebHistory(),
     routes: [
       { path: '/', component: { template: '<div />' } },
-      { path: '/login', component: { template: '<div />' } },
-      { path: '/magic-link-request', component: MagicLinkRequestView },
+      { path: '/t/:slug/login', component: { template: '<div />' } },
+      { path: '/t/:slug/magic-link', component: MagicLinkRequestView },
     ],
   })
-  await router.push(query ? `/magic-link-request?${query}` : '/magic-link-request')
+  await router.push(query ? `/t/ten_acme-inc/magic-link?${query}` : '/t/ten_acme-inc/magic-link')
   await router.isReady()
   return router
 }
@@ -50,6 +51,14 @@ function stubFetch(requestHandler: () => Promise<unknown>) {
     }),
   )
 }
+
+let pinia: Pinia
+
+beforeEach(() => {
+  // Fresh Pinia per test — TenantBrandingProvider's useThemeStore() needs an
+  // active instance to mount at all.
+  pinia = createPinia()
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -67,7 +76,7 @@ describe('MagicLinkRequestView', () => {
     stubFetch(request)
 
     const router = await createMagicLinkRouter('client_id=client-a')
-    const wrapper = mount(MagicLinkRequestView, { global: { plugins: [router] } })
+    const wrapper = mount(MagicLinkRequestView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
     await fillAndSubmit(wrapper, 'user@example.test')
@@ -76,7 +85,7 @@ describe('MagicLinkRequestView', () => {
     expect(wrapper.text().toLowerCase()).toContain('sign-in link')
     // Enumeration-safe: never confirms or denies the account exists.
     expect(wrapper.text()).not.toContain('does not exist')
-    expect(wrapper.find('a[href="/login"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/t/ten_acme-inc/login"]').exists()).toBe(true)
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
@@ -85,7 +94,7 @@ describe('MagicLinkRequestView', () => {
     stubFetch(request)
 
     const router = await createMagicLinkRouter('client_id=client-a')
-    const wrapper = mount(MagicLinkRequestView, { global: { plugins: [router] } })
+    const wrapper = mount(MagicLinkRequestView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
     await fillAndSubmit(wrapper, 'user@example.test')

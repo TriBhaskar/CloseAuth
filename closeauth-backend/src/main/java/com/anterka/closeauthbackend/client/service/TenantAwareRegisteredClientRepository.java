@@ -75,4 +75,15 @@ public class TenantAwareRegisteredClientRepository extends JdbcRegisteredClientR
         args.add(tenantId.toString()); // bound to CAST(? AS uuid)
         getJdbcOperations().update(INSERT_SQL, args.toArray());
     }
+
+    /**
+     * FE-4d: the overview's Clients count tile. A plain {@code COUNT(*)} against the same table {@link #save}
+     * already hand-builds SQL for, and the smallest possible slice of FE-4.10's still-blocked full list —
+     * no row data, no pagination, no secret exposure.
+     */
+    public int countByTenantId(UUID tenantId) {
+        Integer count = getJdbcOperations().queryForObject(
+                "SELECT COUNT(*) FROM oauth2_registered_client WHERE tenant_id = ?", Integer.class, tenantId);
+        return count == null ? 0 : count;
+    }
 }

@@ -1,121 +1,137 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import TenantAdminHomeView from './TenantAdminHomeView.vue'
-import { useTenantAdminSessionStore } from '@/stores/tenantAdmin'
 
-// Stage UI-3a's required component tests: the landing page renders session
-// data from the store and the live ping result, and — honoring
-// stores/admin.ts's standing rule — shows a visible [role="alert"] on a
-// ping failure rather than ever fabricating data.
+// FE-4d (spec §6.4.1): the console overview's four count tiles, rebuilt off
+// the UI-3a foundation stub (session dump + ping widget, both retired —
+// every tile here makes its own genuine authenticated API call, which
+// already proves backend connectivity, so a separate ping check would be
+// redundant).
 
 async function createHomeRouter() {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/t/:slug/console', component: TenantAdminHomeView }],
+    routes: [
+      { path: '/t/:slug/console', component: TenantAdminHomeView },
+      { path: '/t/:slug/console/users', component: { template: '<div />' } },
+      { path: '/t/:slug/console/clients', component: { template: '<div />' } },
+      { path: '/t/:slug/console/resource-servers', component: { template: '<div />' } },
+      { path: '/t/:slug/console/roles', component: { template: '<div />' } },
+    ],
   })
   await router.push('/t/acme/console')
   await router.isReady()
   return router
 }
 
-function activeSession() {
-  return {
-    kind: 'active' as const,
-    tenantId: 'tenant-1',
-    userId: 'user-1',
-    email: 'admin@acme.test',
-    tenantRoles: ['TENANT_ADMIN'],
-    accessTokenExpiresAt: '2026-01-01T00:00:00Z',
-  }
+function pageResponse(totalElements: number) {
+  return { ok: true, status: 200, json: () => Promise.resolve({ items: [], page: 0, size: 1, totalElements, totalPages: 1 }) }
 }
-
-beforeEach(() => {
-  setActivePinia(createPinia())
-  Object.defineProperty(window, 'location', {
-    configurable: true,
-    value: { assign: vi.fn(), pathname: '/t/acme/console', search: '' },
-  })
-})
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function stubFetch(pingHandler: () => Promise<unknown>) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string) => {
-      if (url === '/t/acme/api/ping') return pingHandler()
-      return Promise.reject(new Error(`unexpected fetch: ${url}`))
-    }),
-  )
-}
-
 describe('TenantAdminHomeView', () => {
-  it('renders session data and a successful ping result', async () => {
-    stubFetch(() =>
-      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, tenantId: 'tenant-1' }) }),
-    )
-
-    const router = await createHomeRouter()
-    const store = useTenantAdminSessionStore()
-    store.slug = 'acme'
-    store.state = activeSession()
-
-    const wrapper = mount(TenantAdminHomeView, { global: { plugins: [router] } })
-    await flushPromises()
-
-    expect(wrapper.find('#tenant-admin-home-slug').text()).toBe('acme')
-    expect(wrapper.find('#tenant-admin-home-email').text()).toBe('admin@acme.test')
-    expect(wrapper.text()).toContain('TENANT_ADMIN')
-    expect(wrapper.find('#tenant-admin-home-ping').text()).toContain('tenant-1')
-    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
-  })
-
-  it('shows a visible error, never fabricated data, when the ping fails', async () => {
-    stubFetch(() =>
-      Promise.resolve({
-        ok: false,
-        status: 502,
-        json: () => Promise.resolve({ error: 'bad_gateway', error_description: 'Could not reach the backend.' }),
+  it('renders a real count for each populated tile', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/users?page=0&size=1') return Promise.resolve(pageResponse(12))
+        if (url === '/t/acme/api/clients/count') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ count: 3 }) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=1') return Promise.resolve(pageResponse(5))
+        if (url === '/t/acme/api/roles?page=0&size=1') return Promise.resolve(pageResponse(4))
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),
     )
 
     const router = await createHomeRouter()
-    const store = useTenantAdminSessionStore()
-    store.slug = 'acme'
-    store.state = activeSession()
-
     const wrapper = mount(TenantAdminHomeView, { global: { plugins: [router] } })
     await flushPromises()
 
-    const alert = wrapper.find('[role="alert"]')
-    expect(alert.exists()).toBe(true)
-    expect(alert.text()).toContain('Could not reach the backend.')
-    expect(wrapper.text()).not.toContain('Backend confirmed')
+    expect(wrapper.find('#overview-tile-users').text()).toContain('12')
+    expect(wrapper.find('#overview-tile-clients').text()).toContain('3')
+    expect(wrapper.find('#overview-tile-resource-servers').text()).toContain('5')
+    expect(wrapper.find('#overview-tile-roles').text()).toContain('4')
   })
 
-  it('sign-out navigates to the backend logout route, not a fetch() call', async () => {
-    stubFetch(() =>
-      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, tenantId: 'tenant-1' }) }),
+  it('a zero-count tile shows a create prompt instead of "0"', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/users?page=0&size=1') return Promise.resolve(pageResponse(0))
+        if (url === '/t/acme/api/clients/count') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ count: 0 }) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=1') return Promise.resolve(pageResponse(0))
+        if (url === '/t/acme/api/roles?page=0&size=1') return Promise.resolve(pageResponse(0))
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
     )
 
     const router = await createHomeRouter()
-    const store = useTenantAdminSessionStore()
-    store.slug = 'acme'
-    store.state = activeSession()
-
     const wrapper = mount(TenantAdminHomeView, { global: { plugins: [router] } })
     await flushPromises()
 
-    await wrapper.find('#tenant-admin-home-signout').trigger('click')
+    const usersTile = wrapper.find('#overview-tile-users')
+    expect(usersTile.text()).not.toContain('0')
+    expect(usersTile.text()).toContain('Add your first user')
+    expect(wrapper.find('#overview-tile-clients').text()).toContain('Register your first client')
+  })
+
+  it('each tile links to its own console section', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/users?page=0&size=1') return Promise.resolve(pageResponse(1))
+        if (url === '/t/acme/api/clients/count') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ count: 1 }) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=1') return Promise.resolve(pageResponse(1))
+        if (url === '/t/acme/api/roles?page=0&size=1') return Promise.resolve(pageResponse(1))
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createHomeRouter()
+    const wrapper = mount(TenantAdminHomeView, { global: { plugins: [router] } })
     await flushPromises()
 
-    // A real top-level navigation, never fetch() — CLOSEAUTH_SESSION is
-    // SameSite=Lax and only a genuine browser navigation to
-    // GET /t/{slug}/admin/logout can end the backend session too.
-    expect(window.location.assign).toHaveBeenCalledWith('/t/acme/admin/logout')
+    await wrapper.find('#overview-tile-clients').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/t/acme/console/clients')
+  })
+
+  it('a failed tile shows a visible error, never fabricated data', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/users?page=0&size=1') {
+          return Promise.resolve({
+            ok: false,
+            status: 502,
+            json: () => Promise.resolve({ error: 'bad_gateway', error_description: 'Could not reach the backend.' }),
+          })
+        }
+        if (url === '/t/acme/api/clients/count') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ count: 2 }) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=1') return Promise.resolve(pageResponse(2))
+        if (url === '/t/acme/api/roles?page=0&size=1') return Promise.resolve(pageResponse(2))
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createHomeRouter()
+    const wrapper = mount(TenantAdminHomeView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const usersTile = wrapper.find('#overview-tile-users')
+    expect(usersTile.find('[role="alert"]').exists()).toBe(true)
+    // The other three tiles are unaffected by the users tile's failure.
+    expect(wrapper.find('#overview-tile-clients').text()).toContain('2')
   })
 })

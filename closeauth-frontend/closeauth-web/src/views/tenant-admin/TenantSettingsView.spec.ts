@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import TenantSettingsView from './TenantSettingsView.vue'
-import { clearCsrfToken } from '@/api/client'
+import { clearCsrfToken } from '@/api/csrf'
 
 // Stage UI-3e: the settings page's required proofs — the empty-string
 // logoUrl guard (the load-bearing rule this whole stage exists to enforce

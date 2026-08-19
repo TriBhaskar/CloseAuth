@@ -76,7 +76,7 @@ class InviteOnlyRegistrationStrategyTest {
                         UUID.randomUUID(), "a@x.com", null));
         when(userService.createUserWithPassword(any(), any(CreateUserWithPasswordCommand.class)))
                 .thenReturn(new UserView(newUserId, tenantId, "a@x.com", false, null, false, "F", "L",
-                        UserStatus.ACTIVE, null, Instant.now(), Instant.now()));
+                        UserStatus.ACTIVE, null, Instant.now(), Instant.now(), null, null));
 
         var result = strategy.register(ctx, command("inv"));
 
@@ -86,6 +86,6 @@ class InviteOnlyRegistrationStrategyTest {
     }
 
     private RegisterUserCommand command(String inviteToken) {
-        return new RegisterUserCommand("a@x.com", "password123", "F", "L", null, inviteToken);
+        return new RegisterUserCommand("a@x.com", "password123", "F", "L", null, inviteToken, "client-1", "ten_acme");
     }
 }

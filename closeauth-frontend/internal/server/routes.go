@@ -85,7 +85,7 @@ import (
 // Deliberately NOT in UI-3e or earlier: a platform-admin console (that's
 // UI-4, immediately below), and the invites surface (INVITE_ONLY registration
 // mode exists and is settable via this stage's registration-config PUT, but
-// issuing/listing invites has no console route).
+// issuing/listing invites had no console route until FE-4a, below).
 //
 // Revised: sign-out DOES now end the backend's whole SSO session, not just
 // the BFF's console session — the product decision changed after UI-4b
@@ -118,7 +118,16 @@ import (
 // handlers_platform_admins.go.
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(chimw.Logger)
+	// FE-2a: RealIP must run before anything that reads r.RemoteAddr for the
+	// caller's actual IP (internal/middleware/ratelimit.go's clientIP) — it
+	// rewrites RemoteAddr from X-Forwarded-For/X-Real-IP so every later
+	// middleware/handler sees the same normalized value, whether or not the
+	// BFF sits behind a proxy.
+	r.Use(chimw.RealIP)
+	// Skips /assets/* static-chunk requests — see AccessLogger's own doc
+	// comment (found during manual testing: those buried the real
+	// request-log signal).
+	r.Use(middleware.AccessLogger)
 	r.Use(chimw.Recoverer)
 
 	// CORS — allow Vue dev server and same-origin in production.
@@ -134,6 +143,19 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Public API routes
 	// ──────────────────────────────────────────────────────────────────────────
 	r.Get("/api/health", s.handleHealthCheck)
+
+	// FE-2a (spec §6.1): the workspace-entry resolution endpoint backing the
+	// `/` "Sign in to your workspace" screen — see handlers_entry_proxy.go.
+	// Rate-limited per IP (spec's own words: "the BFF must rate-limit it per
+	// IP", 20/min suggested) — a limit-exceeded request gets the EXACT SAME
+	// 404 shape as an unknown tenant (EntryController's own 404-for-anything-
+	// but-ACTIVE contract), never a distinguishing 429: that would itself
+	// leak that something is behind the throttle, re-opening the
+	// tenant-existence oracle spec §6.1 explicitly closes.
+	entryResolveLimiter := middleware.NewIPRateLimiter(20, time.Minute)
+	r.With(entryResolveLimiter.Middleware(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})).Get("/api/entry/resolve", s.handleEntryResolveProxy)
 
 	// ──────────────────────────────────────────────────────────────────────────
 	// Surface 1 — hosted end-user auth pages: pure relay to the real backend,
@@ -187,6 +209,17 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// handlers_password_rotation_proxy.go's doc comment.
 	r.Post("/api/auth/password-rotation/confirm", s.handlePasswordRotationConfirm)
 
+	// FE-2a (spec §6.2.1 step 3): the unauthenticated tenant resolver's
+	// authorize-start — see handlers_authorize_start.go. Rate-limited (its
+	// own limiter, not shared with /api/entry/resolve's — a distinct abuse
+	// vector, minting OAuth contexts rather than probing tenant existence)
+	// since it's an unauthenticated endpoint with real per-call cost
+	// (preflightTenant's own backend round trip on every call).
+	authorizeStartLimiter := middleware.NewIPRateLimiter(20, time.Minute)
+	r.With(authorizeStartLimiter.Middleware(func(w http.ResponseWriter, r *http.Request) {
+		writeJSONError(w, http.StatusTooManyRequests, "rate_limited", "Too many attempts. Try again in a moment.")
+	})).Post("/api/auth/authorize/start", s.handleAuthorizeStart)
+
 	// ──────────────────────────────────────────────────────────────────────────
 	// Surface 2 — tenant-admin console (Stage UI-3a): the BFF as a real OAuth2
 	// client. GET /api/csrf lives at the root (settled decision: the CSRF
@@ -227,6 +260,18 @@ func (s *Server) RegisterRoutes() http.Handler {
 			ar.Post("/signout", s.handleAdminSignOut)
 			ar.Post("/denied/dismiss", s.handleAdminDeniedDismiss)
 
+			// FE-4d: the self-service surface behind /account (spec
+			// §6.4.8) — a SEPARATE, weaker gate (any valid tenant
+			// session, admin or not) from the pr.Group below (admin-CRUD
+			// only). See handlers_me_proxy.go's own header comment.
+			ar.Group(func(mr chi.Router) {
+				mr.Use(middleware.RequireTenantSession(slugParam, bffCfg.ReauthSkew))
+				mr.Get("/me", s.handleMeGet)
+				mr.Get("/me/sessions", s.handleMeSessionsList)
+				mr.Delete("/me/sessions/{sessionId}", s.handleMeSessionRevoke)
+				mr.Post("/me/change-password", s.handleMeChangePassword)
+			})
+
 			ar.Group(func(pr chi.Router) {
 				pr.Use(middleware.RequireAdminSession(slugParam, bffCfg.ReauthSkew))
 				pr.Get("/ping", s.handleAdminPing)
@@ -238,6 +283,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 				// handler here follows.
 				pr.Get("/users", s.handleAdminUsersList)
 				pr.Post("/users", s.handleAdminUserCreate)
+				// FE-4a: the temporary-password create mode (spec §6.4.2) — a
+				// distinct endpoint from POST /users above, not a flag on it.
+				pr.Post("/users/with-temp-credential", s.handleAdminUserCreateWithTempCredential)
 				pr.Get("/users/{userId}", s.handleAdminUserGet)
 				pr.Post("/users/{userId}/suspend", s.handleAdminUserLifecycle("suspend"))
 				pr.Post("/users/{userId}/activate", s.handleAdminUserLifecycle("activate"))
@@ -248,10 +296,31 @@ func (s *Server) RegisterRoutes() http.Handler {
 				pr.Delete("/users/{userId}/tenant-roles/{roleId}", s.handleAdminUserRoleAssignment(http.MethodDelete))
 				pr.Get("/roles", s.handleAdminRolesList)
 
+				// FE-4a: the user detail page's Sessions tab — device list,
+				// per-session revoke, and revoke-all (a single backend call, not
+				// a loop). See handlers_admin_user_sessions.go.
+				pr.Get("/users/{userId}/sessions", s.handleAdminUserSessionsList)
+				pr.Delete("/users/{userId}/sessions/{sessionId}", s.handleAdminUserSessionRevoke)
+				pr.Delete("/users/{userId}/sessions", s.handleAdminUserSessionsRevokeAll)
+
+				// FE-4a: the invitation create mode (spec §6.4.2) — Java's
+				// InviteController already existed; this is the first console
+				// route reaching it (this file's own header comment used to flag
+				// this as deliberately absent — UI-3e's own list, above). See
+				// handlers_admin_invites.go.
+				pr.Get("/invites", s.handleAdminInvitesList)
+				pr.Post("/invites", s.handleAdminInviteCreate)
+				pr.Delete("/invites/{inviteId}", s.handleAdminInviteDelete)
+
 				// Stage UI-3c: clients (create/get/regenerate-secret — no list, the
 				// backend has none) and resource servers + scopes (full CRUD). See
 				// handlers_admin_clients.go / handlers_admin_resource_servers.go.
 				pr.Post("/clients", s.handleAdminClientCreate)
+				// FE-4d: declared before /{clientId} for readability — chi
+				// already ranks this static segment over the dynamic one
+				// regardless of order (same note as clients/credentials
+				// above).
+				pr.Get("/clients/count", s.handleAdminClientCount)
 				pr.Get("/clients/{clientId}", s.handleAdminClientGet)
 				pr.Post("/clients/{clientId}/client-secret", s.handleAdminClientSecretRegenerate)
 
@@ -274,12 +343,16 @@ func (s *Server) RegisterRoutes() http.Handler {
 				pr.Get("/roles/{roleId}", s.handleAdminRoleGet)
 				pr.Patch("/roles/{roleId}", s.handleAdminRoleUpdate)
 				pr.Delete("/roles/{roleId}", s.handleAdminRoleDelete)
+				// FE-4b: role detail's assignees list (spec §6.4.5).
+				pr.Get("/roles/{roleId}/assignees", s.handleAdminRoleAssignees)
 
 				pr.Get("/resource-servers/{rsId}/roles", s.handleAdminApplicationRolesList)
 				pr.Post("/resource-servers/{rsId}/roles", s.handleAdminApplicationRoleCreate)
 				pr.Get("/resource-servers/{rsId}/roles/{roleId}", s.handleAdminApplicationRoleGet)
 				pr.Patch("/resource-servers/{rsId}/roles/{roleId}", s.handleAdminApplicationRoleUpdate)
 				pr.Delete("/resource-servers/{rsId}/roles/{roleId}", s.handleAdminApplicationRoleDelete)
+				// FE-4b: application-role detail's assignees list (spec §6.4.5).
+				pr.Get("/resource-servers/{rsId}/roles/{roleId}/assignees", s.handleAdminApplicationRoleAssignees)
 				pr.Get("/resource-servers/{rsId}/roles/{roleId}/scopes", s.handleAdminApplicationRoleScopesList)
 				pr.Post("/resource-servers/{rsId}/roles/{roleId}/scopes/{scopeId}", s.handleAdminApplicationRoleScopeBundle(http.MethodPost))
 				pr.Delete("/resource-servers/{rsId}/roles/{roleId}/scopes/{scopeId}", s.handleAdminApplicationRoleScopeBundle(http.MethodDelete))

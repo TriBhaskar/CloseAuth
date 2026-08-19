@@ -121,7 +121,8 @@ public class LoginController {
             // ordinary login already carries it (buildAuthorizeQuery, unchanged), so rotation resumes it afterward.
             String authorizeQuery = buildAuthorizeQuery(request);
             String rotationUrl = passwordRotationService.beginRotation(
-                    TenantContext.of(tenantId.get()), outcome.userId(), email, clientId, authorizeQuery);
+                    TenantContext.of(tenantId.get()), outcome.userId(), email, clientId, authorizeQuery,
+                    tenantResolver.resolveTenantSlug(clientId).orElse(null));
             log.info("Login requires password rotation user={} tenant={} → {}", outcome.userId(), tenantId.get(),
                     rotationUrl);
             return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(rotationUrl)).build();

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { Teleport, TransitionGroup } from 'vue'
+// Teleport and TransitionGroup are Vue compiler built-ins, resolved
+// automatically in <template> — importing them from 'vue' is unnecessary
+// (and was flagged as a dead import by eslint's no-unused-vars).
 import { AlertCircle, CheckCircle, Info, TriangleAlert, X } from 'lucide-vue-next'
 import { useToast, type ToastType } from '@/composables/useToast'
 
@@ -12,18 +14,22 @@ const iconMap: Record<ToastType, typeof Info> = {
   info:    Info,
 }
 
+// §3.3/§3.6 state semantics: success/error/warning map onto the ok/danger/
+// warn tones. 'info' has no §3.3 tone (only error/success/warning are
+// specced) — mapped onto the primary/accent colour as the app's one
+// neutral-attention highlight, not invented as a new semantic colour.
 const colorMap: Record<ToastType, string> = {
-  success: 'border-green-200 bg-green-50 text-green-800',
+  success: 'border-ok/40 bg-ok-wash text-ok',
   error:   'border-destructive/40 bg-destructive/10 text-destructive',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  info:    'border-blue-200 bg-blue-50 text-blue-800',
+  warning: 'border-warn/40 bg-warn-wash text-warn',
+  info:    'border-primary/30 bg-accent-wash text-primary',
 }
 
 const iconColorMap: Record<ToastType, string> = {
-  success: 'text-green-500',
+  success: 'text-ok',
   error:   'text-destructive',
-  warning: 'text-amber-500',
-  info:    'text-blue-500',
+  warning: 'text-warn',
+  info:    'text-primary',
 }
 </script>
 

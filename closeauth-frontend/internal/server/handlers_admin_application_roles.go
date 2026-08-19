@@ -143,6 +143,32 @@ func (s *Server) handleAdminApplicationRoleDelete(w http.ResponseWriter, r *http
 	s.writeAdminAPIResult(w, slug, session, resp)
 }
 
+// handleAdminApplicationRoleAssignees backs GET
+// /resource-servers/{rsId}/roles/{roleId}/assignees (FE-4b, spec §6.4.5's
+// "role detail shows assignees") — a new backend read
+// (ApplicationRoleController.assignees), same thin-relay shape as every
+// other handler in this file.
+func (s *Server) handleAdminApplicationRoleAssignees(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	rsID := chi.URLParam(r, "rsId")
+	roleID := chi.URLParam(r, "roleId")
+	if !validUUID(rsID) || !validUUID(roleID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid_id", "Malformed resource server or role id.")
+		return
+	}
+	resp, err := s.adminClient.Get(r.Context(), session.AccessToken,
+		"/v1/tenants/"+session.TenantID+"/resource-servers/"+rsID+"/roles/"+roleID+"/assignees")
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
+
 // ---- scope bundle ----------------------------------------------------------
 
 func (s *Server) handleAdminApplicationRoleScopesList(w http.ResponseWriter, r *http.Request) {

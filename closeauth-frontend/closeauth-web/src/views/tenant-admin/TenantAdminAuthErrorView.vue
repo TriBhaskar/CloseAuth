@@ -8,7 +8,7 @@
 // session.
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import AuthLayout from '@/layouts/AuthLayout.vue'
+import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
 
 const route = useRoute()
@@ -25,6 +25,10 @@ const MESSAGES: Record<string, string> = {
   token_exchange_failed: 'Your sign-in attempt could not be completed. Please try again.',
   bff_unreachable: 'The admin console could not reach its backend. Please try again shortly.',
   access_denied: 'The sign-in attempt was cancelled.',
+  // FE-2a: the tenant resolver's own rate limiter (routes.go's
+  // authorizeStartLimiter) rejected the sign-in attempt. Retryable — unlike
+  // login_loop below, this is a transient window, not a structural problem.
+  rate_limited: 'Too many attempts. Please wait a moment and try again.',
   // Deliberately NOT retryable from here (see showRetry below) — reaching
   // this reason means /admin/login or /admin/reauth was hit repeatedly
   // without a successful callback, a structural problem a retry link would
@@ -37,7 +41,7 @@ const showRetry = computed(() => reason.value !== 'login_loop' && slug.value !==
 </script>
 
 <template>
-  <AuthLayout>
+  <AuthShell>
     <template #above>
       <div class="flex flex-col items-center gap-2 text-center">
         <h1 class="text-xl font-semibold tracking-tight">Sign-in problem</h1>
@@ -51,5 +55,5 @@ const showRetry = computed(() => reason.value !== 'login_loop' && slug.value !==
       </a>
       <RouterLink to="/" class="text-sm text-muted-foreground hover:underline">Back to home</RouterLink>
     </div>
-  </AuthLayout>
+  </AuthShell>
 </template>

@@ -14,7 +14,13 @@
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "ci": "run-s type-check lint:check format:check test:unit build-only",
+    "lint:check": "run-s lint:check:*",
+    "lint:check:oxlint": "oxlint .",
+    "lint:check:eslint": "eslint .",
+    "lint:check:tokens": "node scripts/check-tokens.mjs",
+    "format:check": "prettier --check --experimental-cli src/"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
@@ -40,6 +46,7 @@
     "@vue/eslint-config-typescript": "^14.7.0",
     "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",
+    "axe-core": "^4.13.0",
     "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-oxlint": "~1.57.0",

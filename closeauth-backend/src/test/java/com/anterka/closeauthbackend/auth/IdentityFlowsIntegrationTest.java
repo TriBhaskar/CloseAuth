@@ -76,7 +76,7 @@ class IdentityFlowsIntegrationTest {
         final Map<String, String> magicLinks = new ConcurrentHashMap<>();
         final Map<String, String> resetLinks = new ConcurrentHashMap<>();
 
-        @Override public void sendEmailVerificationCode(String target, String code) { codes.put(target, code); }
+        @Override public void sendEmailVerificationCode(String target, String code, String verifyUrl) { codes.put(target, code); }
         @Override public void sendMagicLink(String target, String url) { magicLinks.put(target, url); }
         @Override public void sendPasswordResetLink(String target, String url) { resetLinks.put(target, url); }
         @Override public void sendInviteLink(String target, String url) { }
@@ -306,7 +306,7 @@ class IdentityFlowsIntegrationTest {
     // ---- provisioning ------------------------------------------------------
 
     private UUID activeTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("t-" + rnd(), "T"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
         tenantService.activateTenant(tenant.id());
         return tenant.id();
     }
@@ -315,7 +315,7 @@ class IdentityFlowsIntegrationTest {
         String clientId = "app-" + rnd();
         ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
                 clientId, clientId, false, List.of("authorization_code", "refresh_token"),
-                List.of("openid", "profile"), List.of(REDIRECT), true, true));
+                List.of("openid", "profile"), List.of(REDIRECT), null, true, true));
         clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }

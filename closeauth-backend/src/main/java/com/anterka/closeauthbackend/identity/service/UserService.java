@@ -25,6 +25,7 @@ import com.anterka.closeauthbackend.identity.enums.IdpType;
 import com.anterka.closeauthbackend.identity.enums.UserStatus;
 import com.anterka.closeauthbackend.identity.repository.UserRepository;
 import com.anterka.closeauthbackend.rbac.service.TenantRoleService;
+import com.anterka.closeauthbackend.session.service.AuthServerSessionService;
 import com.anterka.closeauthbackend.tenant.service.TenantService;
 import com.anterka.closeauthbackend.token.service.TokenRevocationService;
 import org.springframework.stereotype.Service;
@@ -65,6 +66,8 @@ public class UserService {
     /** 7b integration: the last-admin invariant (3c-ii) + token revocation (4b-ii) on deactivation/deletion. */
     private final TenantRoleService tenantRoleService;
     private final TokenRevocationService tokenRevocationService;
+    /** FE-4a: session revocation (not just tokens) on deactivation/deletion — see {@link #transition}. */
+    private final AuthServerSessionService sessionService;
     private final AuditEmitter auditEmitter;
 
     /** Precomputed dummy hash for constant-ish-time verification on the user-not-found path. */
@@ -78,6 +81,7 @@ public class UserService {
                        List<UserProvisioningCallback> provisioningCallbacks,
                        TenantRoleService tenantRoleService,
                        TokenRevocationService tokenRevocationService,
+                       AuthServerSessionService sessionService,
                        AuditEmitter auditEmitter) {
         this.userRepository = userRepository;
         this.tenantService = tenantService;
@@ -87,6 +91,7 @@ public class UserService {
         this.provisioningCallbacks = provisioningCallbacks;
         this.tenantRoleService = tenantRoleService;
         this.tokenRevocationService = tokenRevocationService;
+        this.sessionService = sessionService;
         this.auditEmitter = auditEmitter;
         this.timingGuardHash = passwordHasher.hash(TIMING_GUARD_RAW).hash();
     }
@@ -346,6 +351,10 @@ public class UserService {
         if (deactivating) {
             // 4b-ii: kill the user's live access tokens now, not merely at expiry (parallel to 7a's platform-admin path).
             tokenRevocationService.revokeAllUserTokens(context.tenantId(), userId);
+            // FE-4a: also kill the Auth Server SSO session ledger — without this, a suspended/deleted user's
+            // existing browser session kept working (idle-timeout only) even though their tokens were dead.
+            // "Signed out everywhere" (spec §6.4.2) means both, not just tokens.
+            sessionService.revokeAllUserSessions(context.tenantId(), userId);
         }
         auditEmitter.emit(switch (target) {
             case SUSPENDED -> AuditEvents.userSuspended(context.tenantId(), userId);
@@ -395,7 +404,42 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<UserView> listUsers(TenantContext context) {
-        return userRepository.findByTenantId(context.tenantId()).stream()
+        return listUsers(context, null, null, null);
+    }
+
+    /**
+     * FE-4a: filtered sibling of {@link #listUsers(TenantContext)}. {@code status}/{@code roleName}/{@code search}
+     * are each optional (pass {@code null} to skip); {@code search} matches (case-insensitively) against email,
+     * first name, or last name.
+     */
+    @Transactional(readOnly = true)
+    public List<UserView> listUsers(TenantContext context, UserStatus status, String roleName, String search) {
+        String searchPattern = (search == null || search.isBlank())
+                ? null
+                : "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
+        return userRepository.findByTenantIdFiltered(
+                        context.tenantId(),
+                        status == null ? null : status.name(),
+                        roleName,
+                        searchPattern)
+                .stream()
+                .map(UserView::from)
+                .toList();
+    }
+
+    /**
+     * FE-4b: batch-resolves a set of user ids to credential-free views — backs the role-assignees reads
+     * ({@code TenantRoleService}/{@code ApplicationRoleService} return bare ids, this is where they're turned
+     * into something a role-detail page can render). Tenant-scoped defensively: {@code userIds} is expected to
+     * already come from a tenant-scoped join query, but this re-filters by {@code tenantId} anyway — the same
+     * "isolation enforced in layers" discipline every other tenant-owned read in this service follows. An id
+     * that doesn't resolve (or belongs to a different tenant) is silently absent, never a partial-failure error —
+     * consistent with {@code findAllById}'s own "best-effort" contract.
+     */
+    @Transactional(readOnly = true)
+    public List<UserView> getUsersByIds(TenantContext context, List<UUID> userIds) {
+        return userRepository.findAllById(userIds).stream()
+                .filter(u -> u.getTenantId().equals(context.tenantId()))
                 .map(UserView::from)
                 .toList();
     }

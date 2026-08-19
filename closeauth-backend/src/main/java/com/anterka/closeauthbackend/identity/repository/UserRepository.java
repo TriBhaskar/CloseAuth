@@ -41,4 +41,31 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                                           @Param("idpSubject") String idpSubject);
 
     List<User> findByTenantId(UUID tenantId);
+
+    /**
+     * FE-4a: server-side filtering for the tenant users list (spec §6.4.2 — status/role/search live in the URL, so
+     * a filtered view is shareable at any tenant size; a client-side filter over a capped page would misrepresent
+     * what it's filtering once a tenant holds more users than one page). Every filter is optional — pass
+     * {@code null} to skip it. {@code roleName} matches via {@code EXISTS} against the same
+     * {@code user_tenant_roles}/{@code tenant_roles} join {@link com.anterka.closeauthbackend.rbac.repository.UserTenantRoleRepository}
+     * already uses; {@code searchPattern} is a pre-wrapped {@code %term%} the caller builds (lower-cased) so the SQL
+     * itself does no string concatenation.
+     */
+    @Query(value = """
+            SELECT u.* FROM users u
+             WHERE u.tenant_id = :tenantId
+               AND (:status IS NULL OR u.status = :status)
+               AND (:searchPattern IS NULL
+                    OR LOWER(u.email) LIKE :searchPattern
+                    OR LOWER(u.first_name) LIKE :searchPattern
+                    OR LOWER(u.last_name) LIKE :searchPattern)
+               AND (:roleName IS NULL OR EXISTS (
+                    SELECT 1 FROM user_tenant_roles utr
+                      JOIN tenant_roles tr ON tr.id = utr.tenant_role_id
+                     WHERE utr.user_id = u.id AND utr.tenant_id = u.tenant_id AND tr.name = :roleName))
+             ORDER BY u.created_at DESC""", nativeQuery = true)
+    List<User> findByTenantIdFiltered(@Param("tenantId") UUID tenantId,
+                                       @Param("status") String status,
+                                       @Param("roleName") String roleName,
+                                       @Param("searchPattern") String searchPattern);
 }

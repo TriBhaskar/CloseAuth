@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import TenantResourceServersView from './TenantResourceServersView.vue'
-import { clearCsrfToken } from '@/api/client'
+import { clearCsrfToken } from '@/api/csrf'
 
-// Stage UI-3c: list + paging + create (the same pattern TenantUsersView.vue
-// established), plus this surface's own required proof — a slug conflict on
-// create lands on the slug field specifically (via
-// RESOURCE_SERVER_CONFLICT_FIELDS), never a generic banner, with exactly one
-// role="alert" in the DOM (no duplicate field+banner for the same error).
+// FE-4b: rebuilt onto DataTable, loading a large page (LIST_PAGE_SIZE=200)
+// and filtering client-side (FE-3a's precedent — no server-side search
+// exists here either). The UI-3c-era required proofs still hold: list +
+// paging + create, a slug conflict on create lands on the slug field
+// specifically, never a generic banner, exactly one role="alert" for it.
 const dialogStubs = {
   Dialog: { template: '<div><slot /></div>' },
   DialogTrigger: { template: '<div><slot /></div>' },
@@ -46,6 +46,7 @@ function rsFixture(overrides: Partial<Record<string, unknown>> = {}) {
     autoCreated: false,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: null,
+    scopeCount: 3,
     ...overrides,
   }
 }
@@ -59,19 +60,19 @@ afterEach(() => {
 })
 
 describe('TenantResourceServersView', () => {
-  it('renders resource servers from a real PageView, with a Source badge, no alert on success', async () => {
+  it('renders resource servers from a real PageView, with a Source badge and scope count, no alert on success', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/t/acme/api/resource-servers?page=0&size=20') {
+        if (url === '/t/acme/api/resource-servers?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
             json: () =>
               Promise.resolve({
-                items: [rsFixture(), rsFixture({ id: 'rs-2', slug: 'auto-app', autoCreated: true })],
+                items: [rsFixture(), rsFixture({ id: 'rs-2', slug: 'auto-app', autoCreated: true, scopeCount: 0 })],
                 page: 0,
-                size: 20,
+                size: 200,
                 totalElements: 2,
                 totalPages: 1,
               }),
@@ -87,6 +88,7 @@ describe('TenantResourceServersView', () => {
 
     const standaloneRow = wrapper.find('[data-resource-server-id="rs-1"]')
     expect(standaloneRow.text()).toContain('Standalone')
+    expect(standaloneRow.text()).toContain('3')
     const autoRow = wrapper.find('[data-resource-server-id="rs-2"]')
     expect(autoRow.text()).toContain('Created with a client')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
@@ -112,15 +114,49 @@ describe('TenantResourceServersView', () => {
     expect(wrapper.findAll('[data-resource-server-id]').length).toBe(0)
   })
 
+  it('search filters client-side by name or slug', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/resource-servers?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [rsFixture(), rsFixture({ id: 'rs-2', slug: 'auto-app', name: 'Auto App' })],
+                page: 0,
+                size: 200,
+                totalElements: 2,
+                totalPages: 1,
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createRSRouter()
+    const wrapper = mount(TenantResourceServersView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('input[type="search"]').setValue('billing')
+    await new Promise((resolve) => setTimeout(resolve, 350)) // DataTable debounces search 300ms
+    await flushPromises()
+
+    expect(wrapper.find('[data-resource-server-id="rs-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-resource-server-id="rs-2"]').exists()).toBe(false)
+  })
+
   it('create: a slug conflict lands on the slug field, exactly one role="alert" in the DOM', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/t/acme/api/resource-servers?page=0&size=20') {
+        if (url === '/t/acme/api/resource-servers?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
+            json: () => Promise.resolve({ items: [], page: 0, size: 200, totalElements: 0, totalPages: 0 }),
           })
         }
         if (url === '/api/csrf') {
@@ -168,13 +204,13 @@ describe('TenantResourceServersView', () => {
         if (url === '/t/acme/api/resource-servers' && init?.method === 'POST') {
           return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(rsFixture({ id: 'new-rs' })) })
         }
-        if (url === '/t/acme/api/resource-servers?page=0&size=20') {
+        if (url === '/t/acme/api/resource-servers?page=0&size=200') {
           listCallCount += 1
           return Promise.resolve({
             ok: true,
             status: 200,
             json: () =>
-              Promise.resolve({ items: [], page: 0, size: 20, totalElements: listCallCount - 1, totalPages: 0 }),
+              Promise.resolve({ items: [], page: 0, size: 200, totalElements: listCallCount - 1, totalPages: 0 }),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))

@@ -60,11 +60,42 @@ func RequireAdminSession(slug SlugFunc, skew time.Duration) func(http.Handler) h
 	}
 }
 
-// AdminSessionFrom retrieves the *AdminSession stashed by RequireAdminSession.
-// ok is false if called outside a RequireAdminSession-guarded handler.
+// AdminSessionFrom retrieves the *AdminSession stashed by RequireAdminSession
+// OR RequireTenantSession (both use the same context key — a session is a
+// session; only the GATE differs).
+// ok is false if called outside either guard's handler tree.
 func AdminSessionFrom(ctx context.Context) (*AdminSession, bool) {
 	session, ok := ctx.Value(adminSessionContextKey).(*AdminSession)
 	return session, ok
+}
+
+// RequireTenantSession is FE-4d's self-service gate: any valid, non-expired
+// session for this tenant — admin or not. Identical to RequireAdminSession
+// minus the IsTenantAdmin() check, since /v1/me/** (its only consumer) is
+// deliberately open to every tenant user by spec (§6.4.8). Existing
+// admin-CRUD routes stay exactly as gated as before — this is an ADDITIONAL,
+// weaker gate for a NEW, separate route group, never a replacement.
+func RequireTenantSession(slug SlugFunc, skew time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := slug(r)
+
+			session, err := GetAdminSession(r, s)
+			if err != nil {
+				writeGuardError(w, http.StatusUnauthorized, "unauthenticated",
+					"No active session for this tenant.", "")
+				return
+			}
+			if session.NeedsReauth(time.Now(), skew) {
+				writeGuardError(w, http.StatusUnauthorized, "reauth_required",
+					"The session's access token is expired or near expiry.", "/t/"+s+"/admin/reauth")
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), adminSessionContextKey, session)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 func writeGuardError(w http.ResponseWriter, status int, code, description, reauthPath string) {

@@ -83,8 +83,9 @@ class TokenIssuanceIntegrationTest {
     @Test
     void clientCredentialsTokenCarriesTenantAudienceAndTtl() throws Exception {
         // --- arrange: an active tenant with a registered confidential client (triggers RS auto-creation) ---
-        String slug = "acme-" + UUID.randomUUID().toString().substring(0, 8);
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand(slug, "Acme"));
+        TenantView tenant = tenantService.provisionTenant(
+                new ProvisionTenantCommand("Acme " + UUID.randomUUID().toString().substring(0, 8)));
+        String slug = tenant.slug();
         tenantService.activateTenant(tenant.id());
         TenantContext ctx = TenantContext.of(tenant.id());
 
@@ -93,7 +94,7 @@ class TokenIssuanceIntegrationTest {
         // requests that RS's scope in prefixed form so aud is inferred from the scope prefix.
         String rsScope = "m2m-client:read";
         ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, "M2M Client", false, List.of("client_credentials"), List.of(rsScope), null, false, true));
+                clientId, "M2M Client", false, List.of("client_credentials"), List.of(rsScope), null, null, false, true));
         ClientView client = created.client();
         String secret = created.clientSecret();
 

@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.auth.service;
 import com.anterka.closeauthbackend.audit.event.AuditEvents;
 import com.anterka.closeauthbackend.audit.service.AuditEmitter;
 import com.anterka.closeauthbackend.auth.dto.BootstrapAdminCommand;
+import com.anterka.closeauthbackend.auth.dto.CreateUserWithTempCredentialCommand;
 import com.anterka.closeauthbackend.auth.dto.TempCredentialReissuedView;
 import com.anterka.closeauthbackend.auth.dto.TenantAdminBootstrappedView;
 import com.anterka.closeauthbackend.auth.enums.OneTimeTokenFormat;
@@ -110,12 +111,48 @@ public class TenantOnboardingService {
         assignTenantAdmin(context, user.id());
 
         String onboardingUrl = passwordRotationService.beginRotation(
-                context, user.id(), user.email(), adminConsoleClientId(tenant.slug()), null);
+                context, user.id(), user.email(), adminConsoleClientId(tenant.slug()), null, tenant.slug());
         notifier.sendTenantAdminOnboardingLink(user.email(), onboardingUrl, tenant.name());
 
         auditEmitter.emit(AuditEvents.tempCredentialIssued(tenantId, user.id(), expiresAt));
         log.info("Tenant-admin bootstrap: tenant={} user={} expiresAt={} (temp password NOT logged)",
                 tenantId, user.id(), expiresAt);
+        return new TenantAdminBootstrappedView(user, tempPassword, expiresAt);
+    }
+
+    /**
+     * FE-4a: tenant-admin-scoped sibling of {@link #bootstrapFirstAdmin} — creates an ORDINARY tenant user (not
+     * necessarily an admin, and with no "already has an admin" refusal) with a system-generated temporary
+     * credential, per spec §6.4.2's temporary-password create mode. Deliberately does NOT send an onboarding email
+     * or resolve a client id: {@code must_change_password=true} alone is sufficient, since whichever client the
+     * user next signs in through already carries its own {@code client_id} for {@code LoginController} to route
+     * the forced-rotation redirect with. The optional initial role is assigned in the same transaction as
+     * creation, so the caller never observes "user created, role grant failed" as a half-state.
+     */
+    @Transactional
+    public TenantAdminBootstrappedView createUserWithTempCredential(TenantContext context,
+                                                                     CreateUserWithTempCredentialCommand command) {
+        commandValidator.validate(command);
+        tenantService.requireActiveTenant(context);
+
+        String tempPassword = generateTempPassword();
+        Instant expiresAt = Instant.now().plus(properties.getOneTimeToken().getTenantAdminOnboardingTtl());
+
+        UserView user = userService.createUserWithPassword(context, new CreateUserWithPasswordCommand(
+                command.email(), tempPassword, command.firstName(), command.lastName(), command.phone(),
+                UserStatus.ACTIVE));
+        // Bundles must_change_password=true + the expiry with the SAME raw password just hashed above — see
+        // UserService.issueTempCredential's javadoc for why this hashes twice rather than exposing a flags-only
+        // primitive (same pairing bootstrapFirstAdmin uses above).
+        userService.issueTempCredential(context, user.id(), tempPassword, expiresAt);
+
+        if (command.initialRoleId() != null) {
+            tenantRoleService.assignTenantRole(context, user.id(), command.initialRoleId(), null);
+        }
+
+        auditEmitter.emit(AuditEvents.tempCredentialIssued(context.tenantId(), user.id(), expiresAt));
+        log.info("Tenant user created with temp credential: tenant={} user={} expiresAt={} (temp password NOT logged)",
+                context.tenantId(), user.id(), expiresAt);
         return new TenantAdminBootstrappedView(user, tempPassword, expiresAt);
     }
 
@@ -145,7 +182,7 @@ public class TenantOnboardingService {
         // beginRotation invalidates any outstanding onboarding token for this user BEFORE minting the fresh one
         // (§2.3's one-live-token-per-user rule) — the same "invalidate, then issue" pairing bootstrap uses above.
         String onboardingUrl = passwordRotationService.beginRotation(
-                context, userId, user.email(), adminConsoleClientId(tenant.slug()), null);
+                context, userId, user.email(), adminConsoleClientId(tenant.slug()), null, tenant.slug());
         notifier.sendTenantAdminOnboardingLink(user.email(), onboardingUrl, tenant.name());
 
         auditEmitter.emit(AuditEvents.tempCredentialReissued(tenantId, userId, expiresAt));

@@ -64,7 +64,7 @@ class TenantOnboardingRollbackIntegrationTest {
     @Test
     void bootstrapRollsBackTheNewUserEntirelyWhenTheAdminGrantFailsAfterUserCreationCommitted() {
         TenantView tenant = tenantService.provisionTenant(
-                new ProvisionTenantCommand("rollback-it-" + UUID.randomUUID(), "Rollback IT Tenant"));
+                new ProvisionTenantCommand("Rollback IT Tenant"));
         tenantService.activateTenant(tenant.id());
         TenantContext context = TenantContext.of(tenant.id());
 

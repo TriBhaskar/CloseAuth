@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.admin.web;
 import com.anterka.closeauthbackend.admin.security.RequiresTenantAccess;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.web.PageView;
+import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.rbac.dto.CreateTenantRoleCommand;
 import com.anterka.closeauthbackend.rbac.dto.TenantRoleView;
 import com.anterka.closeauthbackend.rbac.dto.UpdateTenantRoleCommand;
@@ -41,6 +42,7 @@ import java.util.UUID;
 public class TenantRoleController {
 
     private final TenantRoleService tenantRoleService;
+    private final UserService userService;
 
     @GetMapping("/roles")
     public PageView<TenantRoleView> list(@PathVariable String tenantId,
@@ -70,6 +72,18 @@ public class TenantRoleController {
     public ResponseEntity<Void> delete(@PathVariable String tenantId, @PathVariable UUID roleId) {
         tenantRoleService.deleteTenantRole(ctx(tenantId), roleId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * FE-4b (spec §6.4.5): every user currently holding this role. {@code TenantRoleService} returns bare ids
+     * (no {@code identity} dependency); resolved to {@link RoleAssigneeView} here, the controller layer, same
+     * "decorate at the boundary" convention {@link #list}'s sibling {@code TenantUserController} already uses.
+     */
+    @GetMapping("/roles/{roleId}/assignees")
+    public List<RoleAssigneeView> assignees(@PathVariable String tenantId, @PathVariable UUID roleId) {
+        TenantContext context = ctx(tenantId);
+        List<UUID> userIds = tenantRoleService.getAssigneeUserIds(context, roleId);
+        return userService.getUsersByIds(context, userIds).stream().map(RoleAssigneeView::from).toList();
     }
 
     /**

@@ -27,8 +27,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import QueryState from '@/components/admin/QueryState.vue'
-import FormField from '@/components/admin/FormField.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import FormField from '@/components/common/FormField.vue'
+import { describeAdminError } from '@/api/problem'
 import { getBranding, updateBranding, BRANDING_ERROR_FIELDS, type BrandingView } from '@/api/tenantAdminBranding'
 import {
   getRegistrationConfig,

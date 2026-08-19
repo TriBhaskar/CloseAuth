@@ -54,9 +54,15 @@ public class PasswordResetService {
     private final CloseAuthProperties properties;
     private final AuditEmitter auditEmitter;
 
-    /** Requests a reset link. Externally identical for existing / non-existing emails (no account enumeration). */
+    /**
+     * Requests a reset link. Externally identical for existing / non-existing emails (no account enumeration).
+     * {@code tenantSlug} (BE-B) is the tenant's public Tenant ID, resolved by the caller from {@code clientId} — used
+     * only to namespace the emailed link's path; {@code null} degrades to the un-namespaced base URL rather than
+     * emitting a broken link (the tenant existing at the point {@code clientId} was resolved is the only invariant
+     * this depends on, so this should never actually happen in practice).
+     */
     @Transactional
-    public void requestReset(TenantContext context, String email, String clientId) {
+    public void requestReset(TenantContext context, String email, String clientId, String tenantSlug) {
         String target = normalize(email);
         CloseAuthProperties.OneTimeToken cfg = properties.getOneTimeToken();
         if (!rateLimiter.tryAcquire(issueKey(context, target), cfg.getIssuanceMaxPerWindow(), cfg.getIssuanceWindow())) {
@@ -74,7 +80,7 @@ public class PasswordResetService {
                 OneTimeTokenPurpose.PASSWORD_RESET, context.tenantId(), user.id(), target, null,
                 OneTimeTokenFormat.OPAQUE_LINK, cfg.getPasswordResetTtl()));
         try {
-            notifier.sendPasswordResetLink(target, resetUrl(raw.rawSecret(), clientId));
+            notifier.sendPasswordResetLink(target, resetUrl(raw.rawSecret(), clientId, tenantSlug));
         } catch (NotificationDeliveryException deliveryFailure) {
             // Enumeration-safety: the response must be identical whether or not the account exists AND whether or not
             // SMTP is up. Swallow + log (recipient + event only, never the link) — an outage is an ops/log concern,
@@ -103,9 +109,11 @@ public class PasswordResetService {
         return ResetOutcome.RESET;
     }
 
-    private String resetUrl(String rawSecret, String clientId) {
+    private String resetUrl(String rawSecret, String clientId, String tenantSlug) {
         // Front-end reset page (the user enters a new password there; the page POSTs token + password back here).
-        String url = properties.getBff().getBaseUrl() + "/reset-password?token=" + enc(rawSecret);
+        // BE-B: tenant-namespaced under /t/{slug} (spec §2.2); tenantSlug == null degrades to the un-namespaced path.
+        String base = properties.getBff().getBaseUrl() + (tenantSlug == null ? "" : "/t/" + tenantSlug);
+        String url = base + "/reset-password?token=" + enc(rawSecret);
         return clientId == null ? url : url + "&client_id=" + enc(clientId);
     }
 

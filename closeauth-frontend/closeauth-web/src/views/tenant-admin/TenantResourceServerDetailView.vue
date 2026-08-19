@@ -16,23 +16,33 @@
 // instead of a button that would just 409.
 //
 // Stage UI-3d adds the application-roles panel (ApplicationRolesPanel.vue)
-// below the scopes panel — this view's own script/template are otherwise
-// unchanged from UI-3c.
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+// below the scopes panel.
+//
+// FE-4b: the scope catalog table is rebuilt onto DataTable, gains the
+// "used by N roles" column (usedByRoleCount, server-decorated — see
+// tenantAdminResourceServers.ts's ScopeView doc comment; the client-grant
+// half of spec §6.4.4's "where used" is a tracked, deferred gap, disclosed
+// once above the table rather than faked per-row). Scope name is displayed
+// as spec's literal `slug:scope` even though storage is bare (the prefix is
+// applied at token issuance, not stored — ResourceServerScope's own doc
+// comment). No server-side scope search exists (GET .../scopes still takes
+// only page/size), so — same FE-3a/FE-4b precedent as the resource-servers
+// list — a larger page is fetched once and DataTable's search filters it
+// client-side.
+import { computed, h, onMounted, reactive, ref, type VNode } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import QueryState from '@/components/admin/QueryState.vue'
-import AdminPagination from '@/components/admin/AdminPagination.vue'
-import FormField from '@/components/admin/FormField.vue'
-import ConfirmDialog from '@/components/admin/ConfirmDialog.vue'
+import FormField from '@/components/common/FormField.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import ApplicationRolesPanel from '@/components/admin/ApplicationRolesPanel.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import { describeAdminError } from '@/api/problem'
 import {
   addScope,
   deleteResourceServer,
@@ -43,11 +53,9 @@ import {
   updateResourceServer,
   updateScope,
   RESOURCE_SERVER_CONFLICT_FIELDS,
-  DEFAULT_PAGE_SIZE,
   type ResourceServerView,
   type ScopeView,
 } from '@/api/tenantAdminResourceServers'
-import type { PageView } from '@/api/tenantAdminUsers'
 
 const route = useRoute()
 const router = useRouter()
@@ -168,24 +176,31 @@ async function confirmDelete(): Promise<void> {
 
 // ---- scopes -----------------------------------------------------------
 
-const scopePage = ref(0)
-const scopeData = ref<PageView<ScopeView> | null>(null)
+// The whole catalog in one page, same convention as tenantAdminRoles.ts's
+// ROLE_CATALOG_PAGE_SIZE — no server-side scope search exists, so DataTable
+// filters this client-side (scopeSearchQuery below).
+const SCOPE_CATALOG_PAGE_SIZE = 100
+
+const scopes = ref<ScopeView[]>([])
+const scopesTotalPages = ref(0)
 const isScopesLoading = ref(true)
 const scopesError = ref<string | null>(null)
+const scopeSearchQuery = ref('')
 
 async function loadScopes(): Promise<void> {
   isScopesLoading.value = true
   scopesError.value = null
-  const result = await listScopes(slug, rsId, scopePage.value, DEFAULT_PAGE_SIZE)
+  const result = await listScopes(slug, rsId, 0, SCOPE_CATALOG_PAGE_SIZE)
   switch (result.kind) {
     case 'ok':
-      scopeData.value = result.value
+      scopes.value = result.value.items
+      scopesTotalPages.value = result.value.totalPages
       isScopesLoading.value = false
       break
     case 'reauth':
       break
     default:
-      scopeData.value = null
+      scopes.value = []
       scopesError.value = describeAdminError(result)
       isScopesLoading.value = false
       break
@@ -193,7 +208,68 @@ async function loadScopes(): Promise<void> {
 }
 
 onMounted(loadScopes)
-watch(scopePage, loadScopes)
+
+const scopesDataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
+  if (isScopesLoading.value) return 'loading'
+  if (scopesError.value) return 'error'
+  return 'loaded'
+})
+
+const hasActiveScopeFilter = computed(() => scopeSearchQuery.value.trim().length > 0)
+
+const filteredScopes = computed<ScopeView[]>(() => {
+  const q = scopeSearchQuery.value.trim().toLowerCase()
+  if (!q) return scopes.value
+  return scopes.value.filter(
+    (s) => s.scopeName.toLowerCase().includes(q) || (s.description ?? '').toLowerCase().includes(q),
+  )
+})
+
+const scopeColumns = computed<ColumnDef<ScopeView, unknown>[]>(() => [
+  {
+    id: 'scope',
+    header: 'Scope',
+    // scopeName is stored bare — the slug: prefix is applied at token
+    // issuance, not stored (ResourceServerScope's own doc comment). Spec
+    // §6.4.4 wants the full prefixed form displayed regardless.
+    cell: ({ row }) => h('code', { class: 'font-mono text-xs' }, `${rs.value?.slug ?? ''}:${row.original.scopeName}`),
+  },
+  {
+    id: 'description',
+    header: 'Description',
+    cell: ({ row }) => row.original.description || '—',
+  },
+  {
+    id: 'default',
+    header: 'Default',
+    cell: ({ row }) => (row.original.isDefault ? 'Yes' : 'No'),
+  },
+  {
+    id: 'requiresConsent',
+    header: 'Requires consent',
+    cell: ({ row }) => (row.original.requiresConsent ? 'Yes' : 'No'),
+  },
+  {
+    id: 'usedBy',
+    header: 'Used by',
+    cell: ({ row }) => {
+      const count = row.original.usedByRoleCount
+      if (count === null || count === undefined) return '—'
+      return `${count} role${count === 1 ? '' : 's'}`
+    },
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    cell: ({ row }): VNode => {
+      const scope = row.original
+      return h('div', { class: 'flex items-center gap-2' }, [
+        h(Button, { id: `scope-edit-${scope.id}`, variant: 'outline', size: 'sm', onClick: () => openEditScope(scope) }, { default: () => 'Edit' }),
+        h(Button, { id: `scope-delete-${scope.id}`, variant: 'destructive', size: 'sm', onClick: () => (scopePendingDelete.value = scope) }, { default: () => 'Delete' }),
+      ])
+    },
+  },
+])
 
 // ---- add/edit scope dialog --------------------------------------------
 
@@ -388,51 +464,31 @@ async function confirmScopeDelete(): Promise<void> {
             <h2 class="text-lg font-semibold tracking-tight">Scopes</h2>
             <Button id="new-scope-button" size="sm" @click="openAddScope">Add scope</Button>
           </div>
+          <p class="text-xs text-muted-foreground">
+            "Used by" counts application roles bundling each scope. Client usage isn't tracked yet.
+          </p>
 
-          <QueryState :loading="isScopesLoading" :error="scopesError">
-            <div class="flex flex-col gap-4">
-              <div class="rounded-lg border border-border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Scope</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Default</TableHead>
-                      <TableHead>Requires consent</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableEmpty v-if="scopeData && scopeData.items.length === 0" :colspan="5">
-                      No scopes defined yet.
-                    </TableEmpty>
-                    <TableRow v-for="scope in scopeData?.items ?? []" :key="scope.id" :data-scope-id="scope.id">
-                      <TableCell class="font-mono text-xs">{{ scope.scopeName }}</TableCell>
-                      <TableCell>{{ scope.description || '—' }}</TableCell>
-                      <TableCell>{{ scope.isDefault ? 'Yes' : 'No' }}</TableCell>
-                      <TableCell>{{ scope.requiresConsent ? 'Yes' : 'No' }}</TableCell>
-                      <TableCell>
-                        <div class="flex items-center gap-2">
-                          <Button :id="`scope-edit-${scope.id}`" variant="outline" size="sm" @click="openEditScope(scope)">Edit</Button>
-                          <Button :id="`scope-delete-${scope.id}`" variant="destructive" size="sm" @click="scopePendingDelete = scope">Delete</Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-
-              <AdminPagination
-                v-if="scopeData"
-                :page="scopeData.page"
-                :size="scopeData.size"
-                :total-elements="scopeData.totalElements"
-                :total-pages="scopeData.totalPages"
-                @update:page="(p) => (scopePage = p)"
-              />
-              <p v-if="scopeDeleteError" role="alert" class="text-sm text-destructive">{{ scopeDeleteError }}</p>
-            </div>
-          </QueryState>
+          <DataTable
+            :columns="scopeColumns"
+            :data="filteredScopes"
+            :row-key="(s: ScopeView) => s.id"
+            :state="scopesDataTableState"
+            :row-attrs="(s: ScopeView) => ({ 'data-scope-id': s.id })"
+            :page="0"
+            :size="SCOPE_CATALOG_PAGE_SIZE"
+            :total-elements="scopes.length"
+            :total-pages="1"
+            :error-message="scopesError ?? undefined"
+            :has-active-filters="hasActiveScopeFilter"
+            empty-title="No scopes defined yet."
+            empty-description="Add one to get started."
+            filtered-empty-title="No scopes match your search."
+            filtered-empty-description="Try a different name or description."
+            search-placeholder="Search scopes…"
+            @update:search="(q: string) => (scopeSearchQuery = q)"
+            @retry="loadScopes"
+          />
+          <p v-if="scopeDeleteError" role="alert" class="text-sm text-destructive">{{ scopeDeleteError }}</p>
         </div>
 
         <div class="rounded-xl border border-border p-6">

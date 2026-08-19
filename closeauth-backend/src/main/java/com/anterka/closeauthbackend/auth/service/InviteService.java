@@ -13,6 +13,8 @@ import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
 import com.anterka.closeauthbackend.notification.service.AuthNotificationSender;
+import com.anterka.closeauthbackend.tenant.entity.Tenant;
+import com.anterka.closeauthbackend.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class InviteService {
     private final CommandValidator commandValidator;
     private final CloseAuthProperties properties;
     private final AuditEmitter auditEmitter;
+    private final TenantRepository tenantRepository;
 
     /** Issues an invite: invalidates prior outstanding invites to the same email, mints a fresh INVITE OTT, emails it. */
     @Transactional
@@ -53,7 +56,11 @@ public class InviteService {
         RawOneTimeToken raw = oneTimeTokenService.issue(new IssueTokenCommand(
                 OneTimeTokenPurpose.INVITE, context.tenantId(), null, email, null,
                 OneTimeTokenFormat.OPAQUE_LINK, properties.getOneTimeToken().getInviteTtl()));
-        notifier.sendInviteLink(email, inviteUrl(raw.rawSecret()));
+        // BE-B: unlike the auth-flow services (client_id-driven, AuthFlowTenantResolver), this call is already
+        // authenticated tenant-admin-console-side with only a tenant UUID in hand — a direct TenantRepository lookup,
+        // not the auth-flow resolver, which is scoped to client_id resolution.
+        String tenantSlug = tenantRepository.findById(context.tenantId()).map(Tenant::getSlug).orElse(null);
+        notifier.sendInviteLink(email, inviteUrl(raw.rawSecret(), tenantSlug, email));
         auditEmitter.emit(AuditEvents.inviteIssued(context.tenantId(), email, raw.tokenId()));
         log.info("Invite issued tenant={} email={} expiresAt={} (raw NOT logged)",
                 context.tenantId(), email, raw.expiresAt());
@@ -82,9 +89,18 @@ public class InviteService {
         auditEmitter.emit(AuditEvents.inviteRevoked(context.tenantId(), inviteId));
     }
 
-    private String inviteUrl(String rawSecret) {
-        return properties.getBff().getBaseUrl() + "/register?invite="
-                + URLEncoder.encode(rawSecret, StandardCharsets.UTF_8);
+    private String inviteUrl(String rawSecret, String tenantSlug, String email) {
+        // BE-B: tenant-namespaced under /t/{slug} (spec §2.2) — also settles the pre-existing disagreement between
+        // this hardcoded /register path and application.yml's dead, unbound bff.registration-page (/oauth/register):
+        // /register is what's actually served, and is now the one true path. tenantSlug == null degrades to the
+        // un-namespaced path.
+        // FE-2c: also carries the invite's target email, so RegisterView.vue can pre-fill and lock the email field
+        // (spec §6.2.3) without a new, unauthenticated invite-preview endpoint — InviteOnlyRegistrationStrategy
+        // already independently re-validates the email-token match at submit, so a tampered URL just gets the
+        // existing generic 403, never a bypass.
+        String base = properties.getBff().getBaseUrl() + (tenantSlug == null ? "" : "/t/" + tenantSlug);
+        return base + "/register?invite=" + URLEncoder.encode(rawSecret, StandardCharsets.UTF_8)
+                + "&email=" + URLEncoder.encode(email, StandardCharsets.UTF_8);
     }
 
     private String normalize(String email) {

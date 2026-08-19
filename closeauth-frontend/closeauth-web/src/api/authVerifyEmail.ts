@@ -16,14 +16,16 @@ export interface VerifyEmailConfirmPayload {
 }
 
 // EmailVerificationController's confirm handler returns EMPTY bodies on
-// every branch except success being a 200 with no body either — 400 is a
-// generic, enumeration-safe `invalid` with no distinguishing detail, and 429
-// carries no Retry-After either (confirmed against backend source: all three
-// are bare ResponseEntity.<status>().build() calls). So there is nothing to
-// parse from the body on any branch; the status code alone drives the
-// outcome.
+// every branch — the status code alone drives the outcome. FE-2d: a code
+// that was ALREADY used is deliberately collapsed into the SAME 200 as a
+// fresh verification (spec §6.2.4 — re-clicking an old email link reads as
+// success, not an error), so there is no separate `alreadyUsed` kind here;
+// `expired` (410) is the one new distinguishable outcome — see
+// EmailVerificationService's class javadoc for why this narrow exception to
+// the platform's usual "never distinguish why a token failed" rule is safe.
 export type VerifyConfirmOutcome =
   | { kind: 'verified' }
+  | { kind: 'expired' }
   | { kind: 'invalidCode' }
   | { kind: 'rateLimited' }
   | { kind: 'error'; status: number }
@@ -47,6 +49,7 @@ export async function confirmVerification(payload: VerifyEmailConfirmPayload): P
   }
 
   if (response.ok) return { kind: 'verified' }
+  if (response.status === 410) return { kind: 'expired' }
   if (response.status === 429) return { kind: 'rateLimited' }
   if (response.status === 400) return { kind: 'invalidCode' }
   return { kind: 'error', status: response.status }

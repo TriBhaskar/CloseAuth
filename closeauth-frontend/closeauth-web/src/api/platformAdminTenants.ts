@@ -4,7 +4,9 @@
 // cross-tenant sibling of tenantAdminUsers.ts.
 import { platformAdminFetch } from '@/api/platformAdminClient'
 import { parsePlatformResult } from '@/api/platformAdminProblem'
-import type { AdminResult } from '@/api/tenantAdminProblem'
+import type { AdminResult } from '@/api/problem'
+import type { PageView } from '@/api/pageView'
+export type { PageView } from '@/api/pageView'
 
 // Mirrors tenant/enums/TenantStatus.java exactly.
 export type TenantStatus = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'DELETED'
@@ -26,29 +28,21 @@ export interface TenantView {
   adminCount: number | null
 }
 
-// Mirrors common/web/PageView.java exactly — same shape tenantAdminUsers.ts
-// already declares for UserView; redeclared here (not imported from there)
-// so this module doesn't reach across the tenant/platform boundary for a
-// type, matching the "own store, never merged" discipline the session layer
-// already follows.
-export interface PageView<T> {
-  items: T[]
-  page: number
-  size: number
-  totalElements: number
-  totalPages: number
-}
-
 export const DEFAULT_PAGE_SIZE = 20
 
 export interface ProvisionTenantPayload {
-  slug: string
   name: string
 }
 
 export async function listTenants(page: number, size: number = DEFAULT_PAGE_SIZE): Promise<AdminResult<PageView<TenantView>>> {
   const result = await platformAdminFetch(`/tenants?page=${page}&size=${size}`)
   return parsePlatformResult<PageView<TenantView>>(result)
+}
+
+/** FE-3b: single-tenant fetch for the detail page. Populates adminCount, same as listTenants' items. */
+export async function getTenant(tenantId: string): Promise<AdminResult<TenantView>> {
+  const result = await platformAdminFetch(`/tenants/${encodeURIComponent(tenantId)}`)
+  return parsePlatformResult<TenantView>(result)
 }
 
 export async function provisionTenant(payload: ProvisionTenantPayload): Promise<AdminResult<TenantView>> {

@@ -310,6 +310,6 @@ class LoginPolicyServiceTest {
 
     private UserView user(UserStatus status) {
         return new UserView(userId, tenantId, "a@x.com", true, null, false, "F", "L", status,
-                null, Instant.now(), Instant.now());
+                null, Instant.now(), Instant.now(), null, null);
     }
 }

@@ -1,70 +1,78 @@
 <script setup lang="ts">
-// Stage UI-3d: tenant-role CRUD — list + dialogs, the same
-// list-then-dialogs pattern TenantResourceServersView.vue (UI-3c) uses, not
-// a detail route: description and isDefault are this tier's only mutable
-// fields, so a dedicated detail page would hold nothing the row + a dialog
-// doesn't already show (unlike application roles, which get their own
-// detail route for scope bundling — see TenantApplicationRoleDetailView.vue).
+// Stage UI-3d: tenant-role CRUD — list + dialogs, not a detail route:
+// description and isDefault are this tier's only mutable fields, so a
+// dedicated detail page would hold nothing the row + a dialog doesn't
+// already show (unlike application roles, which get their own detail
+// route for scope bundling — see TenantApplicationRoleDetailView.vue).
 //
 // System roles (TENANT_ADMIN, TENANT_MEMBER, BILLING_ADMIN — the starter
 // pack) render with NO edit/delete control at all, per tenantRoleActions —
 // update/delete both 403 role.system_immutable on the backend, so offering
 // them here would be an action the backend must refuse. Assignment/
-// revocation for a system role stay available on the user-detail view; this
-// list deliberately does not offer revocation from the role's perspective —
-// there is no "users holding this role" endpoint, so such a surface could
-// only be blind.
+// revocation for a system role stay available on the user-detail view.
 //
-// Delete copy names the real consequence: every user holding the role loses
-// it immediately (ON DELETE CASCADE), and CloseAuth cannot report how many
-// that is — deleteRole's doc comment in tenantAdminRoles.ts explains why.
-import { onMounted, reactive, ref, watch } from 'vue'
+// FE-4b: rebuilt onto DataTable. System rows gain a Lock icon (spec
+// §6.4.5's literal ask) alongside the existing "System — cannot be
+// changed" copy. A new "Assignees" action opens a read-only dialog listing
+// everyone holding the role (TenantRoleController.assignees, new this
+// session) — a dialog rather than a new detail route/expandable row, since
+// this tier otherwise has no detail page to extend and DataTable has no
+// built-in row-expansion wired up. No server-side role search exists (GET
+// /roles still takes only page/size), so — same precedent as the other two
+// FE-4b list rebuilds — a larger page is fetched once and filtered
+// client-side.
+import { computed, h, onMounted, reactive, ref, type VNode } from 'vue'
 import { useRoute } from 'vue-router'
+import { Lock } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import QueryState from '@/components/admin/QueryState.vue'
-import AdminPagination from '@/components/admin/AdminPagination.vue'
-import FormField from '@/components/admin/FormField.vue'
-import ConfirmDialog from '@/components/admin/ConfirmDialog.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
+import FormField from '@/components/common/FormField.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import { describeAdminError } from '@/api/problem'
 import {
   createRole,
   deleteRole,
+  getRoleAssignees,
   listRolesPaged,
   tenantRoleActions,
   updateRole,
-  DEFAULT_ROLE_PAGE_SIZE,
   TENANT_ROLE_CONFLICT_FIELDS,
+  type RoleAssigneeView,
   type TenantRoleView,
 } from '@/api/tenantAdminRoles'
-import type { PageView } from '@/api/tenantAdminUsers'
 
 const route = useRoute()
 const slug = String(route.params.slug ?? '')
 
-const page = ref(0)
-const pageData = ref<PageView<TenantRoleView> | null>(null)
+// The whole catalog in one page — no server-side search exists, so
+// DataTable filters this client-side (searchQuery below). Mirrors
+// ROLE_CATALOG_PAGE_SIZE's "whole catalog" convention elsewhere in this
+// codebase.
+const ROLE_LIST_PAGE_SIZE = 100
+
+const roles = ref<TenantRoleView[]>([])
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const searchQuery = ref('')
 
 async function load(): Promise<void> {
   isLoading.value = true
   errorMessage.value = null
-  const result = await listRolesPaged(slug, page.value, DEFAULT_ROLE_PAGE_SIZE)
+  const result = await listRolesPaged(slug, 0, ROLE_LIST_PAGE_SIZE)
   switch (result.kind) {
     case 'ok':
-      pageData.value = result.value
+      roles.value = result.value.items
       isLoading.value = false
       break
     case 'reauth':
       break
     default:
-      pageData.value = null
+      roles.value = []
       errorMessage.value = describeAdminError(result)
       isLoading.value = false
       break
@@ -72,7 +80,22 @@ async function load(): Promise<void> {
 }
 
 onMounted(load)
-watch(page, load)
+
+const dataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
+  if (isLoading.value) return 'loading'
+  if (errorMessage.value) return 'error'
+  return 'loaded'
+})
+
+const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
+
+const filteredRoles = computed<TenantRoleView[]>(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return roles.value
+  return roles.value.filter(
+    (r) => r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q),
+  )
+})
 
 // ---- create dialog ---------------------------------------------------
 
@@ -111,7 +134,6 @@ async function handleCreate(): Promise<void> {
       case 'ok':
         isCreateOpen.value = false
         resetCreateForm()
-        page.value = 0
         await load()
         break
       case 'validationErrors':
@@ -219,6 +241,85 @@ async function confirmDelete(): Promise<void> {
     isDeleting.value = false
   }
 }
+
+// ---- assignees dialog (new, FE-4b) --------------------------------------
+
+const assigneesRole = ref<TenantRoleView | null>(null)
+const assignees = ref<RoleAssigneeView[]>([])
+const isAssigneesLoading = ref(false)
+const assigneesError = ref<string | null>(null)
+
+async function openAssignees(role: TenantRoleView): Promise<void> {
+  assigneesRole.value = role
+  assignees.value = []
+  assigneesError.value = null
+  isAssigneesLoading.value = true
+  const result = await getRoleAssignees(slug, role.id)
+  switch (result.kind) {
+    case 'ok':
+      assignees.value = result.value
+      isAssigneesLoading.value = false
+      break
+    case 'reauth':
+      break
+    default:
+      assigneesError.value = describeAdminError(result)
+      isAssigneesLoading.value = false
+      break
+  }
+}
+
+function closeAssigneesDialog(open: boolean): void {
+  if (!open) assigneesRole.value = null
+}
+
+function assigneeName(a: RoleAssigneeView): string {
+  return [a.firstName, a.lastName].filter(Boolean).join(' ') || '—'
+}
+
+// ---- DataTable columns ----------------------------------------------------
+
+const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
+  {
+    id: 'name',
+    header: 'Name',
+    cell: ({ row }): VNode | string => {
+      if (!row.original.isSystem) return row.original.name
+      return h('div', { class: 'flex items-center gap-1.5' }, [
+        h(Lock, { class: 'h-3.5 w-3.5 text-muted-foreground shrink-0' }),
+        h('span', row.original.name),
+      ])
+    },
+  },
+  { id: 'description', header: 'Description', cell: ({ row }) => row.original.description || '—' },
+  { id: 'default', header: 'Default', cell: ({ row }) => (row.original.isDefault ? 'Yes' : 'No') },
+  {
+    id: 'system',
+    header: 'System',
+    cell: ({ row }) => (row.original.isSystem ? h(Badge, { variant: 'secondary' }, { default: () => 'System' }) : '—'),
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    cell: ({ row }): VNode => {
+      const role = row.original
+      const actions = tenantRoleActions(role)
+      const children: VNode[] = [
+        h(Button, { id: `role-assignees-${role.id}`, variant: 'outline', size: 'sm', onClick: () => openAssignees(role) }, { default: () => 'Assignees' }),
+      ]
+      if (actions.includes('edit')) {
+        children.push(h(Button, { id: `role-edit-${role.id}`, variant: 'outline', size: 'sm', onClick: () => openEdit(role) }, { default: () => 'Edit' }))
+      }
+      if (actions.includes('delete')) {
+        children.push(h(Button, { id: `role-delete-${role.id}`, variant: 'destructive', size: 'sm', onClick: () => (pendingDelete.value = role) }, { default: () => 'Delete' }))
+      }
+      if (actions.length === 0) {
+        children.push(h('span', { class: 'text-xs text-muted-foreground' }, 'System — cannot be changed'))
+      }
+      return h('div', { class: 'flex flex-wrap items-center gap-2' }, children)
+    },
+  },
+])
 </script>
 
 <template>
@@ -285,68 +386,27 @@ async function confirmDelete(): Promise<void> {
       </Dialog>
     </div>
 
-    <QueryState :loading="isLoading" :error="errorMessage">
-      <div class="flex flex-col gap-4">
-        <div class="rounded-lg border border-border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Default</TableHead>
-                <TableHead>System</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableEmpty v-if="pageData && pageData.items.length === 0" :colspan="5">No tenant roles yet.</TableEmpty>
-              <TableRow v-for="role in pageData?.items ?? []" :key="role.id" :data-role-id="role.id">
-                <TableCell class="font-medium">{{ role.name }}</TableCell>
-                <TableCell>{{ role.description || '—' }}</TableCell>
-                <TableCell>{{ role.isDefault ? 'Yes' : 'No' }}</TableCell>
-                <TableCell>
-                  <Badge v-if="role.isSystem" variant="secondary">System</Badge>
-                  <span v-else>—</span>
-                </TableCell>
-                <TableCell>
-                  <div v-if="tenantRoleActions(role).length > 0" class="flex items-center gap-2">
-                    <Button
-                      v-if="tenantRoleActions(role).includes('edit')"
-                      :id="`role-edit-${role.id}`"
-                      variant="outline"
-                      size="sm"
-                      @click="openEdit(role)"
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      v-if="tenantRoleActions(role).includes('delete')"
-                      :id="`role-delete-${role.id}`"
-                      variant="destructive"
-                      size="sm"
-                      @click="pendingDelete = role"
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                  <span v-else class="text-xs text-muted-foreground">System — cannot be changed</span>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-
-        <AdminPagination
-          v-if="pageData"
-          :page="pageData.page"
-          :size="pageData.size"
-          :total-elements="pageData.totalElements"
-          :total-pages="pageData.totalPages"
-          @update:page="(p) => (page = p)"
-        />
-        <p v-if="deleteError" role="alert" class="text-sm text-destructive">{{ deleteError }}</p>
-      </div>
-    </QueryState>
+    <DataTable
+      :columns="columns"
+      :data="filteredRoles"
+      :row-key="(r: TenantRoleView) => r.id"
+      :state="dataTableState"
+      :row-attrs="(r: TenantRoleView) => ({ 'data-role-id': r.id })"
+      :page="0"
+      :size="ROLE_LIST_PAGE_SIZE"
+      :total-elements="roles.length"
+      :total-pages="1"
+      :error-message="errorMessage ?? undefined"
+      :has-active-filters="hasActiveFilters"
+      empty-title="No tenant roles yet."
+      empty-description="Create one to get started."
+      filtered-empty-title="No roles match your search."
+      filtered-empty-description="Try a different name or description."
+      search-placeholder="Search roles…"
+      @update:search="(q: string) => (searchQuery = q)"
+      @retry="load"
+    />
+    <p v-if="deleteError" role="alert" class="text-sm text-destructive">{{ deleteError }}</p>
 
     <Dialog :open="editingRole !== null" @update:open="closeEditDialog">
       <DialogContent>
@@ -393,6 +453,29 @@ async function confirmDelete(): Promise<void> {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="assigneesRole !== null" @update:open="closeAssigneesDialog">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assignees — {{ assigneesRole?.name }}</DialogTitle>
+          <DialogDescription>Everyone currently holding this role.</DialogDescription>
+        </DialogHeader>
+        <div class="flex flex-col gap-2">
+          <p v-if="isAssigneesLoading" class="text-sm text-muted-foreground">Loading…</p>
+          <p v-else-if="assigneesError" role="alert" class="text-sm text-destructive">{{ assigneesError }}</p>
+          <p v-else-if="assignees.length === 0" class="text-sm text-muted-foreground">No one holds this role yet.</p>
+          <ul v-else class="flex flex-col gap-2">
+            <li v-for="a in assignees" :key="a.userId" :data-assignee-id="a.userId" class="flex flex-col gap-0.5 rounded-md border border-line p-2 text-sm">
+              <span>{{ a.email }}</span>
+              <span class="text-xs text-muted-foreground">{{ assigneeName(a) }} · {{ a.status }}</span>
+            </li>
+          </ul>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="assigneesRole = null">Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 

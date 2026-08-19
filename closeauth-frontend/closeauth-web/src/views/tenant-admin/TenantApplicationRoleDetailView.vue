@@ -16,9 +16,16 @@
 // explanation, never result.errors verbatim (those keys are RS UUIDs, not
 // scope names).
 //
-// Toggling issues one POST/DELETE per scope (no bulk-set endpoint exists),
-// guarded by a single scopeActionPending flag and refetching the bundle on
-// success — the same shape as TenantUserDetailView.vue's toggleRole.
+// Toggling issues one POST/DELETE per scope (no bulk-set endpoint exists).
+// FE-4b: pending state is now PER-SCOPE (pendingScopeIds, a Set), replacing
+// the old single scopeActionPending flag that disabled every checkbox
+// while any one was in flight — §7.5: "mutations disable their own trigger
+// only, never the whole form." Same fix FE-4a applied to
+// TenantUserDetailView.vue's role toggles.
+//
+// FE-4b also adds an Assignees section (spec §6.4.5) — everyone currently
+// holding this application role, via the new
+// ApplicationRoleController.assignees endpoint.
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
@@ -26,11 +33,12 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import QueryState from '@/components/admin/QueryState.vue'
-import FormField from '@/components/admin/FormField.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import FormField from '@/components/common/FormField.vue'
+import { describeAdminError } from '@/api/problem'
 import {
   addScopeToRole,
   getApplicationRole,
+  getApplicationRoleAssignees,
   listRoleScopes,
   removeScopeFromRole,
   updateApplicationRole,
@@ -39,6 +47,7 @@ import {
   type ApplicationRoleView,
 } from '@/api/tenantAdminApplicationRoles'
 import { listScopes, type ScopeView } from '@/api/tenantAdminResourceServers'
+import type { RoleAssigneeView } from '@/api/tenantAdminRoles'
 
 const route = useRoute()
 const router = useRouter()
@@ -72,7 +81,39 @@ async function loadRole(): Promise<void> {
   }
 }
 
-onMounted(loadRole)
+// ---- assignees (new, FE-4b) -------------------------------------------
+
+const assignees = ref<RoleAssigneeView[]>([])
+const isAssigneesLoading = ref(true)
+const assigneesError = ref<string | null>(null)
+
+async function loadAssignees(): Promise<void> {
+  isAssigneesLoading.value = true
+  assigneesError.value = null
+  const result = await getApplicationRoleAssignees(slug, rsId, roleId)
+  switch (result.kind) {
+    case 'ok':
+      assignees.value = result.value
+      isAssigneesLoading.value = false
+      break
+    case 'reauth':
+      break
+    default:
+      assignees.value = []
+      assigneesError.value = describeAdminError(result)
+      isAssigneesLoading.value = false
+      break
+  }
+}
+
+function assigneeName(a: RoleAssigneeView): string {
+  return [a.firstName, a.lastName].filter(Boolean).join(' ') || '—'
+}
+
+onMounted(() => {
+  void loadRole()
+  void loadAssignees()
+})
 
 function backToResourceServer(): void {
   void router.push({ name: 'tenant-admin-resource-server-detail', params: { slug, rsId } })
@@ -135,7 +176,8 @@ const bundledScopeIds = ref<Set<string>>(new Set())
 const isScopesLoading = ref(true)
 const scopesError = ref<string | null>(null)
 const scopesTruncated = ref(false)
-const scopeActionPending = ref(false)
+// FE-4b: per-scope pending (§7.5) — replaces the old panel-wide boolean.
+const pendingScopeIds = ref<Set<string>>(new Set())
 const scopeActionError = ref('')
 
 async function loadScopeBundle(): Promise<void> {
@@ -170,9 +212,9 @@ onMounted(loadScopeBundle)
 const scopeRows = computed(() => rsScopes.value.map((scope) => ({ scope, bundled: bundledScopeIds.value.has(scope.id) })))
 
 async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise<void> {
-  if (scopeActionPending.value) return
+  if (pendingScopeIds.value.has(scope.id)) return
   scopeActionError.value = ''
-  scopeActionPending.value = true
+  pendingScopeIds.value = new Set(pendingScopeIds.value).add(scope.id)
   try {
     const result = currentlyBundled
       ? await removeScopeFromRole(slug, rsId, roleId, scope.id)
@@ -202,7 +244,9 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
         break
     }
   } finally {
-    scopeActionPending.value = false
+    const next = new Set(pendingScopeIds.value)
+    next.delete(scope.id)
+    pendingScopeIds.value = next
   }
 }
 </script>
@@ -271,7 +315,7 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
                 <Checkbox
                   :id="`app-role-scope-${scope.id}`"
                   :model-value="bundled"
-                  :disabled="scopeActionPending"
+                  :disabled="pendingScopeIds.has(scope.id)"
                   @update:model-value="() => toggleScope(scope, bundled)"
                 />
                 <Label :for="`app-role-scope-${scope.id}`" class="font-mono text-sm">{{ scope.scopeName }}</Label>
@@ -283,6 +327,24 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
 
               <p v-if="scopeActionError" role="alert" class="text-sm text-destructive">{{ scopeActionError }}</p>
             </div>
+          </QueryState>
+        </div>
+
+        <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
+          <h2 class="text-lg font-semibold tracking-tight">Assignees</h2>
+          <QueryState :loading="isAssigneesLoading" :error="assigneesError">
+            <p v-if="assignees.length === 0" class="text-sm text-muted-foreground">No one holds this role yet.</p>
+            <ul v-else class="flex flex-col gap-2">
+              <li
+                v-for="a in assignees"
+                :key="a.userId"
+                :data-assignee-id="a.userId"
+                class="flex flex-col gap-0.5 rounded-md border border-line p-2 text-sm"
+              >
+                <span>{{ a.email }}</span>
+                <span class="text-xs text-muted-foreground">{{ assigneeName(a) }} · {{ a.status }}</span>
+              </li>
+            </ul>
           </QueryState>
         </div>
       </div>

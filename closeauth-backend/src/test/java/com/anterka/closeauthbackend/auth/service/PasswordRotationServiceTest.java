@@ -62,7 +62,7 @@ class PasswordRotationServiceTest {
         when(oneTimeTokenService.issue(any()))
                 .thenReturn(new RawOneTimeToken("raw-secret", UUID.randomUUID(), Instant.now()));
 
-        String url = service.beginRotation(ctx, userId, "Admin@X.com", "client-1", "scope=openid&state=abc");
+        String url = service.beginRotation(ctx, userId, "Admin@X.com", "client-1", "scope=openid&state=abc", "ten_acme-inc");
 
         InOrder order = inOrder(oneTimeTokenService);
         order.verify(oneTimeTokenService)
@@ -77,7 +77,7 @@ class PasswordRotationServiceTest {
         assertThat(captor.getValue().target()).isEqualTo("admin@x.com");
 
         assertThat(url)
-                .startsWith("http://localhost:8080/password-rotation?token=raw-secret")
+                .startsWith("http://localhost:8080/t/ten_acme-inc/password-rotation?token=raw-secret")
                 .contains("client_id=client-1")
                 .contains("authorize_query=");
     }
@@ -87,7 +87,7 @@ class PasswordRotationServiceTest {
         when(oneTimeTokenService.issue(any()))
                 .thenReturn(new RawOneTimeToken("raw-secret", UUID.randomUUID(), Instant.now()));
 
-        String url = service.beginRotation(ctx, userId, "a@x.com", null, null);
+        String url = service.beginRotation(ctx, userId, "a@x.com", null, null, null);
 
         assertThat(url).isEqualTo("http://localhost:8080/password-rotation?token=raw-secret");
     }

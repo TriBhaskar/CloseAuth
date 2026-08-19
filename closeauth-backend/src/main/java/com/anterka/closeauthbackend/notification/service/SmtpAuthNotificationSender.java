@@ -41,10 +41,11 @@ public class SmtpAuthNotificationSender implements AuthNotificationSender {
     }
 
     @Override
-    public void sendEmailVerificationCode(String target, String code) {
+    public void sendEmailVerificationCode(String target, String code, String verifyUrl) {
         send(target, "EMAIL_VERIFICATION", "Verify your email",
-                "Your CloseAuth email verification code is:\n\n" + code
-                        + "\n\nEnter this code to verify your email address. It will expire shortly.\n\n"
+                "Click the link below to verify your email address:\n\n" + verifyUrl
+                        + "\n\nOr enter this code manually:\n\n" + code
+                        + "\n\nThis will expire shortly.\n\n"
                         + "If you did not request this, you can ignore this email.");
     }
 

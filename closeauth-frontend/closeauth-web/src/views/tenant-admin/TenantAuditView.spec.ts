@@ -90,7 +90,7 @@ describe('TenantAuditView', () => {
   })
 
   it('applying a single filter builds exactly the expected query, blanks omitted', async () => {
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((_url: string) => {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emptyPage()) })
     })
     vi.stubGlobal('fetch', fetchMock)

@@ -45,6 +45,19 @@ describe('TenantAdminDeniedView', () => {
     expect(window.location.assign).not.toHaveBeenCalled()
   })
 
+  // FE-4d: the callback's own remaining denial reason (client_id/tenant_id
+  // binding mismatch — the only thing left it can refuse a session for).
+  it('renders the invalid_client_binding message', async () => {
+    const router = await createDeniedRouter('reason=invalid_client_binding')
+    const wrapper = mount(TenantAdminDeniedView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const alert = wrapper.find('[role="alert"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('account or client does not match this tenant')
+    expect(window.location.assign).not.toHaveBeenCalled()
+  })
+
   it('"Try a different account" dismisses the denial marker, then navigates to admin/login', async () => {
     const dismissFetch = vi.fn().mockResolvedValue({ ok: true, status: 204 })
     vi.stubGlobal(

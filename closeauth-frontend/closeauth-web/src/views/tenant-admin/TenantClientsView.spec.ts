@@ -4,13 +4,25 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import TenantClientsView from './TenantClientsView.vue'
 import { useTenantAdminClientCredentialsStore } from '@/stores/tenantAdminClientCredentials'
-import { clearCsrfToken } from '@/api/client'
+import { clearCsrfToken } from '@/api/csrf'
 
-// Stage UI-3c: no fabricated list (the backend has none, and this page must
-// say so, not render an empty table implying one exists), no secret input
-// anywhere on the register form, and the look-up-by-record-id control
-// renders a clear not-found on a 404 rather than behaving like an empty row
-// in a list that doesn't exist.
+// FE-4c: no fabricated list (the backend has none, and this page must say
+// so via EmptyState, not render an empty table implying one exists), no
+// secret input anywhere reachable from this page, register now opens the
+// three-step CreateClientDialog wizard (its own dedicated spec covers the
+// wizard's internal behavior in full — these tests only prove the view
+// wires it correctly), and the look-up-by-record-id control renders a clear
+// not-found on a 404 rather than behaving like an empty row in a list that
+// doesn't exist.
+const dialogStubs = {
+  Dialog: { template: '<div><slot /></div>' },
+  DialogContent: { template: '<div><slot /></div>' },
+  DialogHeader: { template: '<div><slot /></div>' },
+  DialogFooter: { template: '<div><slot /></div>' },
+  DialogTitle: { template: '<div><slot /></div>' },
+  DialogDescription: { template: '<div><slot /></div>' },
+}
+
 async function createClientsRouter() {
   const router = createRouter({
     history: createWebHistory(),
@@ -50,28 +62,37 @@ afterEach(() => {
 describe('TenantClientsView', () => {
   it('states plainly that no client list exists — no table, no fabricated rows', async () => {
     const router = await createClientsRouter()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
+    const wrapper = mount(TenantClientsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
     expect(wrapper.find('#clients-no-list-notice').exists()).toBe(true)
     expect(wrapper.find('table').exists()).toBe(false)
   })
 
-  it('the register form has no secret input at all', async () => {
+  it('opening the register wizard has no secret input anywhere', async () => {
     const router = await createClientsRouter()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
+    const wrapper = mount(TenantClientsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
+
+    await wrapper.find('#open-create-client-wizard').trigger('click')
 
     expect(wrapper.find('input[type="password"]').exists()).toBe(false)
     expect(wrapper.html()).not.toMatch(/id="[^"]*secret[^"]*"/i)
   })
 
-  it('register: success stores credentials with context "create" and navigates to the handoff view', async () => {
+  it('register: success (via the wizard) stores credentials with context "create" and navigates to the handoff view', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
         if (url === '/api/csrf') {
           return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [], page: 0, size: 200, totalElements: 0, totalPages: 0 }),
+          })
         }
         if (url === '/t/acme/api/clients' && init?.method === 'POST') {
           return Promise.resolve({
@@ -85,9 +106,12 @@ describe('TenantClientsView', () => {
                   clientName: 'New Client',
                   tenantId: 'tenant-1',
                   publicClient: false,
-                  grantTypes: ['authorization_code'],
+                  grantTypes: ['authorization_code', 'refresh_token'],
                   scopes: [],
                   redirectUris: ['http://127.0.0.1/callback'],
+                  postLogoutRedirectUris: [],
+                  createdAt: '2026-01-01T00:00:00Z',
+                  secretRotatedAt: null,
                 },
                 clientSecret: 'generated-secret-abc',
               }),
@@ -99,13 +123,18 @@ describe('TenantClientsView', () => {
 
     const router = await createClientsRouter()
     const store = useTenantAdminClientCredentialsStore()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
+    const wrapper = mount(TenantClientsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
-    await wrapper.find('#new-client-client-id').setValue('new-client')
-    await wrapper.find('#new-client-client-name').setValue('New Client')
-    await wrapper.find('#new-client-redirect-uris').setValue('http://127.0.0.1/callback')
-    await wrapper.find('#client-register-form').trigger('submit.prevent')
+    await wrapper.find('#open-create-client-wizard').trigger('click')
+    await wrapper.find('#client-wizard-type-web').trigger('change')
+    await wrapper.find('#client-wizard-next').trigger('click')
+    await wrapper.find('#client-wizard-client-id').setValue('new-client')
+    await wrapper.find('#client-wizard-client-name').setValue('New Client')
+    await wrapper.find('#client-wizard-redirect-0').setValue('http://127.0.0.1/callback')
+    await wrapper.find('#client-wizard-next').trigger('click')
+    await flushPromises()
+    await wrapper.find('#client-wizard-submit').trigger('click')
     await flushPromises()
 
     expect(store.credentials?.clientSecret).toBe('generated-secret-abc')
@@ -113,49 +142,12 @@ describe('TenantClientsView', () => {
     expect(router.currentRoute.value.name).toBe('tenant-admin-client-credentials')
   })
 
-  it('register: a 400 validation-errors map lands on the specific field, not a generic banner', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/api/csrf') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
-        }
-        if (url === '/t/acme/api/clients' && init?.method === 'POST') {
-          return Promise.resolve({
-            ok: false,
-            status: 400,
-            json: () =>
-              Promise.resolve({
-                error: 'validation.failed',
-                error_description: 'Request validation failed',
-                errors: { clientId: 'must not be blank' },
-              }),
-          })
-        }
-        return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
-      }),
-    )
-
-    const router = await createClientsRouter()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
-    await flushPromises()
-
-    await wrapper.find('#new-client-client-name').setValue('New Client')
-    await wrapper.find('#client-register-form').trigger('submit.prevent')
-    await flushPromises()
-
-    const fieldAlert = wrapper.find('#new-client-client-id-error')
-    expect(fieldAlert.exists()).toBe(true)
-    expect(fieldAlert.text()).toBe('must not be blank')
-    expect(wrapper.findAll('[role="alert"]').length).toBe(1)
-  })
-
   it('look-up: a malformed id is rejected locally, without calling the backend', async () => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
 
     const router = await createClientsRouter()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
+    const wrapper = mount(TenantClientsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
     await wrapper.find('#client-lookup-id').setValue('not-a-uuid')
@@ -182,7 +174,7 @@ describe('TenantClientsView', () => {
     )
 
     const router = await createClientsRouter()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
+    const wrapper = mount(TenantClientsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
     await wrapper.find('#client-lookup-id').setValue('11111111-1111-1111-1111-111111111111')
@@ -210,6 +202,9 @@ describe('TenantClientsView', () => {
                 grantTypes: [],
                 scopes: [],
                 redirectUris: [],
+                postLogoutRedirectUris: [],
+                createdAt: '2026-01-01T00:00:00Z',
+                secretRotatedAt: null,
               }),
           })
         }
@@ -218,7 +213,7 @@ describe('TenantClientsView', () => {
     )
 
     const router = await createClientsRouter()
-    const wrapper = mount(TenantClientsView, { global: { plugins: [router] } })
+    const wrapper = mount(TenantClientsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
     await wrapper.find('#client-lookup-id').setValue('11111111-1111-1111-1111-111111111111')

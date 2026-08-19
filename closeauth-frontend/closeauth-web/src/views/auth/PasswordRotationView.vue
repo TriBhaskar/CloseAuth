@@ -26,12 +26,17 @@
 // with NO further encoding — encodeURIComponent-ing it again here would
 // double-encode `=`/`&` into literal `%3D`/`%26` in the eventual
 // /oauth2/authorize resume URL, which SAS would then reject.
-import { computed, ref } from 'vue'
-import AuthLayout from '@/layouts/AuthLayout.vue'
+import { ref } from 'vue'
+import { useRoute } from 'vue-router'
+import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
-import NewPasswordFields from '@/components/auth/NewPasswordFields.vue'
-import { useOAuthTheme } from '@/composables/useOAuthTheme'
+import NewPasswordFields from '@/components/common/NewPasswordFields.vue'
+import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
 import { confirmPasswordRotation } from '@/api/authPasswordRotation'
+import { hostedAuthPath } from '@/lib/hostedAuthPath'
+
+const route = useRoute()
+const loginPath = hostedAuthPath(route, '/login')
 
 // Read once, at module-eval time for this component instance — never
 // router.replace()'d away afterward (that would re-normalize the query and
@@ -47,8 +52,9 @@ const authorizeQuery = params.get('authorize_query') ?? ''
 // state: no form is rendered at all.
 const linkIncomplete = !token || !clientId
 
-const { branding, hasLogo } = useOAuthTheme(clientId)
-const companyLabel = computed(() => branding.value.companyName || 'CloseAuth')
+function companyLabel(branding: Branding): string {
+  return branding.companyName || 'CloseAuth'
+}
 
 const bannerMessage = ref('')
 const isSubmitting = ref(false)
@@ -106,16 +112,17 @@ async function handleSubmit(password: string): Promise<void> {
 </script>
 
 <template>
-  <AuthLayout>
+  <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
+  <AuthShell>
     <template #above>
       <div class="flex flex-col items-center gap-2 text-center">
         <img
           v-if="hasLogo"
           :src="branding.logoUrl"
-          :alt="companyLabel"
+          :alt="companyLabel(branding)"
           class="h-10 w-auto object-contain"
         >
-        <h1 class="text-xl font-semibold tracking-tight">Set your password for {{ companyLabel }}</h1>
+        <h1 class="text-xl font-semibold tracking-tight">Set your password for {{ companyLabel(branding) }}</h1>
         <p class="text-sm text-muted-foreground">Choose a password to finish setting up your account.</p>
       </div>
     </template>
@@ -132,7 +139,7 @@ async function handleSubmit(password: string): Promise<void> {
       <p class="text-sm text-foreground">
         Your password was updated, but we couldn't return you to your app. Try signing in.
       </p>
-      <RouterLink to="/login">
+      <RouterLink :to="loginPath">
         <Button class="w-full">Continue to sign in</Button>
       </RouterLink>
     </div>
@@ -147,5 +154,6 @@ async function handleSubmit(password: string): Promise<void> {
       :min-length="8"
       @submit="handleSubmit"
     />
-  </AuthLayout>
+  </AuthShell>
+  </TenantBrandingProvider>
 </template>

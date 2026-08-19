@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.admin.web;
 import com.anterka.closeauthbackend.admin.security.RequiresTenantAccess;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.web.PageView;
+import com.anterka.closeauthbackend.identity.service.UserService;
 import com.anterka.closeauthbackend.rbac.dto.ApplicationRoleView;
 import com.anterka.closeauthbackend.rbac.dto.CreateApplicationRoleCommand;
 import com.anterka.closeauthbackend.rbac.dto.UpdateApplicationRoleCommand;
@@ -43,6 +44,7 @@ import java.util.UUID;
 public class ApplicationRoleController {
 
     private final ApplicationRoleService applicationRoleService;
+    private final UserService userService;
 
     @GetMapping("/resource-servers/{rsId}/roles")
     public PageView<ApplicationRoleView> list(@PathVariable String tenantId, @PathVariable UUID rsId,
@@ -74,6 +76,19 @@ public class ApplicationRoleController {
                                        @PathVariable UUID roleId) {
         applicationRoleService.deleteApplicationRole(ctx(tenantId), rsId, roleId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * FE-4b (spec §6.4.5): every user currently holding this application role. Same "bare ids from the rbac
+     * service, resolved to {@link RoleAssigneeView} at the controller boundary" shape as {@code TenantRoleController
+     * #assignees}.
+     */
+    @GetMapping("/resource-servers/{rsId}/roles/{roleId}/assignees")
+    public List<RoleAssigneeView> assignees(@PathVariable String tenantId, @PathVariable UUID rsId,
+                                            @PathVariable UUID roleId) {
+        TenantContext context = ctx(tenantId);
+        List<UUID> userIds = applicationRoleService.getAssigneeUserIds(context, rsId, roleId);
+        return userService.getUsersByIds(context, userIds).stream().map(RoleAssigneeView::from).toList();
     }
 
     @GetMapping("/resource-servers/{rsId}/roles/{roleId}/scopes")

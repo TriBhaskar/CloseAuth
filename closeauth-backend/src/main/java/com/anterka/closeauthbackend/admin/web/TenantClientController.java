@@ -1,6 +1,7 @@
 package com.anterka.closeauthbackend.admin.web;
 
 import com.anterka.closeauthbackend.admin.security.RequiresTenantAccess;
+import com.anterka.closeauthbackend.client.dto.ClientCountView;
 import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.ClientSecretView;
 import com.anterka.closeauthbackend.client.dto.ClientView;
@@ -52,6 +53,16 @@ public class TenantClientController {
                                                     @Valid @RequestBody RegisterClientCommand command) {
         ClientCreatedView created = clientRegistrationService.registerClient(ctx(tenantId), command);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /**
+     * FE-4d: the console overview's Clients count tile — the smallest possible slice of the still-blocked
+     * FE-4.10 list gap (a number, no rows, no secrets). Declared ahead of {@code /{clientId}} for readability;
+     * Spring's request mapping prefers this literal segment over the variable one regardless of order.
+     */
+    @GetMapping("/count")
+    public ClientCountView count(@PathVariable String tenantId) {
+        return new ClientCountView(clientRegistrationService.countClients(ctx(tenantId)));
     }
 
     @GetMapping("/{clientId}")

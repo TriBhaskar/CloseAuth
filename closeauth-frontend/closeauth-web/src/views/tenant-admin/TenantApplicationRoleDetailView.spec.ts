@@ -2,13 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import TenantApplicationRoleDetailView from './TenantApplicationRoleDetailView.vue'
-import { clearCsrfToken } from '@/api/client'
+import { clearCsrfToken } from '@/api/csrf'
 
 // Stage UI-3d: application-role detail — edit form + scope bundling. The
 // headline proof here is structural, not behavioral: the fetch stub knows
 // ONLY /resource-servers/rs-1/scopes (this role's own RS) and rejects every
 // other scope-catalog URL with "unexpected fetch" — so a passing test IS the
 // evidence that no cross-RS scope is ever requested, let alone offered.
+//
+// FE-4b: stubBaseFetch also always answers .../assignees (the panel is
+// unconditionally mounted and fetches on load, same reason
+// TenantResourceServerDetailView.spec.ts's baseFetch stubs the roles-panel
+// URL). New tests cover the assignees list itself and per-scope (not
+// panel-wide) pending state on toggle.
 async function createDetailRouter() {
   const router = createRouter({
     history: createWebHistory(),
@@ -50,7 +56,7 @@ const rsScopes = [
   { id: 'scope-2', resourceServerId: 'rs-1', scopeName: 'write', description: 'Write', isDefault: false, requiresConsent: false, createdAt: '' },
 ]
 
-function stubBaseFetch(bundledScopeIds: string[]) {
+function stubBaseFetch(bundledScopeIds: string[], assignees: unknown[] = []) {
   return vi.fn((url: string, init?: RequestInit) => {
     if (url === '/t/acme/api/resource-servers/rs-1/roles/role-1') {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(roleFixture()) })
@@ -71,6 +77,9 @@ function stubBaseFetch(bundledScopeIds: string[]) {
         status: 200,
         json: () => Promise.resolve({ items: bundled, page: 0, size: 100, totalElements: bundled.length, totalPages: 1 }),
       })
+    }
+    if (url === '/t/acme/api/resource-servers/rs-1/roles/role-1/assignees') {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(assignees) })
     }
     if (url === '/api/csrf') {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
@@ -200,6 +209,61 @@ describe('TenantApplicationRoleDetailView', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
+  it('FE-4b: renders assignees from a real fetch', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubBaseFetch([], [{ userId: 'user-1', email: 'alice@acme.test', firstName: 'Alice', lastName: 'Admin', status: 'ACTIVE' }]),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantApplicationRoleDetailView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const assignee = wrapper.find('[data-assignee-id="user-1"]')
+    expect(assignee.text()).toContain('alice@acme.test')
+    expect(assignee.text()).toContain('Alice Admin')
+  })
+
+  it('FE-4b: shows an honest empty state when no one holds the role', async () => {
+    vi.stubGlobal('fetch', stubBaseFetch([], []))
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantApplicationRoleDetailView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No one holds this role yet.')
+  })
+
+  it('FE-4b: only the toggled scope is disabled while its call is in flight — a sibling checkbox stays interactive', async () => {
+    let resolveAdd: (() => void) | null = null
+    const fetchMock = stubBaseFetch(['scope-1'])
+    const withAdd = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/t/acme/api/resource-servers/rs-1/roles/role-1/scopes/scope-2' && init?.method === 'POST') {
+        return new Promise((resolve) => {
+          resolveAdd = () => resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) })
+        })
+      }
+      return fetchMock(url, init)
+    })
+    vi.stubGlobal('fetch', withAdd)
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantApplicationRoleDetailView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.find('#app-role-scope-scope-2').trigger('click')
+    await flushPromises()
+
+    // In-flight: scope-2's own checkbox is disabled...
+    expect(wrapper.find('#app-role-scope-scope-2').attributes('disabled')).toBeDefined()
+    // ...but scope-1's checkbox (untouched) is not.
+    expect(wrapper.find('#app-role-scope-scope-1').attributes('disabled')).toBeUndefined()
+
+    resolveAdd!()
+    await flushPromises()
+    expect(wrapper.find('#app-role-scope-scope-2').attributes('disabled')).toBeUndefined()
+  })
+
   it('shows a visible error, no form, when the role fetch fails', async () => {
     vi.stubGlobal(
       'fetch',
@@ -210,6 +274,9 @@ describe('TenantApplicationRoleDetailView', () => {
             status: 404,
             json: () => Promise.resolve({ error: 'application_role.not_found', error_description: 'Role not found.' }),
           })
+        }
+        if (url === '/t/acme/api/resource-servers/rs-1/roles/role-1/assignees') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),

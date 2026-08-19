@@ -9,6 +9,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -54,8 +56,9 @@ public class PlatformAdminManagementController {
     }
 
     @PostMapping("/{id}/suspend")
-    public PlatformAdminView suspend(@PathVariable UUID id) {
-        return platformAdminService.suspend(id); // also writes the revocation marker (7a)
+    public PlatformAdminView suspend(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        // also writes the revocation marker (7a); refuses self-targeting (FE-3c self-lockout guard)
+        return platformAdminService.suspend(id, UUID.fromString(jwt.getSubject()));
     }
 
     @PostMapping("/{id}/activate")
@@ -81,8 +84,10 @@ public class PlatformAdminManagementController {
     }
 
     @DeleteMapping("/{id}/roles/{roleName}")
-    public ResponseEntity<Void> revokeRole(@PathVariable UUID id, @PathVariable String roleName) {
-        platformAdminService.revokeRole(id, roleName);
+    public ResponseEntity<Void> revokeRole(@PathVariable UUID id, @PathVariable String roleName,
+                                           @AuthenticationPrincipal Jwt jwt) {
+        // Refuses a self-targeting PLATFORM_ADMIN revoke (FE-3c self-lockout guard).
+        platformAdminService.revokeRole(id, roleName, UUID.fromString(jwt.getSubject()));
         return ResponseEntity.noContent().build();
     }
 }

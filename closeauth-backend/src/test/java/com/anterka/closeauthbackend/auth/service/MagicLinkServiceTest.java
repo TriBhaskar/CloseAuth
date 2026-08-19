@@ -134,6 +134,6 @@ class MagicLinkServiceTest {
 
     private UserView user() {
         return new UserView(userId, tenantId, "a@x.com", true, null, false, "F", "L", UserStatus.ACTIVE,
-                null, Instant.now(), Instant.now());
+                null, Instant.now(), Instant.now(), null, null);
     }
 }

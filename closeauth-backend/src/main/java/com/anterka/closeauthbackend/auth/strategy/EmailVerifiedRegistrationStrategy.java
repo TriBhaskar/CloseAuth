@@ -33,7 +33,8 @@ public class EmailVerifiedRegistrationStrategy implements RegistrationStrategy {
         UserView user = userService.createUserWithPassword(context, new CreateUserWithPasswordCommand(
                 command.email(), command.password(), command.firstName(), command.lastName(), command.phone(),
                 UserStatus.PENDING));
-        emailVerificationService.requestVerification(context, user.id(), command.email());
+        emailVerificationService.requestVerification(
+                context, user.id(), command.email(), command.clientId(), command.tenantSlug());
         return new RegistrationResult(user.id(), user.status(), RegistrationMode.EMAIL_VERIFIED, true);
     }
 }

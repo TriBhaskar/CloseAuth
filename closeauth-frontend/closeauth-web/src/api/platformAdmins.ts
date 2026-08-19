@@ -3,7 +3,7 @@
 // /platform/api/admins/** surface.
 import { platformAdminFetch } from '@/api/platformAdminClient'
 import { parsePlatformResult } from '@/api/platformAdminProblem'
-import type { AdminResult } from '@/api/tenantAdminProblem'
+import type { AdminResult } from '@/api/problem'
 import type { PageView } from '@/api/platformAdminTenants'
 
 // Mirrors platform/enums/PlatformAdminStatus.java exactly.

@@ -94,10 +94,9 @@ class AdminConsoleClientProvisioningIntegrationTest {
 
     @Test
     void tenantProvisioningAutoCreatesAdminConsoleClientWithLockedInProperties() {
-        String slug = "t-" + rnd();
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand(slug, "T"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
 
-        String expectedClientId = "admin-console-" + slug;
+        String expectedClientId = "admin-console-" + tenant.slug();
         RegisteredClient client = registeredClientRepository.findByClientId(expectedClientId);
 
         assertThat(client).as("admin-console client should exist immediately after provisioning, PRE-activation")
@@ -327,7 +326,7 @@ class AdminConsoleClientProvisioningIntegrationTest {
     // ============================ provisioning ============================
 
     private UUID activeTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("t-" + rnd(), "T"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
         tenantService.activateTenant(tenant.id());
         return tenant.id();
     }

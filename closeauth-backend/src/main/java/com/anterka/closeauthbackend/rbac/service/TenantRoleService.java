@@ -161,6 +161,38 @@ public class TenantRoleService {
                 .toList();
     }
 
+    /**
+     * FE-4b: the reverse of {@link #getTenantRolesForUser} — every user holding one tenant role, for its
+     * assignees list (spec §6.4.5). Returns bare user ids (not resolved to email/name): this service has no
+     * dependency on {@code identity}, so the caller (the controller layer, same "decorate at the boundary"
+     * convention {@code TenantUserController} already uses for {@code TenantView#adminCount}/{@code UserView
+     * #roles}) resolves these against {@code UserService}. Reuses {@code userTenantRoleRepository
+     * .findByTenantIdAndTenantRoleId} — the SAME query the last-admin invariant already uses — rather than
+     * adding a new one, so the two reads can never observe different data.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> getAssigneeUserIds(TenantContext context, UUID tenantRoleId) {
+        return userTenantRoleRepository.findByTenantIdAndTenantRoleId(context.tenantId(), tenantRoleId).stream()
+                .map(UserTenantRole::getUserId)
+                .toList();
+    }
+
+    /**
+     * Bulk sibling of {@link #getTenantRolesForUser} — every held tenant-role name in the tenant, grouped by
+     * {@code userId}, in one query (FE-4a). Backs the users list's Roles column without an N+1 per row, same
+     * "decorate the DTO at the merge point" shape as {@link #countActiveAdminsPerTenant}. A user holding no
+     * tenant roles is absent from the map (never a present empty list forced onto every entry).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, List<String>> getTenantRoleNamesByUser(TenantContext context) {
+        return userTenantRoleRepository.findTenantRoleNamesByTenant(context.tenantId()).stream()
+                .collect(Collectors.groupingBy(
+                        com.anterka.closeauthbackend.rbac.repository.UserTenantRoleNameProjection::getUserId,
+                        Collectors.mapping(
+                                com.anterka.closeauthbackend.rbac.repository.UserTenantRoleNameProjection::getRoleName,
+                                Collectors.toList())));
+    }
+
     // ---- Last-admin guards (for Stage 6/7 user-deletion/suspend flows) ----
 
     /**

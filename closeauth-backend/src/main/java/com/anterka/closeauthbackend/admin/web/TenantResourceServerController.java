@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.admin.web;
 import com.anterka.closeauthbackend.admin.security.RequiresTenantAccess;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.web.PageView;
+import com.anterka.closeauthbackend.rbac.service.ApplicationRoleService;
 import com.anterka.closeauthbackend.resourceserver.dto.AddScopeCommand;
 import com.anterka.closeauthbackend.resourceserver.dto.CreateResourceServerCommand;
 import com.anterka.closeauthbackend.resourceserver.dto.ResourceServerView;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -42,6 +44,7 @@ import java.util.UUID;
 public class TenantResourceServerController {
 
     private final ResourceServerService resourceServerService;
+    private final ApplicationRoleService applicationRoleService;
 
     @GetMapping
     public PageView<ResourceServerView> list(@PathVariable String tenantId,
@@ -74,11 +77,22 @@ public class TenantResourceServerController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * FE-4b: decorates each {@link ScopeView} with {@code usedByRoleCount} (spec §6.4.4's "where used," roles
+     * half) — merged here, at the controller layer, deliberately NOT inside {@code ResourceServerService}: that
+     * module has no dependency on {@code rbac} (the reverse edge already exists), same reasoning
+     * {@code PlatformTenantController} already documents for {@code TenantView#adminCount}.
+     */
     @GetMapping("/{rsId}/scopes")
     public PageView<ScopeView> listScopes(@PathVariable String tenantId, @PathVariable UUID rsId,
                                           @RequestParam(defaultValue = "0") int page,
                                           @RequestParam(defaultValue = "20") int size) {
-        return PageView.of(resourceServerService.listScopes(ctx(tenantId), rsId), page, size);
+        TenantContext context = ctx(tenantId);
+        Map<UUID, Long> roleUsage = applicationRoleService.countRoleUsageByResourceServer(context, rsId);
+        var scopes = resourceServerService.listScopes(context, rsId).stream()
+                .map(scope -> scope.withUsedByRoleCount(roleUsage.getOrDefault(scope.id(), 0L)))
+                .toList();
+        return PageView.of(scopes, page, size);
     }
 
     @PostMapping("/{rsId}/scopes")

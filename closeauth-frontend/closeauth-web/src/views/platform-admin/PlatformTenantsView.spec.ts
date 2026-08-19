@@ -2,14 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import PlatformTenantsView from './PlatformTenantsView.vue'
-import { clearCsrfToken } from '@/api/client'
+import { clearCsrfToken } from '@/api/csrf'
+import { useToast } from '@/composables/useToast'
 
-// Stage UI-4: the tenants surface's required proofs — row actions offered
-// per status match availableTenantActions(status) exactly (notably: no
-// suspend button on a PROVISIONING row, no actions at all on a DELETED row),
-// the suspend confirm copy names the real immediate session/token
-// revocation consequence, and a successful provision names everything the
-// backend auto-created.
+// Stage UI-4 / FE-3a: the tenants surface's required proofs — row actions
+// offered per status match availableTenantActions(status) exactly (notably:
+// no suspend button on a PROVISIONING row, no actions at all on a DELETED
+// row), suspend/activate/delete are all confirmed (spec §6.3.5 — delete via
+// TypedConfirmDialog's exact-Tenant-ID gate), a successful provision names
+// everything the backend auto-created, and client-side search (FE-3a's
+// confirmed decision — no server-side tenant search exists end-to-end yet)
+// filters by name and Tenant ID.
 const dialogStubs = {
   Dialog: { template: '<div><slot /></div>' },
   DialogTrigger: { template: '<div><slot /></div>' },
@@ -23,7 +26,10 @@ const dialogStubs = {
 async function createTenantsRouter() {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/platform/console/tenants', name: 'platform-admin-tenants', component: PlatformTenantsView }],
+    routes: [
+      { path: '/platform/console/tenants', name: 'platform-admin-tenants', component: PlatformTenantsView },
+      { path: '/platform/console/tenants/:tenantId', name: 'platform-admin-tenant-detail', component: { template: '<div id="detail-stub" />' } },
+    ],
   })
   await router.push('/platform/console/tenants')
   await router.isReady()
@@ -64,6 +70,9 @@ function tenantUserFixture(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   clearCsrfToken()
+  // useToast's `toasts` list is module-level shared state — clear it so a
+  // toast fired by one test never leaks into the next one's assertions.
+  useToast().toasts.value.splice(0)
 })
 
 afterEach(() => {
@@ -71,11 +80,45 @@ afterEach(() => {
 })
 
 describe('PlatformTenantsView', () => {
+  it('clicking a row navigates to its detail page, but clicking a lifecycle button inside the row does not', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/platform/api/tenants?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [tenantFixture({ id: 't-1', slug: 'acme', status: 'ACTIVE' })],
+                page: 0, size: 200, totalElements: 1, totalPages: 1,
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createTenantsRouter()
+    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    // Clicking the row's Suspend button must NOT also navigate.
+    await wrapper.find('#tenant-action-t-1-suspend').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('platform-admin-tenants')
+
+    await wrapper.find('[data-tenant-id="t-1"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('platform-admin-tenant-detail')
+    expect(router.currentRoute.value.params.tenantId).toBe('t-1')
+  })
+
   it('renders tenants and offers actions strictly from the real transition matrix', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -123,7 +166,55 @@ describe('PlatformTenantsView', () => {
     expect(wrapper.find('#tenant-action-t-deleted-delete').exists()).toBe(false)
   })
 
-  it('suspend confirm copy names the immediate session/token revocation consequence', async () => {
+  it('search filters the loaded list client-side by name and by Tenant ID (FE-3a: no server-side tenant search exists yet)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/platform/api/tenants?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  tenantFixture({ id: 't-acme', slug: 'ten_acme-inc', name: 'Acme Inc' }),
+                  tenantFixture({ id: 't-globex', slug: 'ten_globex-corp', name: 'Globex Corp' }),
+                ],
+                page: 0,
+                size: 200,
+                totalElements: 2,
+                totalPages: 1,
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createTenantsRouter()
+    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-tenant-id="t-acme"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tenant-id="t-globex"]').exists()).toBe(true)
+
+    await wrapper.find('input[type="search"]').setValue('globex')
+    await new Promise((resolve) => setTimeout(resolve, 350)) // DataTable's own 300ms debounce
+    await flushPromises()
+
+    expect(wrapper.find('[data-tenant-id="t-globex"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tenant-id="t-acme"]').exists()).toBe(false)
+
+    // Also matches by Tenant ID, not just name.
+    await wrapper.find('input[type="search"]').setValue('ten_acme-inc')
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    await flushPromises()
+
+    expect(wrapper.find('[data-tenant-id="t-acme"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tenant-id="t-globex"]').exists()).toBe(false)
+  })
+
+  it('suspend confirm copy is spec-literal and names the tenant, and now requires confirmation for activate too', async () => {
     // A stateful list handler — suspend actually flips the fixture's status,
     // so the list re-fetch that runLifecycle triggers after a successful
     // action reflects the real new state, not a canned one.
@@ -131,7 +222,7 @@ describe('PlatformTenantsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -154,8 +245,8 @@ describe('PlatformTenantsView', () => {
     await wrapper.find('#tenant-action-tenant-1-suspend').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('revokes every user')
-    expect(wrapper.text()).toContain('signed out now')
+    expect(wrapper.text()).toContain('Suspend Acme?')
+    expect(wrapper.text()).toContain("Users won't be able to sign in and all active tokens stop working immediately.")
 
     await wrapper.find('#confirm-dialog-confirm').trigger('click')
     await flushPromises()
@@ -163,11 +254,110 @@ describe('PlatformTenantsView', () => {
     expect(wrapper.find('[data-tenant-id="tenant-1"]').text()).toContain('SUSPENDED')
   })
 
-  it('provision success names the auto-created starter-pack, branding, registration config, and admin-console client', async () => {
+  it('activate now requires confirmation (previously fired immediately)', async () => {
+    let status = 'SUSPENDED'
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({ items: [tenantFixture({ status })], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+          })
+        }
+        if (url === '/platform/api/tenants/tenant-1/activate' && init?.method === 'POST') {
+          status = 'ACTIVE'
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tenantFixture({ status })) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createTenantsRouter()
+    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#tenant-action-tenant-1-activate').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Activate Acme?')
+    expect(wrapper.find('[data-tenant-id="tenant-1"]').text()).toContain('SUSPENDED') // not yet applied
+
+    await wrapper.find('#confirm-dialog-confirm').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-tenant-id="tenant-1"]').text()).toContain('ACTIVE')
+  })
+
+  it('delete requires the exact Tenant ID typed before the confirm button is enabled', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/platform/api/tenants?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({ items: [tenantFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+          })
+        }
+        if (url === '/platform/api/tenants/tenant-1' && init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tenantFixture({ status: 'DELETED' })) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createTenantsRouter()
+    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#tenant-action-tenant-1-delete').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Delete Acme?')
+    const confirmButton = wrapper.find('#typed-confirm-dialog-confirm')
+    expect(confirmButton.attributes('disabled')).toBeDefined()
+
+    await wrapper.find('#typed-confirm-input').setValue('acme')
+    await flushPromises()
+
+    expect(confirmButton.attributes('disabled')).toBeUndefined()
+  })
+
+  it('the Tenant ID preview updates live as the operator types, and falls back to a generic line for a reserved/empty name', async () => {
+    const router = await createTenantsRouter()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/platform/api/tenants?page=0&size=200') {
+          return Promise.resolve({
+            ok: true, status: 200,
+            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#new-tenant-name').setValue('Acmé Inc.')
+    await flushPromises()
+    expect(wrapper.find('#new-tenant-id-preview').text()).toContain('ten_acme-inc')
+
+    await wrapper.find('#new-tenant-name').setValue('Admin')
+    await flushPromises()
+    expect(wrapper.find('#new-tenant-id-preview').text()).toBe('Tenant ID will be generated automatically.')
+  })
+
+  it('provision success fires a "Tenant provisioned" toast, then auto-activates straight into the bootstrap dialog — no intermediate consent step', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -181,6 +371,13 @@ describe('PlatformTenantsView', () => {
             json: () => Promise.resolve(tenantFixture({ id: 't-new', slug: 'newco', name: 'Newco', status: 'PROVISIONING' })),
           })
         }
+        if (url === '/platform/api/tenants/t-new/activate' && init?.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(tenantFixture({ id: 't-new', slug: 'newco', name: 'Newco', status: 'ACTIVE' })),
+          })
+        }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),
     )
@@ -189,16 +386,59 @@ describe('PlatformTenantsView', () => {
     const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
-    await wrapper.find('#new-tenant-slug').setValue('newco')
     await wrapper.find('#new-tenant-name').setValue('Newco')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    const banner = wrapper.find('[role="status"]')
-    expect(banner.exists()).toBe(true)
-    expect(banner.text()).toContain('starter-pack roles and scopes')
-    expect(banner.text()).toContain('admin-console-newco')
-    expect(banner.text()).toContain('PROVISIONING')
+    // No 3-way "activate?" choice anywhere — the old ids are gone entirely.
+    expect(wrapper.find('#onboarding-activate-and-bootstrap').exists()).toBe(false)
+    expect(wrapper.find('#onboarding-later').exists()).toBe(false)
+
+    // The toast fired (checked on the shared list — no <Toaster/> is mounted
+    // in this isolated view test, see App.vue for where it actually renders).
+    const { toasts } = useToast()
+    expect(toasts.value.some((t) => t.title === 'Tenant provisioned')).toBe(true)
+
+    // Straight into the bootstrap dialog, naming what was auto-created.
+    expect(wrapper.text()).toContain("Add newco's first admin")
+    expect(wrapper.text()).toContain('admin-console-newco')
+    expect(wrapper.find('#bootstrap-admin-form').exists()).toBe(true)
+  })
+
+  it('if the auto-activate call itself fails, shows a retry recovery dialog rather than a raw error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/platform/api/tenants?page=0&size=200') {
+          return Promise.resolve({
+            ok: true, status: 200,
+            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
+          })
+        }
+        if (url === '/platform/api/tenants' && init?.method === 'POST') {
+          return Promise.resolve({
+            ok: true, status: 201,
+            json: () => Promise.resolve(tenantFixture({ id: 't-new', slug: 'newco', name: 'Newco', status: 'PROVISIONING' })),
+          })
+        }
+        if (url === '/platform/api/tenants/t-new/activate' && init?.method === 'POST') {
+          return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'server_error', error_description: 'boom' }) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createTenantsRouter()
+    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#new-tenant-name').setValue('Newco')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Couldn't activate Newco")
+    expect(wrapper.find('#onboarding-activate-retry').exists()).toBe(true)
+    expect(wrapper.find('#bootstrap-admin-form').exists()).toBe(false)
   })
 
   // ---- Stage UI-4b: tenant onboarding ------------------------------------
@@ -207,7 +447,7 @@ describe('PlatformTenantsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -234,18 +474,21 @@ describe('PlatformTenantsView', () => {
     const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
     await flushPromises()
 
-    // Zero-admin ACTIVE tenant: flagged, offers "Add first admin" only.
-    expect(wrapper.find('[data-tenant-id="t-zero"]').text()).toContain('No admin')
+    // Zero-admin ACTIVE tenant: flagged "Incomplete" with the spec tooltip, offers "Add first admin" only.
+    const zeroRow = wrapper.find('[data-tenant-id="t-zero"]')
+    expect(zeroRow.text()).toContain('Incomplete')
+    const incompleteBadge = zeroRow.findAll('*').find((el) => el.text() === 'Incomplete')
+    expect(incompleteBadge?.attributes('title')).toBe('No tenant admin has been created yet.')
     expect(wrapper.find('#tenant-bootstrap-t-zero').exists()).toBe(true)
     expect(wrapper.find('#tenant-reissue-t-zero').exists()).toBe(false)
 
     // ACTIVE tenant with admins: not flagged, offers "Reissue credential" only.
-    expect(wrapper.find('[data-tenant-id="t-has"]').text()).not.toContain('No admin')
+    expect(wrapper.find('[data-tenant-id="t-has"]').text()).not.toContain('Incomplete')
     expect(wrapper.find('#tenant-reissue-t-has').exists()).toBe(true)
     expect(wrapper.find('#tenant-bootstrap-t-has').exists()).toBe(false)
 
     // adminCount null ("not computed"): never fabricate a flag or an action.
-    expect(wrapper.find('[data-tenant-id="t-unknown"]').text()).not.toContain('No admin')
+    expect(wrapper.find('[data-tenant-id="t-unknown"]').text()).not.toContain('Incomplete')
     expect(wrapper.find('#tenant-bootstrap-t-unknown').exists()).toBe(false)
     expect(wrapper.find('#tenant-reissue-t-unknown').exists()).toBe(false)
 
@@ -254,47 +497,11 @@ describe('PlatformTenantsView', () => {
     expect(wrapper.find('#tenant-reissue-t-prov').exists()).toBe(false)
   })
 
-  it('post-provision leads into a guided prompt naming the activation requirement', async () => {
+  it('keeps the one-time temporary password out of the DOM until it is deliberately revealed, and gates Continue behind acknowledgement', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
-          })
-        }
-        if (url === '/platform/api/tenants' && init?.method === 'POST') {
-          return Promise.resolve({
-            ok: true,
-            status: 201,
-            json: () => Promise.resolve(tenantFixture({ id: 't-new', slug: 'newco', name: 'Newco', status: 'PROVISIONING' })),
-          })
-        }
-        return Promise.reject(new Error(`unexpected fetch: ${url}`))
-      }),
-    )
-
-    const router = await createTenantsRouter()
-    const wrapper = mount(PlatformTenantsView, { global: { plugins: [router], stubs: dialogStubs } })
-    await flushPromises()
-
-    await wrapper.find('#new-tenant-slug').setValue('newco')
-    await wrapper.find('#new-tenant-name').setValue('Newco')
-    await wrapper.find('form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('must be ACTIVE before it can have an admin')
-    expect(wrapper.find('#onboarding-activate-and-bootstrap').exists()).toBe(true)
-    expect(wrapper.find('#onboarding-later').exists()).toBe(true)
-  })
-
-  it('keeps the one-time temporary password out of the DOM until the fallback disclosure is opened, and gates Done behind acknowledgement', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -335,31 +542,36 @@ describe('PlatformTenantsView', () => {
     await wrapper.find('#bootstrap-admin-form').trigger('submit.prevent')
     await flushPromises()
 
-    // The emailed link leads; the fallback password never renders until the
-    // disclosure is deliberately opened — the load-bearing §2.2.4 assertion.
-    expect(wrapper.text()).toContain('An onboarding link was emailed')
+    // The emailed link leads; the fallback password never renders until it's
+    // deliberately revealed — the load-bearing §2.2.4 assertion. The bootstrap
+    // dialog itself is gone (replaced by the standalone SecretRevealPanel).
+    expect(wrapper.find('#bootstrap-admin-form').exists()).toBe(false)
+    expect(wrapper.text()).toContain('An onboarding link was already emailed')
     expect(wrapper.text()).not.toContain('super-secret-one-time-value')
-    expect(wrapper.find('#onboarding-done').attributes('disabled')).toBeDefined()
+    const continueButton = wrapper.find('#secret-reveal-continue')
+    expect(continueButton.attributes('disabled')).toBeDefined()
 
-    await wrapper.find('#onboarding-disclosure-toggle').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('#onboarding-password').text()).not.toContain('super-secret-one-time-value')
-    expect(wrapper.find('#onboarding-password').text()).toMatch(/^•+$/)
+    // Masked by default — the temp-password field, not the (deliberately
+    // plain) Tenant ID / sign-in URL fields.
+    expect(wrapper.find('#secret-reveal-temp-password').text()).not.toContain('super-secret-one-time-value')
+    expect(wrapper.find('#secret-reveal-temp-password').text()).toMatch(/^•+$/)
+    expect(wrapper.find('#secret-reveal-tenant-id').text()).toBe('acme')
 
-    await wrapper.find('#onboarding-password-reveal').trigger('click')
+    const revealButton = wrapper.findAll('button').find((b) => b.text() === 'Reveal')
+    await revealButton!.trigger('click')
     await flushPromises()
-    expect(wrapper.find('#onboarding-password').text()).toBe('super-secret-one-time-value')
+    expect(wrapper.find('#secret-reveal-temp-password').text()).toBe('super-secret-one-time-value')
 
-    await wrapper.find('#onboarding-ack').trigger('click')
+    await wrapper.find('#secret-reveal-ack').trigger('click')
     await flushPromises()
-    expect(wrapper.find('#onboarding-done').attributes('disabled')).toBeUndefined()
+    expect(continueButton.attributes('disabled')).toBeUndefined()
   })
 
   it('409 tenant_onboarding.admin_already_exists renders its own message on bootstrap, not a generic conflict banner', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -407,7 +619,7 @@ describe('PlatformTenantsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/tenants?page=0&size=20') {
+        if (url === '/platform/api/tenants?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -458,7 +670,7 @@ describe('PlatformTenantsView', () => {
 
   it('a mismatched confirm-email blocks bootstrap submission without a network call', async () => {
     const fetchMock = vi.fn((url: string) => {
-      if (url === '/platform/api/tenants?page=0&size=20') {
+      if (url === '/platform/api/tenants?page=0&size=200') {
         return Promise.resolve({
           ok: true,
           status: 200,

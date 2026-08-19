@@ -1,0 +1,191 @@
+/* tokens.css — the ONLY file in this codebase containing a colour literal
+ * (CLOSEAUTH_FRONTEND_SPEC.md §3.3, §3.8). Every other file references one
+ * of the custom properties declared here, either directly (--ca-*) or via
+ * the shadcn aliasing below.
+ *
+ * One mechanism: a `data-theme` attribute on <html> swaps the value of every
+ * --ca-* property. Nothing else themes anything — no .dark class, no
+ * `dark:` Tailwind variant anywhere in src/** (enforced by
+ * scripts/check-tokens.mjs). The attribute is written once, by
+ * stores/theme.ts, and resolved before first paint by the inline script in
+ * index.html.
+ *
+ * Exception (spec §3.8 "Enforcement"): a raster/vector asset that must swap
+ * per theme (e.g. a logo file) targets `[data-theme]` directly and is
+ * exempted from the colour-literal scan in scripts/check-tokens.mjs. No such
+ * asset exists yet.
+ *
+ * Palette source: Tailwind's default Zinc/Blue/Red/Amber/Emerald OKLCH
+ * steps, assigned to spec §3.3's roles. Tokens are named for role, never for
+ * palette step — --ca-ink survives a redesign, --ca-zinc-900 would not.
+ */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --ca-canvas: oklch(0.985 0 0); /* zinc-50 */
+  --ca-surface: oklch(1 0 0); /* white */
+  --ca-surface-raised: oklch(1 0 0); /* white */
+  --ca-surface-sunken: oklch(0.967 0.001 286.375); /* zinc-100 */
+  --ca-line: oklch(0.92 0.004 286.32); /* zinc-200 */
+  --ca-line-strong: oklch(0.871 0.006 286.286); /* zinc-300 */
+  --ca-ink: oklch(0.21 0.006 285.885); /* zinc-900 */
+  --ca-ink-muted: oklch(0.552 0.016 285.938); /* zinc-500 */
+  --ca-ink-subtle: oklch(0.705 0.015 286.067); /* zinc-400 */
+  --ca-accent: oklch(0.546 0.245 262.881); /* blue-600 */
+  --ca-accent-ink: oklch(1 0 0); /* white */
+  --ca-accent-wash: oklch(0.97 0.014 254.604); /* blue-50 */
+  --ca-danger: oklch(0.577 0.245 27.325); /* red-600 */
+  --ca-danger-wash: oklch(0.971 0.013 17.38); /* red-50 */
+  --ca-warn: oklch(0.666 0.179 58.318); /* amber-600 */
+  --ca-warn-wash: oklch(0.987 0.022 95.277); /* amber-50 */
+  --ca-ok: oklch(0.596 0.145 163.225); /* emerald-600 */
+  --ca-ok-wash: oklch(0.979 0.021 166.113); /* emerald-50 */
+  --ca-focus: oklch(0.546 0.245 262.881); /* blue-600 */
+  --ca-overlay: oklch(0.141 0.005 285.823 / 40%); /* zinc-950/40 */
+
+  /* FE-1.4 (spec §3.5): IdentifierChip's kind tint — a fixed hue per entity
+   * kind, deliberately a SEPARATE colour usage from the "system state"
+   * palette above (§3.3's "colour carries exactly one meaning: system
+   * state" rule doesn't apply here — §3.5 gives the chip its own first-
+   * class treatment). Seven hues chosen distinct from state's blue/red/
+   * amber/emerald. */
+  --ca-chip-tenant: oklch(0.541 0.281 293.009); /* violet-600 */
+  --ca-chip-user: oklch(0.609 0.126 221.723); /* cyan-600 */
+  --ca-chip-client: oklch(0.646 0.222 41.116); /* orange-600 */
+  --ca-chip-resource-server: oklch(0.6 0.118 184.704); /* teal-600 */
+  --ca-chip-scope: oklch(0.591 0.293 322.896); /* fuchsia-600 */
+  --ca-chip-session: oklch(0.532 0.157 131.589); /* lime-600 */
+  --ca-chip-role: oklch(0.511 0.262 276.966); /* indigo-600 */
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ca-canvas: oklch(0.141 0.005 285.823); /* zinc-950 */
+  --ca-surface: oklch(0.21 0.006 285.885); /* zinc-900 */
+  --ca-surface-raised: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --ca-surface-sunken: oklch(0.21 0.006 285.885 / 60%); /* zinc-900/60 */
+  --ca-line: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --ca-line-strong: oklch(0.37 0.013 285.805); /* zinc-700 */
+  --ca-ink: oklch(0.985 0 0); /* zinc-50 */
+  --ca-ink-muted: oklch(0.705 0.015 286.067); /* zinc-400 */
+  --ca-ink-subtle: oklch(0.552 0.016 285.938); /* zinc-500 */
+  --ca-accent: oklch(0.623 0.214 259.815); /* blue-500 */
+  --ca-accent-ink: oklch(1 0 0); /* white */
+  --ca-accent-wash: oklch(0.623 0.214 259.815 / 12%); /* blue-500/12 */
+  --ca-danger: oklch(0.637 0.237 25.331); /* red-500 */
+  --ca-danger-wash: oklch(0.637 0.237 25.331 / 12%); /* red-500/12 */
+  --ca-warn: oklch(0.769 0.188 70.08); /* amber-500 */
+  --ca-warn-wash: oklch(0.769 0.188 70.08 / 12%); /* amber-500/12 */
+  --ca-ok: oklch(0.696 0.17 162.48); /* emerald-500 */
+  --ca-ok-wash: oklch(0.696 0.17 162.48 / 12%); /* emerald-500/12 */
+  --ca-focus: oklch(0.707 0.165 254.624); /* blue-400 */
+  --ca-overlay: oklch(0.141 0.005 285.823 / 70%); /* zinc-950/70 */
+
+  --ca-chip-tenant: oklch(0.606 0.25 292.717); /* violet-500 */
+  --ca-chip-user: oklch(0.715 0.143 215.221); /* cyan-500 */
+  --ca-chip-client: oklch(0.705 0.213 47.604); /* orange-500 */
+  --ca-chip-resource-server: oklch(0.704 0.14 182.503); /* teal-500 */
+  --ca-chip-scope: oklch(0.667 0.295 322.15); /* fuchsia-500 */
+  --ca-chip-session: oklch(0.648 0.2 131.684); /* lime-500 */
+  --ca-chip-role: oklch(0.585 0.233 277.117); /* indigo-500 */
+}
+
+/* Tailwind v4: map tokens to utilities (bg-canvas, text-ink, border-line, …).
+ * `inline` is required because these values reference other custom
+ * properties (Tailwind v4 requirement for @theme values built from var()). */
+@theme inline {
+  --color-canvas: var(--ca-canvas);
+  --color-surface: var(--ca-surface);
+  --color-surface-raised: var(--ca-surface-raised);
+  --color-surface-sunken: var(--ca-surface-sunken);
+  --color-line: var(--ca-line);
+  --color-line-strong: var(--ca-line-strong);
+  --color-ink: var(--ca-ink);
+  --color-ink-muted: var(--ca-ink-muted);
+  --color-ink-subtle: var(--ca-ink-subtle);
+  /* No --color-accent / --color-accent-ink here: --ca-accent IS shadcn's
+   * --primary below (bg-primary/text-primary-foreground already give the
+   * single primary-action colour). Declaring a second --color-accent would
+   * collide with shadcn's own --accent (its hover-highlight convention,
+   * aliased separately below to --ca-accent-wash) — Tailwind can only
+   * generate one utility per token name. */
+  --color-accent-wash: var(--ca-accent-wash);
+  --color-danger: var(--ca-danger);
+  --color-danger-wash: var(--ca-danger-wash);
+  --color-warn: var(--ca-warn);
+  --color-warn-wash: var(--ca-warn-wash);
+  --color-ok: var(--ca-ok);
+  --color-ok-wash: var(--ca-ok-wash);
+  --color-focus: var(--ca-focus);
+  --color-overlay: var(--ca-overlay);
+
+  --color-chip-tenant: var(--ca-chip-tenant);
+  --color-chip-user: var(--ca-chip-user);
+  --color-chip-client: var(--ca-chip-client);
+  --color-chip-resource-server: var(--ca-chip-resource-server);
+  --color-chip-scope: var(--ca-chip-scope);
+  --color-chip-session: var(--ca-chip-session);
+  --color-chip-role: var(--ca-chip-role);
+
+  /* shadcn-vue primitives are aliased below, never hand-edited — their own
+   * `--color-*` utility names pass through to the aliased vars so
+   * regenerating a primitive can't undo the theme (spec §3.8). */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* shadcn-vue's own variable names, aliased onto the tokens above. Never
+ * hand-edited to a literal — this is the ONE place the alias is declared.
+ * --accent/--accent-foreground here is shadcn's hover-highlight convention
+ * (dropdown/ghost-button hover backgrounds, already baked into every
+ * generated ui/* primitive as bg-accent/hover:bg-accent/text-accent-
+ * foreground) — distinct from CloseAuth's own accent concept (the single
+ * primary-action colour, §3.3), which is --ca-accent via --primary below.
+ * Pointed at --ca-accent-wash: a subtle highlight, never a saturated fill,
+ * per §3.3's "nothing decorative is coloured" rule. */
+@layer base {
+  :root {
+    --background: var(--ca-canvas);
+    --foreground: var(--ca-ink);
+    --card: var(--ca-surface);
+    --card-foreground: var(--ca-ink);
+    --popover: var(--ca-surface-raised);
+    --popover-foreground: var(--ca-ink);
+    --primary: var(--ca-accent);
+    --primary-foreground: var(--ca-accent-ink);
+    --secondary: var(--ca-surface-sunken);
+    --secondary-foreground: var(--ca-ink);
+    --muted: var(--ca-surface-sunken);
+    --muted-foreground: var(--ca-ink-muted);
+    --accent: var(--ca-accent-wash);
+    --accent-foreground: var(--ca-ink);
+    /* Text/icon colour on a solid destructive fill — same role as
+     * --primary-foreground, reusing --ca-accent-ink (white in both modes)
+     * rather than inventing a §3.3 token that doesn't exist. */
+    --destructive: var(--ca-danger);
+    --destructive-foreground: var(--ca-accent-ink);
+    --border: var(--ca-line);
+    --input: var(--ca-line-strong);
+    --ring: var(--ca-focus);
+  }
+}

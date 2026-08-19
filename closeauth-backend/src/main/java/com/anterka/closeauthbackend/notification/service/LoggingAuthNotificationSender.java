@@ -19,8 +19,8 @@ import org.springframework.stereotype.Component;
 public class LoggingAuthNotificationSender implements AuthNotificationSender {
 
     @Override
-    public void sendEmailVerificationCode(String target, String code) {
-        log.info("[notification] email-verification code delivered to {} (code not logged)", target);
+    public void sendEmailVerificationCode(String target, String code, String verifyUrl) {
+        log.info("[notification] email-verification code delivered to {} (code/link not logged)", target);
     }
 
     @Override

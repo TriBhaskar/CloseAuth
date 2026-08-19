@@ -8,7 +8,7 @@
 // ROLE_CATALOG_PAGE_SIZE for the assignment panels); listRolesPaged is the
 // UI-3d addition for a real paged list view.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
-import { parseAdminResult, type AdminResult } from '@/api/tenantAdminProblem'
+import { parseAdminResult, type AdminResult } from '@/api/problem'
 import type { PageView } from '@/api/tenantAdminUsers'
 
 // Mirrors rbac/dto/TenantRoleView.java exactly. Jackson serializes the
@@ -123,6 +123,27 @@ export type TenantRoleAction = 'edit' | 'delete'
  */
 export function tenantRoleActions(role: TenantRoleView): TenantRoleAction[] {
   return role.isSystem ? [] : ['edit', 'delete']
+}
+
+// Mirrors admin/web/RoleAssigneeView.java exactly — a deliberately smaller
+// projection than UserView (a role-assignees list has no use for most of
+// its fields).
+export interface RoleAssigneeView {
+  userId: string
+  email: string
+  firstName: string | null
+  lastName: string | null
+  status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'DELETED'
+}
+
+/**
+ * FE-4b (spec §6.4.5): every user currently holding this tenant role
+ * (TenantRoleController.assignees). Batch-resolved to email/name server-side
+ * — never a bare id list the caller must join itself.
+ */
+export async function getRoleAssignees(slug: string, roleId: string): Promise<AdminResult<RoleAssigneeView[]>> {
+  const result = await tenantAdminFetch(slug, `/roles/${encodeURIComponent(roleId)}/assignees`)
+  return parseAdminResult<RoleAssigneeView[]>(result)
 }
 
 /** Role NAMES currently held by userId (TenantRoleController.rolesForUser — the UI-3b backend addition). */

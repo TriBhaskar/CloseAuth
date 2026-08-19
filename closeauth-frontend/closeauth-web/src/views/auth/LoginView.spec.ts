@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
+import { createPinia, type Pinia } from 'pinia'
 import LoginView from './LoginView.vue'
 
 // Stage UI-2a, Deliverable 3's required component test (Vue Test Utils,
@@ -24,21 +25,25 @@ async function createLoginRouter() {
     history: createWebHistory(),
     routes: [
       { path: '/', component: { template: '<div />' } },
-      { path: '/login', component: LoginView },
+      { path: '/t/:slug/login', component: LoginView },
     ],
   })
-  await router.push('/login')
+  await router.push('/t/ten_acme-inc/login')
   await router.isReady()
   return router
 }
 
 let hrefAssignments: string[]
 let locationSearch: string
+let pinia: Pinia
 
 beforeEach(() => {
   hrefAssignments = []
   locationSearch = ''
-  // Branding fetch (useOAuthTheme) — every test gets platform-default
+  // Fresh Pinia per test — TenantBrandingProvider's useThemeStore() needs an
+  // active instance to mount at all (views didn't need Pinia before FE-1.3).
+  pinia = createPinia()
+  // Branding fetch (TenantBrandingProvider) — every test gets platform-default
   // branding unless overridden, so it never interferes with the
   // login-submission assertions below.
   vi.stubGlobal(
@@ -118,7 +123,7 @@ describe('LoginView', () => {
 
     window.location.search = '?client_id=client-abc'
     const router = await createLoginRouter()
-    const wrapper = mount(LoginView, { global: { plugins: [router] } })
+    const wrapper = mount(LoginView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
     await fillAndSubmit(wrapper, 'user@example.test', 'correct-password')
@@ -165,7 +170,7 @@ describe('LoginView', () => {
     )
 
     const router = await createLoginRouter()
-    const wrapper = mount(LoginView, { global: { plugins: [router] } })
+    const wrapper = mount(LoginView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
     await fillAndSubmit(wrapper, 'user@example.test', 'correct-password')
@@ -197,7 +202,7 @@ describe('LoginView', () => {
     )
 
     const router = await createLoginRouter()
-    const wrapper = mount(LoginView, { global: { plugins: [router] } })
+    const wrapper = mount(LoginView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
     await fillAndSubmit(wrapper, 'user@example.test', 'wrong-password')
@@ -209,4 +214,107 @@ describe('LoginView', () => {
     // The uniform, enumeration-safe message — never reveals which factor failed.
     expect(alert.text()).not.toContain('invalid_credentials')
   })
+
+  // FE-2b (spec §6.2.2): "Rate-limited: same message, same shape... the
+  // frontend must not add a distinguishing variant." Proves the FRONTEND
+  // side of that requirement — even if a future backend regression started
+  // returning a different `error` code for a different failure reason, this
+  // component still renders the identical hardcoded copy either way.
+  it.each(['invalid_credentials', 'rate_limited_hypothetically'])(
+    'renders the identical message regardless of the backend error code (%s)',
+    async (errorCode) => {
+      const originalFetch = window.fetch
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((url: string, init?: RequestInit) => {
+          if (url === '/api/auth/login') {
+            return Promise.resolve({
+              ok: false,
+              status: 401,
+              json: () => Promise.resolve({ error: errorCode, error_description: 'irrelevant' }),
+            })
+          }
+          return originalFetch(url, init)
+        }),
+      )
+
+      const router = await createLoginRouter()
+      const wrapper = mount(LoginView, { global: { plugins: [router, pinia] } })
+      await flushPromises()
+      await fillAndSubmit(wrapper, 'user@example.test', 'wrong-password')
+
+      expect(wrapper.find('[role="alert"]').text()).toBe('Incorrect email or password. Please try again.')
+    },
+  )
+})
+
+// FE-2b (spec §6.2.2): "Create an account (shown only in SELF_SERVICE
+// registration mode)" — proven against the REAL backend enum names
+// (OPEN/EMAIL_VERIFIED/ADMIN_APPROVED/INVITE_ONLY; see LoginView.vue's own
+// comment on why 'SELF_SERVICE' itself never appears on the wire).
+describe('LoginView — Create an account link visibility', () => {
+  // api/publicBranding.ts caches fetchBranding results at MODULE scope, keyed
+  // by clientId — a unique clientId per call is required, or a later call in
+  // this same test file would silently hit an earlier test's cached result
+  // instead of ever invoking this test's own fetch mock.
+  let callCount = 0
+
+  async function mountWithRegistrationMode(registrationMode: string | null | undefined) {
+    const clientId = `reg-mode-test-${callCount++}`
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.startsWith('/branding')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                logoUrl: '',
+                primaryColor: '#4F46E5',
+                backgroundColor: '#FFFFFF',
+                accentColor: '#22D3EE',
+                companyName: '',
+                tenantSlug: 'ten_acme-inc',
+                registrationMode,
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+    window.location.search = `?client_id=${clientId}`
+
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/t/:slug/login', component: LoginView },
+        { path: '/t/:slug/register', component: { template: '<div />' } },
+        { path: '/t/:slug/forgot-password', component: { template: '<div />' } },
+        { path: '/t/:slug/magic-link', component: { template: '<div />' } },
+      ],
+    })
+    await router.push('/t/ten_acme-inc/login')
+    await router.isReady()
+
+    const wrapper = mount(LoginView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    return wrapper
+  }
+
+  it.each(['OPEN', 'EMAIL_VERIFIED'])('shows the link for the open registration mode %s', async (mode) => {
+    const wrapper = await mountWithRegistrationMode(mode)
+    const link = wrapper.findAll('a').find((a) => a.text() === 'Create an account')
+    expect(link).toBeTruthy()
+  })
+
+  it.each(['ADMIN_APPROVED', 'INVITE_ONLY', null, undefined])(
+    'hides the link for the closed registration mode %s',
+    async (mode) => {
+      const wrapper = await mountWithRegistrationMode(mode)
+      const link = wrapper.findAll('a').find((a) => a.text() === 'Create an account')
+      expect(link).toBeUndefined()
+    },
+  )
 })

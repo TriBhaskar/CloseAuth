@@ -1,32 +1,43 @@
 <script setup lang="ts">
-// Stage UI-3c: resource servers list + create — the list-then-detail
-// pattern from TenantUsersView.vue (UI-3b), reused as-is: QueryState ->
-// table -> AdminPagination, a Dialog form using FormField for per-field
-// validation display.
+// FE-4b (spec §6.4.4): rebuilt onto DataTable — this view's first adoption
+// of the FE-1 component library (Stage UI-3c built it against raw
+// ui/table + QueryState + AdminPagination, the same starting point Users
+// was in before FE-4a). Columns follow spec's literal order: Name · Slug
+// chip · Audience URI (mono, truncated, copyable) · Scope count · Created.
+// The Source badge (auto-created-with-a-client vs standalone) isn't in
+// spec's own column list but is kept — real, already-correct information
+// (an auto-created RS can't be deleted directly; the detail page explains
+// why) that a spec rebuild shouldn't quietly drop.
 //
-// No search/filter/sort: TenantResourceServerController's list endpoint
-// takes only page/size, same discipline as TenantUsersView.vue.
+// The Audience URI column deliberately does NOT use IdentifierChip: an
+// audience is a URL, not an opaque identifier, and IdentifierChip's
+// middle-truncation + "{kind} ID {value}" aria-label are built for
+// ID-shaped values (UUIDs, slugs). Plain mono text (CSS-truncated) +
+// CopyButton satisfies spec's literal "mono, truncated, copyable" without
+// misusing the ID-chip semantics — the Slug column gets the chip instead.
 //
-// The Source column is the one place the client<->resource-server 1:1
-// relationship (auto-creation, §7.6) is surfaced in this UI — there is no
-// backend query the other direction (client id from a resource server, or
-// vice versa beyond this boolean), so this column is honest about what it
-// knows: whether an RS came from a client, not WHICH client.
-import { onMounted, reactive, ref, watch } from 'vue'
+// Search: TenantResourceServerController's list endpoint takes only
+// page/size, same as before this rebuild — no server-side search exists.
+// DataTable always renders a search box, so leaving it unwired would be a
+// control that silently does nothing when typed into. Same fix FE-3a used
+// for the platform tenant list under the identical constraint: load a
+// larger page once and filter client-side (searchQuery/filteredItems
+// below) — a tenant's resource-server count is expected to be small.
+import { computed, h, onMounted, reactive, ref, watch, type VNode } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import QueryState from '@/components/admin/QueryState.vue'
-import AdminPagination from '@/components/admin/AdminPagination.vue'
-import FormField from '@/components/admin/FormField.vue'
-import { describeAdminError } from '@/api/tenantAdminProblem'
+import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
+import IdentifierChip from '@/components/common/IdentifierChip.vue'
+import RelativeTime from '@/components/common/RelativeTime.vue'
+import CopyButton from '@/components/common/CopyButton.vue'
+import FormField from '@/components/common/FormField.vue'
+import { describeAdminError } from '@/api/problem'
 import {
   createResourceServer,
   listResourceServers,
-  DEFAULT_PAGE_SIZE,
   RESOURCE_SERVER_CONFLICT_FIELDS,
   type ResourceServerView,
 } from '@/api/tenantAdminResourceServers'
@@ -36,15 +47,21 @@ const route = useRoute()
 const router = useRouter()
 const slug = String(route.params.slug ?? '')
 
+// FE-3a precedent: no real server-side search exists, so load a larger page
+// once and filter client-side rather than leave DataTable's search box
+// silently non-functional.
+const LIST_PAGE_SIZE = 200
+
 const page = ref(0)
 const pageData = ref<PageView<ResourceServerView> | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const searchQuery = ref('')
 
 async function load(): Promise<void> {
   isLoading.value = true
   errorMessage.value = null
-  const result = await listResourceServers(slug, page.value, DEFAULT_PAGE_SIZE)
+  const result = await listResourceServers(slug, page.value, LIST_PAGE_SIZE)
   switch (result.kind) {
     case 'ok':
       pageData.value = result.value
@@ -63,9 +80,24 @@ async function load(): Promise<void> {
 onMounted(load)
 watch(page, load)
 
-function openDetail(rsId: string): void {
-  void router.push({ name: 'tenant-admin-resource-server-detail', params: { slug, rsId } })
+const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
+
+const filteredItems = computed<ResourceServerView[]>(() => {
+  const items = pageData.value?.items ?? []
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return items
+  return items.filter((rs) => rs.name.toLowerCase().includes(q) || rs.slug.toLowerCase().includes(q))
+})
+
+function openDetail(rs: ResourceServerView): void {
+  void router.push({ name: 'tenant-admin-resource-server-detail', params: { slug, rsId: rs.id } })
 }
+
+const dataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
+  if (isLoading.value) return 'loading'
+  if (errorMessage.value) return 'error'
+  return 'loaded'
+})
 
 // ---- create dialog ---------------------------------------------------
 
@@ -129,6 +161,50 @@ async function handleCreate(): Promise<void> {
     isCreating.value = false
   }
 }
+
+// ---- DataTable columns ----------------------------------------------------
+
+const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
+  {
+    id: 'name',
+    header: 'Name',
+    cell: ({ row }) => row.original.name,
+  },
+  {
+    id: 'slug',
+    header: 'Slug',
+    cell: ({ row }) => h(IdentifierChip, { kind: 'resource-server', value: row.original.slug }),
+  },
+  {
+    id: 'audience',
+    header: 'Audience URI',
+    cell: ({ row }): VNode =>
+      h('div', { class: 'flex items-center gap-2 max-w-xs' }, [
+        h('code', { class: 'font-mono text-xs truncate' }, row.original.audienceIdentifier),
+        h(
+          CopyButton,
+          { value: row.original.audienceIdentifier, class: 'text-xs text-muted-foreground shrink-0 hover:text-foreground' },
+        ),
+      ]),
+  },
+  {
+    id: 'scopeCount',
+    header: 'Scope count',
+    cell: ({ row }) => row.original.scopeCount ?? '—',
+  },
+  {
+    id: 'source',
+    header: 'Source',
+    cell: ({ row }) =>
+      h(Badge, { variant: row.original.autoCreated ? 'secondary' : 'outline' },
+        { default: () => (row.original.autoCreated ? 'Created with a client' : 'Standalone') }),
+  },
+  {
+    id: 'created',
+    header: 'Created',
+    cell: ({ row }) => h(RelativeTime, { value: row.original.createdAt }),
+  },
+])
 </script>
 
 <template>
@@ -209,51 +285,31 @@ async function handleCreate(): Promise<void> {
       </Dialog>
     </div>
 
-    <QueryState :loading="isLoading" :error="errorMessage">
-      <div class="flex flex-col gap-4">
-        <div class="rounded-lg border border-border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Audience</TableHead>
-                <TableHead>Source</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableEmpty v-if="pageData && pageData.items.length === 0" :colspan="4">
-                No resource servers yet.
-              </TableEmpty>
-              <TableRow
-                v-for="rs in pageData?.items ?? []"
-                :key="rs.id"
-                :data-resource-server-id="rs.id"
-                class="cursor-pointer"
-                @click="openDetail(rs.id)"
-              >
-                <TableCell>{{ rs.name }}</TableCell>
-                <TableCell class="font-mono text-xs">{{ rs.slug }}</TableCell>
-                <TableCell class="font-mono text-xs break-all">{{ rs.audienceIdentifier }}</TableCell>
-                <TableCell>
-                  <Badge :variant="rs.autoCreated ? 'secondary' : 'outline'">
-                    {{ rs.autoCreated ? 'Created with a client' : 'Standalone' }}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-
-        <AdminPagination
-          v-if="pageData"
-          :page="pageData.page"
-          :size="pageData.size"
-          :total-elements="pageData.totalElements"
-          :total-pages="pageData.totalPages"
-          @update:page="(p) => (page = p)"
-        />
-      </div>
-    </QueryState>
+    <DataTable
+      :columns="columns"
+      :data="filteredItems"
+      :row-key="(rs: ResourceServerView) => rs.id"
+      :state="dataTableState"
+      :row-attrs="(rs: ResourceServerView) => ({ 'data-resource-server-id': rs.id })"
+      :on-row-click="openDetail"
+      :page="pageData?.page ?? page"
+      :size="pageData?.size ?? LIST_PAGE_SIZE"
+      :total-elements="pageData?.totalElements ?? 0"
+      :total-pages="pageData?.totalPages ?? 0"
+      :error-message="errorMessage ?? undefined"
+      :has-active-filters="hasActiveFilters"
+      empty-title="No resource servers yet."
+      empty-description="Create one to get started."
+      filtered-empty-title="No resource servers match your search."
+      filtered-empty-description="Try a different name or slug."
+      search-placeholder="Search by name or slug…"
+      @update:page="(p: number) => (page = p)"
+      @update:search="(q: string) => (searchQuery = q)"
+      @retry="load"
+    >
+      <template #action>
+        <Button size="sm" @click="isCreateOpen = true">New resource server</Button>
+      </template>
+    </DataTable>
   </div>
 </template>

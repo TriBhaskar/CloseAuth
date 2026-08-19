@@ -55,13 +55,22 @@ class SmtpAuthNotificationSenderTest {
 
     @Test
     void verificationCodeEmailHasCorrectShape() {
-        sender.sendEmailVerificationCode(TO, "123456");
+        sender.sendEmailVerificationCode(TO, "123456", "https://auth.example/t/acme/verify-email?code=123456");
 
         SimpleMailMessage sent = capture();
         assertThat(sent.getFrom()).isEqualTo(FROM);
         assertThat(sent.getTo()).containsExactly(TO);
         assertThat(sent.getSubject()).isNotBlank();
         assertThat(sent.getText()).contains("123456"); // the code is in the body — that is the point
+    }
+
+    @Test
+    void verificationEmailCarriesBothTheLinkAndTheManualCode() {
+        String url = "https://auth.example/t/acme/verify-email?code=123456&email=a%40x.com&client_id=c1";
+        sender.sendEmailVerificationCode(TO, "123456", url);
+        SimpleMailMessage sent = capture();
+        assertThat(sent.getText()).contains(url);
+        assertThat(sent.getText()).contains("123456");
     }
 
     @Test
@@ -90,13 +99,15 @@ class SmtpAuthNotificationSenderTest {
     @Test
     void neverLogsTheSecretOnSuccess() {
         String code = "987654";
+        String verifyUrl = "https://auth.example/t/acme/verify-email?code=" + code;
         String magic = "https://auth.example/magic-link/consume?token=super-secret-xyz";
-        sender.sendEmailVerificationCode(TO, code);
+        sender.sendEmailVerificationCode(TO, code, verifyUrl);
         sender.sendMagicLink(TO, magic);
 
         assertThat(logMessages())
                 .isNotEmpty() // it DOES log that a send happened (recipient + event), just not the secret
                 .noneMatch(line -> line.contains(code))
+                .noneMatch(line -> line.contains(verifyUrl))
                 .noneMatch(line -> line.contains(magic));
     }
 
@@ -105,14 +116,16 @@ class SmtpAuthNotificationSenderTest {
     @Test
     void deliveryFailureThrowsAndDoesNotLeakTheSecret() {
         String code = "555000";
+        String verifyUrl = "https://auth.example/t/acme/verify-email?code=" + code;
         doThrow(new MailSendException("SMTP connection refused")).when(mailSender).send(any(SimpleMailMessage.class));
 
-        assertThatThrownBy(() -> sender.sendEmailVerificationCode(TO, code))
+        assertThatThrownBy(() -> sender.sendEmailVerificationCode(TO, code, verifyUrl))
                 .isInstanceOf(NotificationDeliveryException.class);
 
         assertThat(logMessages())
                 .anyMatch(line -> line.contains("FAILED") && line.contains(TO)) // logged with context
-                .noneMatch(line -> line.contains(code));                         // but never the secret
+                .noneMatch(line -> line.contains(code))                          // but never the secret
+                .noneMatch(line -> line.contains(verifyUrl));
     }
 
     // ---- helpers ----------------------------------------------------------

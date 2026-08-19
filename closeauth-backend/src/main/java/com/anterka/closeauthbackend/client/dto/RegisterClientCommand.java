@@ -23,6 +23,9 @@ import java.util.List;
  * @param grantTypes     e.g. {@code client_credentials}, {@code authorization_code}, {@code refresh_token}.
  * @param scopes         requested scopes (may include {@code openid}, {@code profile}, ...).
  * @param redirectUris   required for {@code authorization_code}; ignored otherwise.
+ * @param postLogoutUris FE-4c: post-logout redirect URIs for RP-initiated logout. Optional; no format validation
+ *                       here, same laxity as {@code redirectUris} — the frontend wizard is responsible for shape
+ *                       checks before submission.
  * @param requireProofKey PKCE requirement (true for public clients).
  * @param trusted        first-party / trusted client (Stage 6b-ii): when {@code true}, the OAuth consent screen is
  *                       skipped ({@code requireAuthorizationConsent = false}); {@code false} → consent is required.
@@ -46,6 +49,8 @@ public record RegisterClientCommand(
         List<String> scopes,
 
         List<String> redirectUris,
+
+        List<String> postLogoutUris,
 
         boolean requireProofKey,
 

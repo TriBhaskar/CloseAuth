@@ -24,6 +24,7 @@ import com.anterka.closeauthbackend.resourceserver.entity.ResourceServer;
 import com.anterka.closeauthbackend.resourceserver.entity.ResourceServerScope;
 import com.anterka.closeauthbackend.resourceserver.repository.ClientAuthorizedResourceServerRepository;
 import com.anterka.closeauthbackend.resourceserver.repository.ResourceServerRepository;
+import com.anterka.closeauthbackend.resourceserver.repository.ResourceServerScopeCountProjection;
 import com.anterka.closeauthbackend.resourceserver.repository.ResourceServerScopeRepository;
 import com.anterka.closeauthbackend.tenant.dto.TenantView;
 import com.anterka.closeauthbackend.tenant.service.TenantService;
@@ -34,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Resource Server domain service (Section 7.6): CRUD, the scope catalog, the auto-creation capability, and
@@ -139,10 +141,20 @@ public class ResourceServerService {
         return ResourceServerView.from(rs);
     }
 
+    /**
+     * FE-4b (spec §6.4.4's "Scope count" list column): decorates each row's {@code scopeCount} from one bulk
+     * query (never per-row) — safe to do inside this module, unlike the "used by N roles" scope-catalog
+     * decoration (that one needs {@code rbac}, a dependency this module deliberately doesn't have).
+     */
     @Transactional(readOnly = true)
     public List<ResourceServerView> listResourceServers(TenantContext context) {
+        var scopeCounts = scopeRepository.countScopesByTenant(context.tenantId()).stream()
+                .collect(Collectors.toMap(
+                        ResourceServerScopeCountProjection::getResourceServerId,
+                        ResourceServerScopeCountProjection::getScopeCount));
         return resourceServerRepository.findByTenantId(context.tenantId()).stream()
                 .map(ResourceServerView::from)
+                .map(view -> view.withScopeCount(scopeCounts.getOrDefault(view.id(), 0L)))
                 .toList();
     }
 

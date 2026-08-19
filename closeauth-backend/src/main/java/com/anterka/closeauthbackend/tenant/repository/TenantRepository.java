@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.tenant.repository;
 
+import com.anterka.closeauthbackend.tenant.dto.EntryResolutionView;
 import com.anterka.closeauthbackend.tenant.entity.Tenant;
 import com.anterka.closeauthbackend.tenant.enums.TenantStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,4 +36,15 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
      */
     @Query("SELECT t.status FROM Tenant t WHERE t.id = :id")
     Optional<TenantStatus> findStatusById(@Param("id") UUID id);
+
+    /**
+     * FE-2a: the same "cheap projection, don't load the whole aggregate" discipline as
+     * {@link #findStatusById}, for the public workspace-entry resolver — {@code slug}-keyed
+     * since that's all an unauthenticated caller ever has, and carrying just enough
+     * ({@code slug}/{@code name}/{@code status}) to build {@code EntryResolutionView} without
+     * ever loading the internal {@code id} or timestamps.
+     */
+    @Query("SELECT new com.anterka.closeauthbackend.tenant.dto.EntryResolutionView(t.slug, t.name, t.status) "
+            + "FROM Tenant t WHERE t.slug = :slug")
+    Optional<EntryResolutionView> findEntryResolutionBySlug(@Param("slug") String slug);
 }

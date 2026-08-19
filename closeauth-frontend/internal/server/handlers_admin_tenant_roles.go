@@ -85,6 +85,30 @@ func (s *Server) handleAdminRoleUpdate(w http.ResponseWriter, r *http.Request) {
 	s.writeAdminAPIResult(w, slug, session, resp)
 }
 
+// handleAdminRoleAssignees backs GET /roles/{roleId}/assignees (FE-4b, spec
+// §6.4.5's "role detail shows assignees") — a new backend read
+// (TenantRoleController.assignees), same thin-relay shape as every other
+// handler in this file.
+func (s *Server) handleAdminRoleAssignees(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	roleID := chi.URLParam(r, "roleId")
+	if !validUUID(roleID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid_role_id", "Malformed role id.")
+		return
+	}
+	resp, err := s.adminClient.Get(r.Context(), session.AccessToken,
+		"/v1/tenants/"+session.TenantID+"/roles/"+roleID+"/assignees")
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
+
 func (s *Server) handleAdminRoleDelete(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	session, ok := s.adminSessionOrError(w, r)

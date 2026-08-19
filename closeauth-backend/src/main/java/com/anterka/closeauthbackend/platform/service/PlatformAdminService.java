@@ -3,6 +3,7 @@ package com.anterka.closeauthbackend.platform.service;
 import com.anterka.closeauthbackend.common.exception.CloseAuthDomainException;
 import com.anterka.closeauthbackend.common.exception.ErrorCategory;
 import com.anterka.closeauthbackend.common.exception.LastPlatformAdminException;
+import com.anterka.closeauthbackend.common.exception.SelfActionRefusedException;
 import com.anterka.closeauthbackend.common.security.PasswordHasher;
 import com.anterka.closeauthbackend.common.security.PasswordHasher.HashedPassword;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -112,9 +113,16 @@ public class PlatformAdminService {
      * compromised or in-flight token is killed within the token TTL (introspection reports {@code active:false} and the
      * {@code /v1/**} chain rejects it), not merely at expiry. This closes the §7.8 revocability condition — the
      * highest-privilege credential must be killable, not just short-lived.
+     *
+     * @param actingAdminId the caller's own id (FE-3c self-lockout guard) — suspending yourself is refused
+     *                      unconditionally, regardless of how many other active admins remain, since it always kills
+     *                      your own live session immediately.
      */
     @Transactional
-    public PlatformAdminView suspend(UUID id) {
+    public PlatformAdminView suspend(UUID id, UUID actingAdminId) {
+        if (id.equals(actingAdminId)) {
+            throw new SelfActionRefusedException(id);
+        }
         PlatformAdmin admin = loadOrThrow(id);
         // Last-platform-admin invariant (IT-9 fix): refuse to suspend the sole active PLATFORM_ADMIN, mirroring the
         // tenant tier's last-TENANT_ADMIN guard (active-only counting). Losing the last active holder would lock the
@@ -153,11 +161,19 @@ public class PlatformAdminService {
         }
     }
 
+    /**
+     * @param actingAdminId the caller's own id (FE-3c self-lockout guard) — revoking your OWN {@code PLATFORM_ADMIN}
+     *                      is refused regardless of other active holders; revoking your own lesser
+     *                      {@code PLATFORM_SUPPORT} is unaffected (nothing gates on it).
+     */
     @Transactional
-    public void revokeRole(UUID adminId, String roleName) {
+    public void revokeRole(UUID adminId, String roleName, UUID actingAdminId) {
         PlatformRole role = platformRoleRepository.findByName(roleName)
                 .orElseThrow(() -> new CloseAuthDomainException(ErrorCategory.NOT_FOUND, "platform_role.not_found",
                         "Unknown platform role: " + roleName));
+        if (PLATFORM_ADMIN_ROLE.equals(role.getName()) && adminId.equals(actingAdminId)) {
+            throw new SelfActionRefusedException(adminId);
+        }
         // Last-platform-admin invariant (IT-9 fix): don't let a direct role-revoke strip the sole active PLATFORM_ADMIN.
         // Only PLATFORM_ADMIN is protected (PLATFORM_SUPPORT is a lesser role); a SUSPENDED holder doesn't count.
         if (PLATFORM_ADMIN_ROLE.equals(role.getName()) && isLastActivePlatformAdmin(adminId)) {

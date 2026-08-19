@@ -5,6 +5,7 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -18,6 +19,12 @@ import java.util.stream.Collectors;
  * {@code client.public_no_secret}). Derived the same way {@link
  * com.anterka.closeauthbackend.client.service.ClientRegistrationService#regenerateClientSecret} checks it: the
  * client's authentication methods contain {@link ClientAuthenticationMethod#NONE}.
+ *
+ * <p><b>FE-4c additions: {@code createdAt}, {@code secretRotatedAt}, {@code postLogoutRedirectUris}.</b>
+ * {@code createdAt} is free — SAS already tracks it via {@link RegisteredClient#getClientIdIssuedAt()}.
+ * {@code secretRotatedAt} is {@code null} until the first {@link
+ * com.anterka.closeauthbackend.client.service.ClientRegistrationService#regenerateClientSecret} call — see {@link
+ * CloseAuthClientSettings#getSecretRotatedAt}.
  */
 public record ClientView(
         String id,
@@ -27,7 +34,10 @@ public record ClientView(
         boolean publicClient,
         Set<String> grantTypes,
         Set<String> scopes,
-        Set<String> redirectUris
+        Set<String> redirectUris,
+        Set<String> postLogoutRedirectUris,
+        Instant createdAt,
+        Instant secretRotatedAt
 ) {
 
     public static ClientView from(RegisteredClient client) {
@@ -40,7 +50,10 @@ public record ClientView(
                 client.getAuthorizationGrantTypes().stream()
                         .map(AuthorizationGrantType::getValue).collect(Collectors.toSet()),
                 client.getScopes(),
-                client.getRedirectUris()
+                client.getRedirectUris(),
+                client.getPostLogoutRedirectUris(),
+                client.getClientIdIssuedAt(),
+                CloseAuthClientSettings.getSecretRotatedAt(client)
         );
     }
 }

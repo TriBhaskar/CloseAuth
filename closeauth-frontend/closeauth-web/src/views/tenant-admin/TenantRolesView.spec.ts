@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import TenantRolesView from './TenantRolesView.vue'
-import { clearCsrfToken } from '@/api/client'
+import { clearCsrfToken } from '@/api/csrf'
 
 // Stage UI-3d: tenant-role list + CRUD — the same list-then-dialogs pattern
 // TenantResourceServersView.vue (UI-3c) established, plus this surface's own
@@ -56,7 +56,7 @@ describe('TenantRolesView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/t/acme/api/roles?page=0&size=20') {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -87,7 +87,7 @@ describe('TenantRolesView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/t/acme/api/roles?page=0&size=20') {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -117,6 +117,79 @@ describe('TenantRolesView', () => {
     // Non-system role: both controls exist.
     expect(wrapper.find('#role-edit-role-2').exists()).toBe(true)
     expect(wrapper.find('#role-delete-role-2').exists()).toBe(true)
+
+    // FE-4b: system rows get a Lock icon (spec §6.4.5's literal ask); a
+    // non-system row doesn't.
+    const systemRow = wrapper.find('[data-role-id="role-1"]')
+    expect(systemRow.find('svg').exists()).toBe(true)
+    const nonSystemRow = wrapper.find('[data-role-id="role-2"]')
+    expect(nonSystemRow.find('svg').exists()).toBe(false)
+  })
+
+  it('FE-4b: the assignees dialog lists everyone holding the role, from a real fetch', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [roleFixture()], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+          })
+        }
+        if (url === '/t/acme/api/roles/role-1/assignees') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve([
+                { userId: 'user-1', email: 'alice@acme.test', firstName: 'Alice', lastName: 'Admin', status: 'ACTIVE' },
+              ]),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createRolesRouter()
+    const wrapper = mount(TenantRolesView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#role-assignees-role-1').trigger('click')
+    await flushPromises()
+
+    const assignee = wrapper.find('[data-assignee-id="user-1"]')
+    expect(assignee.text()).toContain('alice@acme.test')
+    expect(assignee.text()).toContain('Alice Admin')
+    expect(assignee.text()).toContain('ACTIVE')
+  })
+
+  it('FE-4b: the assignees dialog shows an honest empty state when no one holds the role', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [roleFixture({ id: 'role-2', isSystem: false })], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+          })
+        }
+        if (url === '/t/acme/api/roles/role-2/assignees') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createRolesRouter()
+    const wrapper = mount(TenantRolesView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#role-assignees-role-2').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No one holds this role yet.')
   })
 
   it('shows a visible error and renders NO rows when the list fails', async () => {
@@ -143,11 +216,11 @@ describe('TenantRolesView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/t/acme/api/roles?page=0&size=20') {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
+            json: () => Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
           })
         }
         if (url === '/api/csrf') {
@@ -193,12 +266,12 @@ describe('TenantRolesView', () => {
         if (url === '/t/acme/api/roles' && init?.method === 'POST') {
           return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(roleFixture({ id: 'new-role', isSystem: false })) })
         }
-        if (url === '/t/acme/api/roles?page=0&size=20') {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
           listCallCount += 1
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: listCallCount - 1, totalPages: 0 }),
+            json: () => Promise.resolve({ items: [], page: 0, size: 100, totalElements: listCallCount - 1, totalPages: 0 }),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
@@ -221,7 +294,7 @@ describe('TenantRolesView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/t/acme/api/roles?page=0&size=20') {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -270,7 +343,7 @@ describe('TenantRolesView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/t/acme/api/roles?page=0&size=20') {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,

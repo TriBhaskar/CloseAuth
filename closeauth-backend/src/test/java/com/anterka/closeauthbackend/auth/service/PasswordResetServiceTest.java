@@ -63,7 +63,7 @@ class PasswordResetServiceTest {
     @Test
     void requestForUnknownEmailIsANoOpButExternallyIdentical() {
         when(userService.existsByEmail(ctx, "ghost@x.com")).thenReturn(false);
-        service.requestReset(ctx, "ghost@x.com", "client-1");
+        service.requestReset(ctx, "ghost@x.com", "client-1", "ten_acme-inc");
         verify(oneTimeTokenService, never()).issue(any());
         verify(notifier, never()).sendPasswordResetLink(any(), any());
     }
@@ -74,11 +74,37 @@ class PasswordResetServiceTest {
         when(userService.getUserByEmail(ctx, "a@x.com")).thenReturn(user());
         when(oneTimeTokenService.issue(any())).thenReturn(new RawOneTimeToken("raw", UUID.randomUUID(), Instant.now()));
 
-        service.requestReset(ctx, "a@x.com", "client-1");
+        service.requestReset(ctx, "a@x.com", "client-1", "ten_acme-inc");
 
         verify(oneTimeTokenService).invalidateForTarget(OneTimeTokenPurpose.PASSWORD_RESET, tenantId, "a@x.com");
         verify(oneTimeTokenService).issue(any());
         verify(notifier).sendPasswordResetLink(eq("a@x.com"), any());
+    }
+
+    @Test
+    void resetLinkIsTenantNamespaced() {
+        when(userService.existsByEmail(ctx, "a@x.com")).thenReturn(true);
+        when(userService.getUserByEmail(ctx, "a@x.com")).thenReturn(user());
+        when(oneTimeTokenService.issue(any())).thenReturn(new RawOneTimeToken("raw-secret", UUID.randomUUID(), Instant.now()));
+
+        service.requestReset(ctx, "a@x.com", "client-1", "ten_acme-inc");
+
+        org.mockito.ArgumentCaptor<String> linkCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(notifier).sendPasswordResetLink(eq("a@x.com"), linkCaptor.capture());
+        assertThat(linkCaptor.getValue()).contains("/t/ten_acme-inc/reset-password").contains("token=raw-secret");
+    }
+
+    @Test
+    void resetLinkDegradesToUnNamespacedPathWhenSlugIsUnavailable() {
+        when(userService.existsByEmail(ctx, "a@x.com")).thenReturn(true);
+        when(userService.getUserByEmail(ctx, "a@x.com")).thenReturn(user());
+        when(oneTimeTokenService.issue(any())).thenReturn(new RawOneTimeToken("raw-secret", UUID.randomUUID(), Instant.now()));
+
+        service.requestReset(ctx, "a@x.com", "client-1", null);
+
+        org.mockito.ArgumentCaptor<String> linkCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(notifier).sendPasswordResetLink(eq("a@x.com"), linkCaptor.capture());
+        assertThat(linkCaptor.getValue()).doesNotContain("/t/").contains("/reset-password");
     }
 
     @Test
@@ -119,7 +145,7 @@ class PasswordResetServiceTest {
         logs.start();
         logger.addAppender(logs);
         try {
-            assertThatCode(() -> service.requestReset(ctx, "a@x.com", "client-1")).doesNotThrowAnyException();
+            assertThatCode(() -> service.requestReset(ctx, "a@x.com", "client-1", "ten_acme-inc")).doesNotThrowAnyException();
         } finally {
             logger.detachAppender(logs);
         }
@@ -130,6 +156,6 @@ class PasswordResetServiceTest {
 
     private UserView user() {
         return new UserView(userId, tenantId, "a@x.com", true, null, false, "F", "L", UserStatus.ACTIVE,
-                null, Instant.now(), Instant.now());
+                null, Instant.now(), Instant.now(), null, null);
     }
 }

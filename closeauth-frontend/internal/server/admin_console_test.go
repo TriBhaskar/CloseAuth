@@ -499,7 +499,17 @@ func TestAdminConsole_SilentReauthorization_RefreshesTokenWithoutLogin(t *testin
 	t.Logf("silent reauth ok: fresh session established with zero /login hops, new token confirmed live")
 }
 
-func TestAdminConsole_NonAdminUser_IsRefusedWithoutSessionOrLoop(t *testing.T) {
+// TestAdminConsole_NonAdminUser_EstablishesSessionButNoAdminAccess proves
+// FE-4d's own fix: a valid, ACTIVE tenant user who authenticates fine but
+// holds no TENANT_ADMIN role now GETS a real session (spec §6.4.8 —
+// /account must be reachable by every tenant user, admin or not) — but that
+// session grants NOTHING on the existing admin-CRUD surface, which
+// independently re-checks IsTenantAdmin() on every request via
+// RequireAdminSession, unaffected by this change. Supersedes the old
+// TestAdminConsole_NonAdminUser_IsRefusedWithoutSessionOrLoop, whose own
+// premise (a non-admin is refused a session outright) this fix intentionally
+// overturns.
+func TestAdminConsole_NonAdminUser_EstablishesSessionButNoAdminAccess(t *testing.T) {
 	stack := testsupport.Get(t)
 	fixtures := testsupport.NewFixtures(stack)
 	ctx := context.Background()
@@ -527,7 +537,7 @@ func TestAdminConsole_NonAdminUser_IsRefusedWithoutSessionOrLoop(t *testing.T) {
 	bffBase := stack.BFFBaseURL()
 
 	client := newBrowserLikeClient(t)
-	returnTo := "/t/" + slug + "/console"
+	returnTo := "/t/" + slug + "/account"
 
 	callbackURL := driveAdminLoginToCallback(t, client, bffBase, slug, adminClientID, email, password, returnTo)
 
@@ -539,17 +549,21 @@ func TestAdminConsole_NonAdminUser_IsRefusedWithoutSessionOrLoop(t *testing.T) {
 	if resp5.StatusCode != http.StatusFound {
 		t.Fatalf("admin/callback: status = %d, want 302", resp5.StatusCode)
 	}
-	deniedLocation := resp5.Header.Get("Location")
-	if !strings.Contains(deniedLocation, "/t/"+slug+"/denied") || !strings.Contains(deniedLocation, "reason=not_tenant_admin") {
-		t.Fatalf("admin/callback: Location = %q, want /t/%s/denied?reason=not_tenant_admin", deniedLocation, slug)
+	landedLocation := resp5.Header.Get("Location")
+	if landedLocation != returnTo {
+		t.Fatalf("admin/callback: Location = %q, want %q (a real session, not a denial)", landedLocation, returnTo)
 	}
+	sawSessionCookie := false
 	for _, c := range resp5.Cookies() {
 		if c.Name == "bff_admin_session" {
-			t.Fatalf("admin/callback: a bff_admin_session cookie was set for a non-admin user — must never happen")
+			sawSessionCookie = true
 		}
 	}
+	if !sawSessionCookie {
+		t.Fatalf("admin/callback: no bff_admin_session cookie was set for a non-admin user — the fix must establish a real session")
+	}
 
-	// ---- GET /t/{slug}/api/session reflects the denial, no session ----
+	// ---- GET /t/{slug}/api/session reports a real, non-admin session ----
 	sessionResp, err := client.Get(bffBase + "/t/" + slug + "/api/session")
 	if err != nil {
 		t.Fatalf("GET api/session: %v", err)
@@ -557,36 +571,35 @@ func TestAdminConsole_NonAdminUser_IsRefusedWithoutSessionOrLoop(t *testing.T) {
 	defer sessionResp.Body.Close()
 	sessionBody, _ := readBody(sessionResp.Body)
 	var session struct {
-		Authenticated bool   `json:"authenticated"`
-		Denied        bool   `json:"denied"`
-		DeniedReason  string `json:"deniedReason"`
+		Authenticated bool     `json:"authenticated"`
+		Denied        bool     `json:"denied"`
+		TenantRoles   []string `json:"tenantRoles"`
 	}
 	if err := json.Unmarshal([]byte(sessionBody), &session); err != nil {
 		t.Fatalf("decode api/session body: %v (body=%s)", err, sessionBody)
 	}
-	if session.Authenticated {
-		t.Errorf("api/session: authenticated = true, want false (not a TENANT_ADMIN)")
+	if !session.Authenticated {
+		t.Errorf("api/session: authenticated = false, want true (a non-admin session is still a real session)")
 	}
-	if !session.Denied || session.DeniedReason != "not_tenant_admin" {
-		t.Errorf("api/session: denied=%v reason=%q, want denied=true reason=not_tenant_admin", session.Denied, session.DeniedReason)
+	if session.Denied {
+		t.Errorf("api/session: denied = true, want false (this is not a denial anymore)")
+	}
+	for _, r := range session.TenantRoles {
+		if r == "TENANT_ADMIN" {
+			t.Errorf("api/session: tenantRoles = %v, want no TENANT_ADMIN (this user was never assigned it)", session.TenantRoles)
+		}
 	}
 
-	// ---- LOOP PROOF: a second admin/login attempt must short-circuit
-	// straight to /denied, with ZERO hops through /oauth2/authorize ----
-	resp6, err := client.Get(bffBase + "/t/" + slug + "/admin/login?returnTo=" + url.QueryEscape(returnTo))
+	// ---- The existing admin-CRUD surface is UNCHANGED: this real session
+	// still gets no admin access — RequireAdminSession independently
+	// re-checks IsTenantAdmin() regardless of what the callback allowed. ----
+	usersResp, err := client.Get(bffBase + "/t/" + slug + "/api/users")
 	if err != nil {
-		t.Fatalf("GET admin/login (repeat visit): %v", err)
+		t.Fatalf("GET api/users: %v", err)
 	}
-	defer resp6.Body.Close()
-	if resp6.StatusCode != http.StatusFound {
-		t.Fatalf("admin/login (repeat visit): status = %d, want 302", resp6.StatusCode)
-	}
-	repeatLocation := resp6.Header.Get("Location")
-	if strings.Contains(repeatLocation, "/oauth2/authorize") {
-		t.Fatalf("admin/login (repeat visit): Location = %q — must short-circuit to /denied without touching /oauth2/authorize (loop break)", repeatLocation)
-	}
-	if !strings.Contains(repeatLocation, "/t/"+slug+"/denied") {
-		t.Fatalf("admin/login (repeat visit): Location = %q, want /t/%s/denied", repeatLocation, slug)
+	defer usersResp.Body.Close()
+	if usersResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("api/users with a non-admin session: status = %d, want 403 (admin-CRUD must stay gated)", usersResp.StatusCode)
 	}
 }
 
@@ -694,9 +707,13 @@ func TestAdminConsole_SignOut_EndsBackendSessionNotJustBFFSession(t *testing.T) 
 	if clearedBackendCookie == nil || clearedBackendCookie.MaxAge >= 0 {
 		t.Errorf("backend /logout: CLOSEAUTH_SESSION cookie not cleared (MaxAge < 0), got %+v", clearedBackendCookie)
 	}
+	// FE-2a: the real post-logout landing is the dedicated /logged-out
+	// screen, not the console (returnTo above is the LOGIN round trip's own
+	// return path, unrelated to where logout itself lands).
+	wantLanding := bffBase + "/t/" + slug + "/logged-out"
 	landingURL := resolveLocation(bffBase, backendLogoutResp.Header.Get("Location"))
-	if landingURL != bffBase+returnTo {
-		t.Errorf("backend /logout redirected to %q, want %q (the console landing page)", landingURL, bffBase+returnTo)
+	if landingURL != wantLanding {
+		t.Errorf("backend /logout redirected to %q, want %q (the logged-out landing page)", landingURL, wantLanding)
 	}
 
 	// ---- api/session now reports anonymous (BFF cookie was cleared) ----

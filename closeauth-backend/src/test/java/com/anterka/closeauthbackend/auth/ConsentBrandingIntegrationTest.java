@@ -101,10 +101,18 @@ class ConsentBrandingIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode body = json.readTree(response.body());
 
-        // THE key security test: the public endpoint exposes ONLY these 5 branding fields — no tenant internals.
+        // THE key security test: the public endpoint exposes ONLY these 7 fields — no tenant internals. tenantSlug
+        // (BE-B) and registrationMode (FE-2b) are the two deliberate, documented exceptions (BrandingView's own
+        // javadoc): the tenant's PUBLIC Tenant ID (already visible in the hosted-auth page's own URL, needed for
+        // ConsentView.vue's two-hop redirect) and whether self-registration is open (not a secret — the /register
+        // route's own behavior already reveals it) — everything else here would still be a real leak (tenantId
+        // UUID, status, counts, ...).
         assertThat(fieldNames(body)).containsExactlyInAnyOrder(
-                "logoUrl", "primaryColor", "backgroundColor", "accentColor", "companyName");
+                "logoUrl", "primaryColor", "backgroundColor", "accentColor", "companyName", "tenantSlug",
+                "registrationMode");
         assertThat(body.get("primaryColor").asText()).isEqualTo("#4F46E5"); // platform default (tenant unset)
+        assertThat(body.get("tenantSlug").asText()).isNotBlank();
+        assertThat(body.get("registrationMode").asText()).isNotBlank();
     }
 
     @Test
@@ -124,6 +132,8 @@ class ConsentBrandingIntegrationTest {
         JsonNode unknown = json.readTree(get(client(), base() + "/branding?client_id=does-not-exist").body());
         assertThat(unknown.get("primaryColor").asText()).isEqualTo("#4F46E5");
         assertThat(unknown.get("companyName").isNull()).isTrue();
+        assertThat(unknown.get("tenantSlug").isNull()).isTrue();
+        assertThat(unknown.get("registrationMode").isNull()).isTrue();
     }
 
     // ============================ CONSENT ============================
@@ -342,7 +352,7 @@ class ConsentBrandingIntegrationTest {
     }
 
     private UUID activeTenant() {
-        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("t-" + rnd(), "T"));
+        TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("T"));
         tenantService.activateTenant(tenant.id());
         return tenant.id();
     }
@@ -351,7 +361,7 @@ class ConsentBrandingIntegrationTest {
         String clientId = "app-" + rnd();
         ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
                 clientId, clientId, false, List.of("authorization_code", "refresh_token"),
-                List.of("openid", "profile"), List.of(REDIRECT), true, true));
+                List.of("openid", "profile"), List.of(REDIRECT), null, true, true));
         clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }
@@ -360,7 +370,7 @@ class ConsentBrandingIntegrationTest {
         String clientId = "app-" + rnd();
         ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
                 clientId, clientId, false, List.of("authorization_code", "refresh_token"),
-                List.of("openid", "todomaster-api:read", "todomaster-api:write"), List.of(REDIRECT), true, false));
+                List.of("openid", "todomaster-api:read", "todomaster-api:write"), List.of(REDIRECT), null, true, false));
         clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }

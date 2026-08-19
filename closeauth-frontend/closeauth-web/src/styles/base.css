@@ -1,0 +1,132 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/* No `@custom-variant dark` here, deliberately. §3.8: "nothing else themes
+ * anything" — theming happens by swapping --ca-* values per [data-theme],
+ * never by a CSS class or a `dark:` variant. Redefining `dark:` to target
+ * [data-theme='dark'] would make it "work" again via the new mechanism,
+ * which defeats the point: any `dark:` class that slips back in (a future
+ * shadcn regen, a copy-pasted snippet) should be visibly dead — a no-op,
+ * not a silently-correct override — so it gets caught in review, not just
+ * by scripts/check-tokens.mjs's text scan. */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+#app {
+  font-weight: normal;
+}
+
+body {
+  font-family: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* Radius scale carried forward unchanged from the pre-FE-1 boilerplate.
+ * Spec §3.7 names exact target values (6px controls / 8px cards / 12px
+ * dialogs) that this formula-based scale doesn't cleanly hit — reconciling
+ * that is component-geometry work for whichever session next touches
+ * card/dialog markup (FE-1c builds ConsoleShell/AuthShell), not a token-
+ * layer concern. Not silently dropped, just not this session's job. */
+@theme inline {
+  --font-heading: var(--font-sans);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+}
+
+/* §3.7: skeletons are static blocks — no shimmer animation. Geometry
+ * (height/width/radius) comes from the caller's own utility classes. */
+.skeleton {
+  background-color: var(--ca-surface-sunken);
+}
+
+/* §3.8 autofill fix: Chrome overrides input backgrounds on autofill with its
+ * own near-white, which breaks dark-mode forms specifically — handled once,
+ * globally, referencing tokens rather than a literal so it holds in both
+ * modes. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ca-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--ca-surface) inset;
+  caret-color: var(--ca-ink);
+  transition: background-color 9999s ease-out;
+}
+
+/* §3.7: one shadow level, on dialogs/popovers only — no elevation utility
+ * for cards. §3.7: motion budget is 120ms (hover/focus) / 180ms (dialog and
+ * toast entry) and nothing else — no page-load entrance animation, no
+ * shimmer. prefers-reduced-motion removes all of it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--ca-ink-subtle);
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--ca-ink-muted);
+}
+
+::selection {
+  background: var(--ca-accent-wash);
+  color: inherit;
+}

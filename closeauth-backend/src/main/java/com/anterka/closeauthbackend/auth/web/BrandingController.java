@@ -21,6 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
  * branding} with platform defaults for null fields. An unknown {@code client_id} returns platform-default branding
  * (never reveals whether the client exists, and never any tenant internals). The admin branding-management endpoints
  * are Stage 7; only this read resolution lives here.
+ *
+ * <p><b>{@code client_id} is optional, not required.</b> This endpoint's own contract above promises "always 200,
+ * never reveals whether the client exists" — a caller reaching a hosted page without a resolvable {@code client_id}
+ * (e.g. a direct/bookmarked navigation to a login page, bypassing the normal resolver flow) must degrade to
+ * platform-default branding exactly like an unknown {@code client_id} does, not throw a 500. A blank/absent value is
+ * treated identically to an unknown one.
  */
 @RestController
 @RequiredArgsConstructor
@@ -30,10 +36,12 @@ public class BrandingController {
     private final TenantBrandingService brandingService;
 
     @GetMapping(value = "/branding", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<BrandingView> resolve(@RequestParam("client_id") String clientId) {
-        BrandingView view = tenantResolver.resolveTenantId(clientId)
-                .map(brandingService::resolveForTenant)
-                .orElseGet(brandingService::platformDefault);
+    public ResponseEntity<BrandingView> resolve(@RequestParam(value = "client_id", required = false) String clientId) {
+        BrandingView view = (clientId == null || clientId.isBlank())
+                ? brandingService.platformDefault()
+                : tenantResolver.resolveTenantId(clientId)
+                        .map(brandingService::resolveForTenant)
+                        .orElseGet(brandingService::platformDefault);
         return ResponseEntity.ok(view);
     }
 }

@@ -76,6 +76,30 @@ func pagingQuery(r *http.Request) url.Values {
 	return values
 }
 
+// userFilterParams allow-lists the tenant users list's three filters
+// (TenantUserController's own status/role/q request params, FE-4a) by their
+// exact query-param names. Same "forward raw, let the backend validate"
+// posture as auditFilterParams (handlers_admin_audit.go) — the backend turns
+// a bad status enum value into a clean 400, and duplicating that validation
+// here would just invent a second, differently-shaped error for the same bad
+// input.
+var userFilterParams = []string{"status", "role", "q"}
+
+// userFilterQuery rebuilds the users-list query string from page/size (via
+// pagingQuery) plus the three allow-listed filters above — any OTHER query
+// parameter on the incoming request is silently dropped, never forwarded.
+// Mirrors auditQuery's shape exactly (handlers_admin_audit.go).
+func userFilterQuery(r *http.Request) url.Values {
+	values := pagingQuery(r)
+	incoming := r.URL.Query()
+	for _, name := range userFilterParams {
+		if v := incoming.Get(name); v != "" {
+			values.Set(name, v)
+		}
+	}
+	return values
+}
+
 // readJSONBody reads and validates the request body as JSON, returning it as
 // a json.RawMessage so it can be forwarded to the backend byte-for-byte
 // (json.RawMessage.MarshalJSON returns its bytes verbatim, so
@@ -103,7 +127,7 @@ func (s *Server) handleAdminUsersList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	resp, err := s.adminClient.GetQuery(r.Context(), session.AccessToken, "/v1/tenants/"+session.TenantID+"/users", pagingQuery(r))
+	resp, err := s.adminClient.GetQuery(r.Context(), session.AccessToken, "/v1/tenants/"+session.TenantID+"/users", userFilterQuery(r))
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
 		return
@@ -123,6 +147,30 @@ func (s *Server) handleAdminUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := s.adminClient.PostJSON(r.Context(), session.AccessToken, "/v1/tenants/"+session.TenantID+"/users", body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
+
+// FE-4a: the temporary-password create mode (spec §6.4.2) — a distinct
+// backend endpoint (TenantOnboardingService.createUserWithTempCredential),
+// not a flag on POST /users. Body shape is the SPA's job to build correctly;
+// the BFF stays a thin relay, same as handleAdminUserCreate above.
+func (s *Server) handleAdminUserCreateWithTempCredential(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	body, err := readJSONBody(w, r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_json", "Request body must be valid JSON.")
+		return
+	}
+	resp, err := s.adminClient.PostJSON(r.Context(), session.AccessToken,
+		"/v1/tenants/"+session.TenantID+"/users/with-temp-credential", body)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
 		return

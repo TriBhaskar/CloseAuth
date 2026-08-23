@@ -8,6 +8,7 @@ import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
+import com.anterka.closeauthbackend.common.web.PageView;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -31,11 +33,14 @@ import java.util.UUID;
  * response ({@link ClientSecretView}) are the ONLY two places a client secret ever appears — each returned once;
  * only the hash is stored; {@code GET} never returns it.
  *
- * <p><b>Flagged gap (STAGE_7B_REPORT.md):</b> list / update / delete of clients are NOT implemented — SAS's
- * {@code RegisteredClientRepository} exposes no tenant-scoped list or delete, so those need custom JDBC over the
- * SAS-managed {@code oauth2_registered_client} table (significant new logic — flagged, not silently built).
+ * <p><b>FE-4.10: the list gap flagged in STAGE_7B_REPORT.md is now closed.</b> {@code GET} (no path) lists a
+ * tenant's clients via {@code TenantAwareRegisteredClientRepository.findByTenantId}, hand-built JDBC reusing SAS's
+ * own row mapper (see its javadoc) — the same pattern {@code save()} already used for the INSERT side. Update /
+ * delete of clients are still NOT implemented — SAS's {@code RegisteredClientRepository} exposes no tenant-scoped
+ * delete, and there is no update use case yet either (flagged, not silently built).
  *
  * <h2>HTTP contract</h2>
+ * {@code GET /v1/tenants/{tenantId}/clients} (paged list, no secrets) ·
  * {@code POST /v1/tenants/{tenantId}/clients} (create, 201, secret once — confidential clients only) ·
  * {@code GET .../clients/{clientId}} (no secret) ·
  * {@code POST .../clients/{clientId}/client-secret} (regenerate, 200, new secret once; 409 for a public client).
@@ -48,6 +53,18 @@ public class TenantClientController {
 
     private final ClientRegistrationService clientRegistrationService;
 
+    /**
+     * FE-4.10: closes the list gap this class's javadoc has flagged since Stage 7b — declared ahead of
+     * {@code /count} and {@code /{clientId}} for readability; Spring matches the more specific literal segments
+     * regardless of declaration order.
+     */
+    @GetMapping
+    public PageView<ClientView> list(@PathVariable String tenantId,
+                                     @RequestParam(defaultValue = "0") int page,
+                                     @RequestParam(defaultValue = "20") int size) {
+        return PageView.of(clientRegistrationService.listClients(ctx(tenantId)), page, size);
+    }
+
     @PostMapping
     public ResponseEntity<ClientCreatedView> create(@PathVariable String tenantId,
                                                     @Valid @RequestBody RegisterClientCommand command) {
@@ -56,9 +73,9 @@ public class TenantClientController {
     }
 
     /**
-     * FE-4d: the console overview's Clients count tile — the smallest possible slice of the still-blocked
-     * FE-4.10 list gap (a number, no rows, no secrets). Declared ahead of {@code /{clientId}} for readability;
-     * Spring's request mapping prefers this literal segment over the variable one regardless of order.
+     * FE-4d: the console overview's Clients count tile — predates {@link #list}, kept as the cheaper query for
+     * that one tile. Declared ahead of {@code /{clientId}} for readability; Spring's request mapping prefers this
+     * literal segment over the variable one regardless of order.
      */
     @GetMapping("/count")
     public ClientCountView count(@PathVariable String tenantId) {

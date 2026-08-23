@@ -241,13 +241,12 @@ class AdminApiIntegrationTest {
 
     /** Registers a confidential client (able to authenticate to {@code /oauth2/introspect}). @return {clientId, secret}. */
     private String[] introspectionClient() {
-        String clientId = "introspect-" + rnd();
         TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("Acme"));
         tenantService.activateTenant(tenant.id());
         ClientCreatedView created = clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
-                clientId, "Introspect Client", false, List.of("client_credentials"),
+                "Introspect Client", false, List.of("client_credentials"),
                 List.of("introspect:read"), null, null, false, true));
-        return new String[]{clientId, created.clientSecret()};
+        return new String[]{created.client().clientId(), created.clientSecret()};
     }
 
     private Map<String, Object> introspect(String clientId, String secret, String token) throws Exception {

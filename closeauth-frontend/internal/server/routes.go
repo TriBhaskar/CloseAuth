@@ -312,9 +312,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 				pr.Post("/invites", s.handleAdminInviteCreate)
 				pr.Delete("/invites/{inviteId}", s.handleAdminInviteDelete)
 
-				// Stage UI-3c: clients (create/get/regenerate-secret — no list, the
-				// backend has none) and resource servers + scopes (full CRUD). See
-				// handlers_admin_clients.go / handlers_admin_resource_servers.go.
+				// Stage UI-3c: clients (create/get/regenerate-secret) and resource
+				// servers + scopes (full CRUD). FE-4.10 added the client list once
+				// the backend gained one. See handlers_admin_clients.go /
+				// handlers_admin_resource_servers.go.
+				pr.Get("/clients", s.handleAdminClientsList)
 				pr.Post("/clients", s.handleAdminClientCreate)
 				// FE-4d: declared before /{clientId} for readability — chi
 				// already ranks this static segment over the dynamic one

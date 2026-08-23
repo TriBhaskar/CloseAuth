@@ -93,7 +93,6 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-web').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    await wrapper.find('#client-wizard-client-id').setValue('my-app')
     await wrapper.find('#client-wizard-client-name').setValue('My App')
     await wrapper.find('#client-wizard-redirect-0').setValue('http://example.com/callback')
     await wrapper.find('#client-wizard-next').trigger('click')
@@ -111,7 +110,6 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-web').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    await wrapper.find('#client-wizard-client-id').setValue('my-app')
     await wrapper.find('#client-wizard-client-name').setValue('My App')
     await wrapper.find('#client-wizard-redirect-0').setValue('http://localhost:5173/callback')
     await wrapper.find('#client-wizard-next').trigger('click')
@@ -129,7 +127,6 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-web').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    await wrapper.find('#client-wizard-client-id').setValue('my-app')
     await wrapper.find('#client-wizard-client-name').setValue('My App')
     await wrapper.find('#client-wizard-redirect-0').setValue('https://example.com/callback#token')
     await wrapper.find('#client-wizard-next').trigger('click')
@@ -221,7 +218,6 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-m2m').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    await wrapper.find('#client-wizard-client-id').setValue('m2m-client')
     await wrapper.find('#client-wizard-client-name').setValue('M2M Client')
     await wrapper.find('#client-wizard-next').trigger('click')
     await flushPromises()
@@ -279,7 +275,6 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-m2m').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    await wrapper.find('#client-wizard-client-id').setValue('m2m-client')
     await wrapper.find('#client-wizard-client-name').setValue('M2M Client')
     await wrapper.find('#client-wizard-next').trigger('click')
     await flushPromises()
@@ -313,7 +308,7 @@ describe('CreateClientDialog', () => {
               Promise.resolve({
                 error: 'validation.failed',
                 error_description: 'Request validation failed',
-                errors: { clientId: 'must not be blank' },
+                errors: { clientName: 'must not be blank' },
               }),
           })
         }
@@ -329,14 +324,13 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-m2m').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    await wrapper.find('#client-wizard-client-id').setValue('m2m-client')
     await wrapper.find('#client-wizard-client-name').setValue('M2M Client')
     await wrapper.find('#client-wizard-next').trigger('click')
     await flushPromises()
     await wrapper.find('#client-wizard-submit').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('#client-wizard-client-id-error').text()).toBe('must not be blank')
+    expect(wrapper.find('#client-wizard-client-name-error').text()).toBe('must not be blank')
   })
 
   it('reopening resets the wizard back to step 1', async () => {
@@ -348,12 +342,12 @@ describe('CreateClientDialog', () => {
 
     await wrapper.find('#client-wizard-type-web').trigger('change')
     await wrapper.find('#client-wizard-next').trigger('click')
-    expect(wrapper.find('#client-wizard-client-id').exists()).toBe(true)
+    expect(wrapper.find('#client-wizard-client-name').exists()).toBe(true)
 
     await wrapper.setProps({ open: false })
     await wrapper.setProps({ open: true })
 
-    expect(wrapper.find('#client-wizard-client-id').exists()).toBe(false)
+    expect(wrapper.find('#client-wizard-client-name').exists()).toBe(false)
     expect(wrapper.find('#client-wizard-type-web').exists()).toBe(true)
   })
 })

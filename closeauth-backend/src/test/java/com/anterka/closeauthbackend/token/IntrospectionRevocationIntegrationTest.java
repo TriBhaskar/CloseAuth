@@ -62,18 +62,17 @@ class IntrospectionRevocationIntegrationTest {
         return "http://localhost:" + port + "/closeauth";
     }
 
-    private static String rnd() {
-        return UUID.randomUUID().toString().substring(0, 8);
-    }
+    private record TenantAndClient(UUID tenantId, String clientId) {}
 
-    /** @return the tenant id, having registered a confidential client under it. */
-    private UUID tenantWithClient(String clientId) {
+    /** @return the tenant id and the server-generated client_id, having registered a confidential client under it. */
+    private TenantAndClient tenantWithClient() {
         TenantView tenant = tenantService.provisionTenant(new ProvisionTenantCommand("Acme"));
         tenantService.activateTenant(tenant.id());
         var created = clientRegistrationService.registerClient(TenantContext.of(tenant.id()), new RegisterClientCommand(
-                clientId, "M2M Client", false, List.of("client_credentials"), List.of(SCOPE), null, null, false, true));
+                "M2M Client", false, List.of("client_credentials"), List.of(SCOPE), null, null, false, true));
+        String clientId = created.client().clientId();
         clientSecrets.put(clientId, created.clientSecret());
-        return tenant.id();
+        return new TenantAndClient(tenant.id(), clientId);
     }
 
     private String obtainToken(String clientId) {
@@ -103,8 +102,9 @@ class IntrospectionRevocationIntegrationTest {
 
     @Test
     void introspectionReflectsTenantRevocationWithoutLeakingClaims() {
-        String clientA = "m2m-" + rnd();
-        UUID tenantA = tenantWithClient(clientA);
+        TenantAndClient a = tenantWithClient();
+        UUID tenantA = a.tenantId();
+        String clientA = a.clientId();
         String tokenA = obtainToken(clientA);
 
         // Before revocation: active, with claims.
@@ -113,8 +113,7 @@ class IntrospectionRevocationIntegrationTest {
         assertThat(before.get("tenant_id")).isEqualTo(tenantA.toString());
 
         // A different tenant's token — must stay active after we revoke tenant A.
-        String clientB = "m2m-" + rnd();
-        tenantWithClient(clientB);
+        String clientB = tenantWithClient().clientId();
         String tokenB = obtainToken(clientB);
 
         // Revoke ALL of tenant A's tokens.

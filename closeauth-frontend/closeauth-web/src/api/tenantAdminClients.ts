@@ -4,12 +4,12 @@
 // (tenantAdminClient.ts) and parseAdminResult (problem.ts), same
 // as tenantAdminUsers.ts.
 //
-// No listClients: the backend has none (TenantClientController implements
-// only create + get — SAS's RegisteredClientRepository exposes no
-// tenant-scoped list/delete; flagged, not silently built around). See
-// TenantClientsView.vue for how the surface handles that honestly.
+// FE-4.10: listClients closes the list gap this module used to flag —
+// TenantClientController now exposes a tenant-scoped GET, same
+// page/size-paged shape as listResourceServers.
 import { tenantAdminFetch } from '@/api/tenantAdminClient'
 import { parseAdminResult, type AdminResult } from '@/api/problem'
+import type { PageView } from '@/api/tenantAdminUsers'
 
 // Mirrors client/dto/ClientView.java exactly. Never carries a secret.
 // publicClient (UI-3c) is what tells the detail view whether "regenerate
@@ -54,8 +54,12 @@ export interface ClientCredentials {
 // FE-4c: postLogoutUris added (optional, same laxity as redirectUris — no
 // frontend-independent format validation happens server-side; the wizard is
 // responsible for shape checks before submission).
+//
+// Post-FE-4c: clientId dropped too — the backend now derives the OAuth2
+// client_id from clientName (ClientIdGenerator), the same "nothing for an
+// operator to usefully type" reasoning as the secret above. The generated
+// value comes back on ClientView.clientId in the create response.
 export interface RegisterClientPayload {
-  clientId: string
   clientName: string
   publicClient: boolean
   grantTypes: string[]
@@ -64,6 +68,17 @@ export interface RegisterClientPayload {
   postLogoutUris?: string[]
   requireProofKey: boolean
   trusted: boolean
+}
+
+export const DEFAULT_PAGE_SIZE = 20
+
+export async function listClients(
+  slug: string,
+  page: number,
+  size: number = DEFAULT_PAGE_SIZE,
+): Promise<AdminResult<PageView<ClientView>>> {
+  const result = await tenantAdminFetch(slug, `/clients?page=${page}&size=${size}`)
+  return parseAdminResult<PageView<ClientView>>(result)
 }
 
 export async function registerClient(

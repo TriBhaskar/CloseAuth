@@ -45,6 +45,9 @@ import java.util.UUID;
  * longer carries a {@code clientSecret} field at all — see {@link ClientSecretGenerator}'s javadoc for why. This
  * service is also, as of UI-3c, the one place a confidential client's secret can be replaced after creation
  * ({@link #regenerateClientSecret}), since CloseAuth previously had no recovery path for a lost secret at all.
+ *
+ * <p><b>Post-FE-4c: the OAuth2 {@code client_id} is generated here too</b> ({@link ClientIdGenerator}), for the
+ * same reason the secret is — {@link RegisterClientCommand} no longer carries a {@code clientId} field at all.
  */
 @Service
 @RequiredArgsConstructor
@@ -56,6 +59,7 @@ public class ClientRegistrationService {
     private final CommandValidator commandValidator;
     private final PasswordEncoder passwordEncoder;
     private final ClientSecretGenerator clientSecretGenerator;
+    private final ClientIdGenerator clientIdGenerator;
     private final CloseAuthProperties properties;
     private final AuditEmitter auditEmitter;
     // FE-4d: the concrete type, not the RegisteredClientRepository interface above — Spring resolves this to the
@@ -68,8 +72,11 @@ public class ClientRegistrationService {
         commandValidator.validate(command);
         tenantService.requireActiveTenant(context);
 
+        String clientId = clientIdGenerator.generate(command.clientName(), candidate ->
+                tenantAwareRegisteredClientRepository.existsByTenantIdAndClientId(context.tenantId(), candidate));
+
         String rawSecret = command.publicClient() ? null : clientSecretGenerator.generate();
-        RegisteredClient registeredClient = buildRegisteredClient(context, command, rawSecret);
+        RegisteredClient registeredClient = buildRegisteredClient(context, command, clientId, rawSecret);
         registeredClientRepository.save(registeredClient);
 
         // Trigger the 3c-i capability: create the client's 1:1 Resource Server (same transaction → atomic).
@@ -132,9 +139,23 @@ public class ClientRegistrationService {
         return tenantAwareRegisteredClientRepository.countByTenantId(context.tenantId());
     }
 
-    private RegisteredClient buildRegisteredClient(TenantContext context, RegisterClientCommand command, String rawSecret) {
+    /**
+     * FE-4.10: closes the client-list gap flagged throughout this module (see
+     * {@link TenantAwareRegisteredClientRepository#findByTenantId}) — never returns a secret (same
+     * {@link ClientView#from} used everywhere else). Paged in the application layer over this full-tenant list,
+     * same {@link com.anterka.closeauthbackend.common.web.PageView} convention every other list endpoint uses.
+     */
+    @Transactional(readOnly = true)
+    public List<ClientView> listClients(TenantContext context) {
+        return tenantAwareRegisteredClientRepository.findByTenantId(context.tenantId()).stream()
+                .map(ClientView::from)
+                .toList();
+    }
+
+    private RegisteredClient buildRegisteredClient(TenantContext context, RegisterClientCommand command,
+                                                    String clientId, String rawSecret) {
         RegisteredClient.Builder builder = RegisteredClient.withId(UUID.randomUUID().toString())
-                .clientId(command.clientId())
+                .clientId(clientId)
                 .clientName(command.clientName());
 
         if (rawSecret != null) {

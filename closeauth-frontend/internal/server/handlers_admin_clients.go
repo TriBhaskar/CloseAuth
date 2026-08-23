@@ -26,13 +26,30 @@ import (
 // to the "no secret-shaped value ever reaches a response body unexamined"
 // discipline (see assertNoTokenLeakExceptSecret in admin_console_test.go).
 //
-// No client LIST route exists here because none exists on the backend
-// (TenantClientController implements only create + get — SAS's
-// RegisteredClientRepository exposes no tenant-scoped list/delete; flagged,
-// not silently built around). The SPA is expected to handle that gap
-// honestly rather than this layer faking one.
+// FE-4.10: TenantClientController now exposes a tenant-scoped list
+// (backend closed the gap the paragraph above used to describe) —
+// handleAdminClientsList below is a plain relay, same shape as
+// handleAdminResourceServersList in handlers_admin_resource_servers.go.
 
 // ---- clients ----------------------------------------------------------
+
+// handleAdminClientsList backs the console's client list (FE-4.10) — a
+// plain relay to the backend's paged GET, same shape as
+// handleAdminResourceServersList.
+func (s *Server) handleAdminClientsList(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	resp, err := s.adminClient.GetQuery(r.Context(), session.AccessToken,
+		"/v1/tenants/"+session.TenantID+"/clients", pagingQuery(r))
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
 
 func (s *Server) handleAdminClientCreate(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")

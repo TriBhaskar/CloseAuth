@@ -89,14 +89,14 @@ class TokenIssuanceIntegrationTest {
         tenantService.activateTenant(tenant.id());
         TenantContext ctx = TenantContext.of(tenant.id());
 
-        String clientId = "m2m-" + UUID.randomUUID().toString().substring(0, 8);
         // The auto-created RS's slug is derived from the client name ("M2M Client" -> "m2m-client"); the client
         // requests that RS's scope in prefixed form so aud is inferred from the scope prefix.
         String rsScope = "m2m-client:read";
         ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, "M2M Client", false, List.of("client_credentials"), List.of(rsScope), null, null, false, true));
+                "M2M Client", false, List.of("client_credentials"), List.of(rsScope), null, null, false, true));
         ClientView client = created.client();
         String secret = created.clientSecret();
+        String clientId = client.clientId(); // now server-generated, not operator-chosen
 
         // the tenant-aware INSERT populated the tenant_id column (13-col path)
         String storedTenant = jdbcTemplate.queryForObject(

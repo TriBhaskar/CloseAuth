@@ -15,7 +15,8 @@ import java.util.UUID;
  * — resolves Stage 2's SAS three-table deferral for {@code oauth2_registered_client} (Approach A).
  *
  * <p>Extends SAS's {@link JdbcRegisteredClientRepository} so SAS's own row-mapper / parameters-mapper handle the
- * intricate {@code client_settings}/{@code token_settings} JSON serialization. We override only {@code save()}:
+ * intricate {@code client_settings}/{@code token_settings} JSON serialization. We override {@code save()} and add
+ * tenant-scoped query methods (SAS's own repository interface has neither):
  * <ul>
  *   <li><b>New client (INSERT):</b> SAS's fixed 13-column INSERT can't include our {@code NOT NULL tenant_id}.
  *       So we hand-build the INSERT, reusing SAS's {@code RegisteredClientParametersMapper} for the 13 serialized
@@ -23,6 +24,8 @@ import java.util.UUID;
  *       tenant id is read from the {@link CloseAuthClientSettings#TENANT_ID} client setting.</li>
  *   <li><b>Existing client (UPDATE):</b> delegate to {@code super.save()} — SAS's UPDATE touches only its own 10
  *       columns, leaving {@code tenant_id} untouched (a client never changes tenant).</li>
+ *   <li><b>Tenant-scoped list ({@link #findByTenantId}):</b> hand-built SELECT reusing SAS's own row mapper — see
+ *       its javadoc.</li>
  * </ul>
  *
  * <p>The column list below is pinned to SAS 1.5.1 (verified against the jar); the runtime size assertion makes a
@@ -85,5 +88,34 @@ public class TenantAwareRegisteredClientRepository extends JdbcRegisteredClientR
         Integer count = getJdbcOperations().queryForObject(
                 "SELECT COUNT(*) FROM oauth2_registered_client WHERE tenant_id = ?", Integer.class, tenantId);
         return count == null ? 0 : count;
+    }
+
+    /**
+     * Backs {@link ClientIdGenerator}'s collision check: {@code client_id} is unique per-tenant (the DB constraint
+     * is {@code UNIQUE (tenant_id, client_id)}, not a global unique), so the generator's candidate check must be
+     * scoped the same way.
+     */
+    public boolean existsByTenantIdAndClientId(UUID tenantId, String clientId) {
+        Integer count = getJdbcOperations().queryForObject(
+                "SELECT COUNT(*) FROM oauth2_registered_client WHERE tenant_id = ? AND client_id = ?",
+                Integer.class, tenantId, clientId);
+        return count != null && count > 0;
+    }
+
+    /**
+     * Closes the FE-4.10 list gap flagged in {@code TenantClientController}'s javadoc: SAS's own
+     * {@link JdbcRegisteredClientRepository} exposes no tenant-scoped list, so this hand-builds the SELECT the same
+     * way {@link #save} hand-builds the INSERT — reusing SAS's own {@link #getRegisteredClientRowMapper()} for the
+     * blob deserialization (client_settings/token_settings JSON, grant types, scopes, etc.) rather than
+     * reimplementing it. Column list mirrors {@link #INSERT_SQL}'s (minus {@code tenant_id}, which the row mapper
+     * doesn't know about), pinned to the same SAS 1.5.1 shape.
+     */
+    public List<RegisteredClient> findByTenantId(UUID tenantId) {
+        return getJdbcOperations().query(
+                "SELECT id, client_id, client_id_issued_at, client_secret, client_secret_expires_at, client_name, "
+                        + "client_authentication_methods, authorization_grant_types, redirect_uris, "
+                        + "post_logout_redirect_uris, scopes, client_settings, token_settings "
+                        + "FROM oauth2_registered_client WHERE tenant_id = ? ORDER BY client_id_issued_at DESC",
+                getRegisteredClientRowMapper(), tenantId);
     }
 }

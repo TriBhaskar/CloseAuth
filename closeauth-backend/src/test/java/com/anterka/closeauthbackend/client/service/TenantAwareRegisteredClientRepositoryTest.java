@@ -41,4 +41,31 @@ class TenantAwareRegisteredClientRepositoryTest {
 
         assertThat(repository.countByTenantId(UUID.randomUUID())).isZero();
     }
+
+    // ---- existsByTenantIdAndClientId (ClientIdGenerator's collision check) ------------
+
+    @Test
+    void existsByTenantIdAndClientIdReturnsTrueWhenCountIsPositive() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        UUID tenantId = UUID.randomUUID();
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT COUNT(*) FROM oauth2_registered_client WHERE tenant_id = ? AND client_id = ?"),
+                eq(Integer.class), any(Object[].class)))
+                .thenReturn(1);
+
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        assertThat(repository.existsByTenantIdAndClientId(tenantId, "acme-app-abc12345")).isTrue();
+    }
+
+    @Test
+    void existsByTenantIdAndClientIdReturnsFalseWhenCountIsZeroOrNull() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Integer.class), any(Object[].class)))
+                .thenReturn(0);
+
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        assertThat(repository.existsByTenantIdAndClientId(UUID.randomUUID(), "unused-client-id")).isFalse();
+    }
 }

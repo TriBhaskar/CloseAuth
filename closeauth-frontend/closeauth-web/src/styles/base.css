@@ -88,6 +88,22 @@ input:-webkit-autofill:focus {
   transition: background-color 9999s ease-out;
 }
 
+/* Dark-mode <option> visibility fix: every native <select> in this codebase
+ * is styled bg-transparent (it blends with its surrounding card/page, which
+ * is correct for the closed control). But the dropdown POPUP is an
+ * OS-rendered surface the browser must paint something into, and an
+ * explicit-but-transparent background on the <select> is enough to make
+ * Chromium/Edge stop reliably deriving that popup's colours from
+ * color-scheme (tokens.css sets color-scheme correctly per theme) —
+ * <option> rows can end up rendering light-on-light text in dark mode.
+ * Pinning both explicitly here, referencing the same tokens the rest of the
+ * theme uses, removes the guesswork. No <option> in this codebase carries
+ * its own classes, so this plain type selector needs no extra specificity. */
+option {
+  color: var(--ca-ink);
+  background-color: var(--ca-surface);
+}
+
 /* §3.7: one shadow level, on dialogs/popovers only — no elevation utility
  * for cards. §3.7: motion budget is 120ms (hover/focus) / 180ms (dialog and
  * toast entry) and nothing else — no page-load entrance animation, no

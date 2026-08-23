@@ -53,6 +53,7 @@ class ClientRegistrationServiceTest {
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator());
         service = new ClientRegistrationService(registeredClientRepository, resourceServerService,
                 tenantService, commandValidator, passwordEncoder, new ClientSecretGenerator(),
+                new ClientIdGenerator(),
                 new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
                 org.mockito.Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class),
                 Mockito.mock(TenantAwareRegisteredClientRepository.class));
@@ -62,7 +63,7 @@ class ClientRegistrationServiceTest {
 
     @Test
     void registeringConfidentialClientPersistsWithTenantAndTriggersAutoCreate() {
-        var command = new RegisterClientCommand("todomaster-spa", "TodoMaster SPA", false,
+        var command = new RegisterClientCommand("TodoMaster SPA", false,
                 List.of("client_credentials"), List.of("read"), null, null, false, true);
 
         ClientCreatedView result = service.registerClient(ctx, command);
@@ -73,7 +74,8 @@ class ClientRegistrationServiceTest {
 
         // tenant id rides on the client settings (how the tenant-aware repo populates the tenant_id column)
         assertThat(CloseAuthClientSettings.getTenantId(saved)).isEqualTo(TENANT);
-        assertThat(saved.getClientId()).isEqualTo("todomaster-spa");
+        // client_id is now server-generated from the name (ClientIdGenerator) — slugified body + random suffix.
+        assertThat(saved.getClientId()).startsWith("todomaster-spa-");
         assertThat(saved.getAuthorizationGrantTypes()).contains(AuthorizationGrantType.CLIENT_CREDENTIALS);
         assertThat(saved.getClientSecret()).startsWith("{bcrypt}"); // encoded, never raw
         assertThat(saved.getTokenSettings().getAccessTokenTimeToLive()).isEqualTo(java.time.Duration.ofMinutes(5));
@@ -86,15 +88,42 @@ class ClientRegistrationServiceTest {
         assertThat(saved.getClientSecret()).isEqualTo("{bcrypt}" + result.clientSecret());
     }
 
+    // ---- registration: client_id generation ----------------------------------
+
+    @Test
+    void registerClientCommandHasNoClientIdField_backendGeneratesItAndConsultsTheTenantScopedCollisionCheck() {
+        // RegisterClientCommand no longer carries a clientId field at all — the backend is structurally the only
+        // source of it. Force the first candidate to look "taken" (mocked tenantAwareRegisteredClientRepository)
+        // and prove the service retries rather than persisting a colliding value.
+        TenantAwareRegisteredClientRepository tenantAware = Mockito.mock(TenantAwareRegisteredClientRepository.class);
+        when(tenantAware.existsByTenantIdAndClientId(Mockito.eq(TENANT), Mockito.anyString()))
+                .thenReturn(true, false); // first candidate taken, second free
+        ClientRegistrationService withCollisionCheck = new ClientRegistrationService(registeredClientRepository,
+                resourceServerService, Mockito.mock(TenantService.class),
+                new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator()),
+                Mockito.mock(PasswordEncoder.class), new ClientSecretGenerator(), new ClientIdGenerator(),
+                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
+                Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class), tenantAware);
+
+        var command = new RegisterClientCommand("Retry Client", false,
+                List.of("client_credentials"), null, null, null, false, true);
+        withCollisionCheck.registerClient(ctx, command);
+
+        // consulted twice: the rejected first candidate, then the accepted retry — proving the collision check
+        // is real, not decorative.
+        verify(tenantAware, org.mockito.Mockito.times(2))
+                .existsByTenantIdAndClientId(Mockito.eq(TENANT), Mockito.anyString());
+    }
+
     @Test
     void registerClientCommandHasNoSecretField_backendIsTheOnlySource() {
         // RegisterClientCommand no longer carries a clientSecret field at all (removed in UI-3c) — the backend
         // is structurally the only source of the plaintext, not merely "ignoring" a caller-supplied one. Two
         // otherwise-identical registrations still get two DIFFERENT generated secrets, proving genuine randomness
         // rather than a fixed/derived value.
-        var command = new RegisterClientCommand("app-a", "App A", false,
+        var command = new RegisterClientCommand("App A", false,
                 List.of("client_credentials"), null, null, null, false, true);
-        var command2 = new RegisterClientCommand("app-b", "App B", false,
+        var command2 = new RegisterClientCommand("App B", false,
                 List.of("client_credentials"), null, null, null, false, true);
 
         ClientCreatedView first = service.registerClient(ctx, command);
@@ -109,7 +138,7 @@ class ClientRegistrationServiceTest {
 
     @Test
     void registeringPublicClient_NoSecretGeneratedAuthMethodNone() {
-        var command = new RegisterClientCommand("public-spa", "Public SPA", true,
+        var command = new RegisterClientCommand("Public SPA", true,
                 List.of("authorization_code"), null, List.of("http://127.0.0.1/callback"), null, true, true);
 
         ClientCreatedView result = service.registerClient(ctx, command);
@@ -131,18 +160,39 @@ class ClientRegistrationServiceTest {
         ClientRegistrationService withRealCount = new ClientRegistrationService(registeredClientRepository,
                 resourceServerService, Mockito.mock(TenantService.class),
                 new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator()),
-                Mockito.mock(PasswordEncoder.class), new ClientSecretGenerator(),
+                Mockito.mock(PasswordEncoder.class), new ClientSecretGenerator(), new ClientIdGenerator(),
                 new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
                 Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class), tenantAware);
 
         assertThat(withRealCount.countClients(ctx)).isEqualTo(5L);
     }
 
+    // ---- FE-4.10: client list ----------------------------------------------
+
+    @Test
+    void listClientsDelegatesToTenantAwareRepositoryAndNeverExposesASecret() {
+        RegisteredClient client = confidentialClient(TENANT, "{bcrypt}some-encoded-secret");
+        TenantAwareRegisteredClientRepository tenantAware = Mockito.mock(TenantAwareRegisteredClientRepository.class);
+        when(tenantAware.findByTenantId(TENANT)).thenReturn(List.of(client));
+        ClientRegistrationService withRealList = new ClientRegistrationService(registeredClientRepository,
+                resourceServerService, Mockito.mock(TenantService.class),
+                new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator()),
+                Mockito.mock(PasswordEncoder.class), new ClientSecretGenerator(), new ClientIdGenerator(),
+                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
+                Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class), tenantAware);
+
+        var result = withRealList.listClients(ctx);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(client.getId());
+        // ClientView carries no secret field at all — nothing to assert null on, which is itself the guarantee.
+    }
+
     // ---- FE-4c: post-logout URIs, secret-rotation metadata ----------------
 
     @Test
     void registeringClientPersistsPostLogoutUris() {
-        var command = new RegisterClientCommand("web-app", "Web App", false,
+        var command = new RegisterClientCommand("Web App", false,
                 List.of("authorization_code", "refresh_token"), List.of("read"),
                 List.of("https://app.example.com/callback"), List.of("https://app.example.com/logged-out"),
                 true, true);
@@ -157,7 +207,7 @@ class ClientRegistrationServiceTest {
 
     @Test
     void newlyRegisteredClientHasNoSecretRotationTimestamp() {
-        var command = new RegisterClientCommand("todomaster-spa", "TodoMaster SPA", false,
+        var command = new RegisterClientCommand("TodoMaster SPA", false,
                 List.of("client_credentials"), List.of("read"), null, null, false, true);
 
         service.registerClient(ctx, command);

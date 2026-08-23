@@ -10,14 +10,15 @@
 // reasoned out to the concrete backend fields (see TYPE_CONFIG below), not
 // spec-enumerated field-by-field.
 //
-// Step 2 (Details) keeps an explicit client_id field even though spec's own
-// field list for this step ("name, redirect URIs, post-logout URIs") omits
-// one — the backend has no client-id generation capability (unlike Tenant
-// ID, which BE-A built specifically), so RegisterClientCommand.clientId
-// stays operator-supplied. `trusted` also stays here, unlisted in spec's
-// three-field enumeration but present in the pre-wizard form and materially
-// useful — dropping working, spec-uncontradicted functionality on a
-// wireframe omission would be a regression.
+// Step 2 (Details) has no client_id field — the backend now derives the
+// OAuth2 client_id from the client name (ClientIdGenerator), the same
+// "nothing for an operator to usefully type" reasoning FE-4c already applied
+// to the client secret. The generated id is shown on the post-registration
+// credentials handoff view, never entered here. `trusted` stays in this
+// step, unlisted in spec's three-field enumeration but present in the
+// pre-wizard form and materially useful — dropping working,
+// spec-uncontradicted functionality on a wireframe omission would be a
+// regression.
 //
 // Redirect-URI/post-logout-URI validation (absolute, no fragment, https
 // unless localhost) is spec's own rule, applied uniformly across all four
@@ -110,7 +111,6 @@ const step = ref<1 | 2 | 3>(1)
 const selectedType = ref<ClientType | null>(null)
 
 const details = reactive({
-  clientId: '',
   clientName: '',
   trusted: false,
 })
@@ -134,7 +134,6 @@ const needsRedirects = computed(() => (selectedType.value ? TYPE_CONFIG[selected
 function resetWizard(): void {
   step.value = 1
   selectedType.value = null
-  details.clientId = ''
   details.clientName = ''
   details.trusted = false
   redirectUris.value = ['']
@@ -210,10 +209,6 @@ function validateDetails(): boolean {
   postLogoutErrors.value = {}
   let valid = true
 
-  if (!details.clientId.trim()) {
-    detailErrors.clientId = 'Required.'
-    valid = false
-  }
   if (!details.clientName.trim()) {
     detailErrors.clientName = 'Required.'
     valid = false
@@ -289,7 +284,6 @@ async function handleSubmit(): Promise<void> {
   isSubmitting.value = true
   try {
     const result = await registerClient(props.slug, {
-      clientId: details.clientId.trim(),
       clientName: details.clientName.trim(),
       publicClient: config.publicClient,
       grantTypes: config.grantTypes,
@@ -364,19 +358,7 @@ async function handleSubmit(): Promise<void> {
 
       <!-- Step 2: details -->
       <div v-else-if="step === 2" class="flex flex-col gap-4">
-        <FormField id="client-wizard-client-id" label="OAuth2 client_id" :error="detailErrors.clientId">
-          <template #default="{ hasError, describedBy }">
-            <Input
-              id="client-wizard-client-id"
-              v-model="details.clientId"
-              type="text"
-              :aria-invalid="hasError"
-              :aria-describedby="describedBy"
-            />
-          </template>
-        </FormField>
-
-        <FormField id="client-wizard-client-name" label="Display name" :error="detailErrors.clientName">
+        <FormField id="client-wizard-client-name" label="Client name" :error="detailErrors.clientName">
           <template #default="{ hasError, describedBy }">
             <Input
               id="client-wizard-client-name"

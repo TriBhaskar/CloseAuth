@@ -1,82 +1,133 @@
 <script setup lang="ts">
-// Stage UI-3c, rebuilt FE-4c: the clients surface, built honestly around a
-// real backend gap — TenantClientController implements only create + a
-// tenant-scoped get, no list (SAS's RegisteredClientRepository exposes no
-// tenant-scoped list/delete; flagged, not silently built around, see
-// TEST_COVERAGE_INVENTORY.md). So this page is NOT a list: it's a
-// register-a-client action (via CreateClientDialog, FE-4c's three-step
-// wizard) plus a look-up-by-record-id control (the only lookup path), said
-// in plain language via EmptyState rather than an empty table implying a
-// list exists — spec §6.4.3's own literal wording names EmptyState.
+// FE-4.10: rebuilt onto DataTable now that TenantClientController exposes a
+// real tenant-scoped list (closing the gap Stage UI-3c/FE-4c built honestly
+// around via EmptyState + a record-id lookup form). Same starting point
+// TenantResourceServersView.vue used for its own FE-4b rebuild: load a
+// larger page once and filter client-side (listClients takes only
+// page/size, no server-side search) — a tenant's client count is expected
+// to be small, same reasoning as resource servers.
 //
-// The lookup control is intentionally "by console record id," not by the
-// OAuth2 client_id — confirmed against ClientRegistrationService
-// .loadClientOrThrow: GET /clients/{clientId} resolves via
-// registeredClientRepository.findById(clientRegisteredId), the SAS internal
-// record id, never the client_id field an application would present at
-// token time. Spec's and the build plan's own "client_id lookup" wording is
-// imprecise given that backend constraint — this control's behavior is
-// correct as built, not a deviation to fix.
-import { ref } from 'vue'
+// The record-id lookup control is gone: every row now links straight to
+// TenantClientDetailView, so there is nothing left for it to do that a row
+// click doesn't already cover.
+import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import EmptyState from '@/components/common/EmptyState.vue'
+import { Badge } from '@/components/ui/badge'
+import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
+import IdentifierChip from '@/components/common/IdentifierChip.vue'
+import RelativeTime from '@/components/common/RelativeTime.vue'
 import CreateClientDialog from '@/components/admin/CreateClientDialog.vue'
 import { describeAdminError } from '@/api/problem'
-import { getClient } from '@/api/tenantAdminClients'
+import { listClients, type ClientView } from '@/api/tenantAdminClients'
+import type { PageView } from '@/api/tenantAdminUsers'
 
 const route = useRoute()
 const router = useRouter()
 const slug = String(route.params.slug ?? '')
 
+// FE-3a/FE-4b precedent: no server-side search exists, so load a larger
+// page once and filter client-side rather than leave DataTable's search box
+// silently non-functional.
+const LIST_PAGE_SIZE = 200
+
 const isWizardOpen = ref(false)
 
-// ---- look up by record id ------------------------------------------------
+const page = ref(0)
+const pageData = ref<PageView<ClientView> | null>(null)
+const isLoading = ref(true)
+const errorMessage = ref<string | null>(null)
+const searchQuery = ref('')
 
-const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-
-const lookupId = ref('')
-const lookupError = ref('')
-const isLookingUp = ref(false)
-
-async function handleLookup(): Promise<void> {
-  if (isLookingUp.value) return
-  lookupError.value = ''
-  const id = lookupId.value.trim()
-  if (!UUID_PATTERN.test(id)) {
-    lookupError.value =
-      'That does not look like a console record id (a UUID). This is the id shown on a client\'s credentials page, not its OAuth2 client_id.'
-    return
-  }
-  isLookingUp.value = true
-  try {
-    const result = await getClient(slug, id)
-    switch (result.kind) {
-      case 'ok':
-        void router.push({ name: 'tenant-admin-client-detail', params: { slug, clientId: id } })
-        break
-      case 'reauth':
-        break
-      case 'error':
-        lookupError.value =
-          result.status === 404
-            ? 'No client with that record id exists in this tenant.'
-            : describeAdminError(result)
-        break
-      default:
-        lookupError.value = describeAdminError(result)
-        break
-    }
-  } finally {
-    isLookingUp.value = false
+async function load(): Promise<void> {
+  isLoading.value = true
+  errorMessage.value = null
+  const result = await listClients(slug, page.value, LIST_PAGE_SIZE)
+  switch (result.kind) {
+    case 'ok':
+      pageData.value = result.value
+      isLoading.value = false
+      break
+    case 'reauth':
+      break
+    default:
+      pageData.value = null
+      errorMessage.value = describeAdminError(result)
+      isLoading.value = false
+      break
   }
 }
+
+onMounted(load)
+watch(page, load)
+
+// The wizard navigates away to the credentials handoff view on success
+// (CreateClientDialog owns that whole flow) — but a cancelled dialog still
+// leaves this list stale if the tenant-admin registered a client in another
+// tab, so refresh whenever the dialog closes, same as the create dialogs
+// elsewhere refresh unconditionally on success.
+function handleWizardOpenChange(open: boolean): void {
+  isWizardOpen.value = open
+  if (!open) {
+    page.value = 0
+    void load()
+  }
+}
+
+const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
+
+const filteredItems = computed<ClientView[]>(() => {
+  const items = pageData.value?.items ?? []
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return items
+  return items.filter(
+    (client) => client.clientName.toLowerCase().includes(q) || client.clientId.toLowerCase().includes(q),
+  )
+})
+
+function openDetail(client: ClientView): void {
+  void router.push({ name: 'tenant-admin-client-detail', params: { slug, clientId: client.id } })
+}
+
+const dataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
+  if (isLoading.value) return 'loading'
+  if (errorMessage.value) return 'error'
+  return 'loaded'
+})
+
+const columns = computed<ColumnDef<ClientView, unknown>[]>(() => [
+  {
+    id: 'name',
+    header: 'Name',
+    cell: ({ row }) => row.original.clientName,
+  },
+  {
+    id: 'clientId',
+    header: 'Client ID',
+    cell: ({ row }) => h(IdentifierChip, { kind: 'client', value: row.original.clientId }),
+  },
+  {
+    id: 'type',
+    header: 'Type',
+    cell: ({ row }) =>
+      h(Badge, { variant: row.original.publicClient ? 'outline' : 'secondary' },
+        { default: () => (row.original.publicClient ? 'Public' : 'Confidential') }),
+  },
+  {
+    id: 'grantTypes',
+    header: 'Grant types',
+    cell: ({ row }) => row.original.grantTypes.join(', ') || '—',
+  },
+  {
+    id: 'created',
+    header: 'Created',
+    cell: ({ row }) => h(RelativeTime, { value: row.original.createdAt }),
+  },
+])
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 max-w-3xl">
+  <div class="flex flex-col gap-6">
     <div class="flex items-start justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight">Clients</h1>
@@ -85,48 +136,33 @@ async function handleLookup(): Promise<void> {
       <Button id="open-create-client-wizard" @click="isWizardOpen = true">Register a client</Button>
     </div>
 
-    <div id="clients-no-list-notice" class="rounded-lg border border-border bg-muted/40">
-      <EmptyState
-        title="There is no client list here yet."
-        description="The backend does not yet expose a tenant-scoped list for clients (a known, tracked gap). Save the console record id shown after registering a client — you'll need it to find that client again."
-      >
-        <template #action>
-          <p class="text-sm text-muted-foreground">
-            Clients also each auto-create a matching resource server, visible in the
-            <RouterLink :to="{ name: 'tenant-admin-resource-servers', params: { slug } }" class="underline underline-offset-2">
-              resource servers list
-            </RouterLink>
-            with a "Created with a client" source.
-          </p>
-        </template>
-      </EmptyState>
-    </div>
+    <DataTable
+      :columns="columns"
+      :data="filteredItems"
+      :row-key="(client: ClientView) => client.id"
+      :state="dataTableState"
+      :row-attrs="(client: ClientView) => ({ 'data-client-id': client.id })"
+      :on-row-click="openDetail"
+      :page="pageData?.page ?? page"
+      :size="pageData?.size ?? LIST_PAGE_SIZE"
+      :total-elements="pageData?.totalElements ?? 0"
+      :total-pages="pageData?.totalPages ?? 0"
+      :error-message="errorMessage ?? undefined"
+      :has-active-filters="hasActiveFilters"
+      empty-title="No clients yet."
+      empty-description="Register one to get started."
+      filtered-empty-title="No clients match your search."
+      filtered-empty-description="Try a different name or client id."
+      search-placeholder="Search by name or client id…"
+      @update:page="(p: number) => (page = p)"
+      @update:search="(q: string) => (searchQuery = q)"
+      @retry="load"
+    >
+      <template #action>
+        <Button size="sm" @click="isWizardOpen = true">Register a client</Button>
+      </template>
+    </DataTable>
 
-    <div class="rounded-xl border border-border p-6 flex flex-col gap-3">
-      <h2 class="text-sm font-semibold">Look up a client</h2>
-      <p class="text-xs text-muted-foreground">
-        By console record id (not the OAuth2 client_id) — shown on the credentials page after registering or
-        regenerating a secret.
-      </p>
-      <form id="client-lookup-form" class="flex items-end gap-2" novalidate @submit.prevent="handleLookup">
-        <div class="flex-1 flex flex-col gap-1.5">
-          <Label for="client-lookup-id">Console record id</Label>
-          <Input
-            id="client-lookup-id"
-            v-model="lookupId"
-            type="text"
-            :disabled="isLookingUp"
-            :aria-invalid="Boolean(lookupError)"
-            aria-describedby="client-lookup-error"
-          />
-        </div>
-        <Button id="client-lookup-submit" type="submit" variant="outline" :disabled="isLookingUp">
-          {{ isLookingUp ? 'Looking up…' : 'Look up' }}
-        </Button>
-      </form>
-      <p v-if="lookupError" id="client-lookup-error" role="alert" class="text-sm text-destructive">{{ lookupError }}</p>
-    </div>
-
-    <CreateClientDialog :open="isWizardOpen" :slug="slug" @update:open="(v) => (isWizardOpen = v)" />
+    <CreateClientDialog :open="isWizardOpen" :slug="slug" @update:open="handleWizardOpenChange" />
   </div>
 </template>

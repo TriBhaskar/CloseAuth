@@ -312,10 +312,11 @@ class IdentityFlowsIntegrationTest {
     }
 
     private String authCodeClient(TenantContext ctx) {
-        String clientId = "app-" + rnd();
+        String clientName = "app-" + rnd();
         ClientCreatedView created = clientRegistrationService.registerClient(ctx, new RegisterClientCommand(
-                clientId, clientId, false, List.of("authorization_code", "refresh_token"),
+                clientName, false, List.of("authorization_code", "refresh_token"),
                 List.of("openid", "profile"), List.of(REDIRECT), null, true, true));
+        String clientId = created.client().clientId();
         clientSecrets.put(clientId, created.clientSecret());
         return clientId;
     }

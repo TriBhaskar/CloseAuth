@@ -35,6 +35,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local SMTP sandbox — catches every outbound email (OTP/reset/magic-link/invite) instead of
+  # relaying it. Production keeps using a real SMTP service, configured via SMTP_* env vars on
+  # closeauth-backend (see application-docker.yml) — this container is dev/test only.
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    container_name: closeauth-mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_HTTP_PORT:-8025}:8025"
+
   # ----------------------------------------------------------------------
   # Developer Tooling (opt-in: docker compose --profile tools up -d)
   # ----------------------------------------------------------------------
@@ -80,6 +91,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   closeauth-frontend:
     image: closeauth-frontend:0.0.1-SNAPSHOT

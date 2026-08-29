@@ -22,7 +22,9 @@ describe('ErrorState', () => {
   })
 
   it('renders the trace_id chip only when traceId is present', () => {
-    const wrapper = mount(ErrorState, { props: { message: 'Something went wrong.', traceId: 'tr-abc123' } })
+    const wrapper = mount(ErrorState, {
+      props: { message: 'Something went wrong.', traceId: 'tr-abc123' },
+    })
     expect(wrapper.text()).toContain('trace_id')
     expect(wrapper.text()).toContain('tr-abc123')
   })
@@ -31,5 +33,17 @@ describe('ErrorState', () => {
     const wrapper = mount(ErrorState, { props: { message: 'Failed.' } })
     await wrapper.find('button').trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)
+  })
+
+  it('renders a Retry action by default (retryable defaults true — every pre-existing caller is unaffected)', () => {
+    const wrapper = mount(ErrorState, { props: { message: 'Failed.' } })
+    expect(wrapper.find('button').exists()).toBe(true)
+  })
+
+  it('renders no action at all when retryable is false — a 403 must not offer a retry guaranteed to fail identically', () => {
+    const wrapper = mount(ErrorState, {
+      props: { message: "You don't have access to this.", retryable: false },
+    })
+    expect(wrapper.find('button').exists()).toBe(false)
   })
 })

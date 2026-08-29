@@ -23,7 +23,15 @@ const clientId = `admin-console-${tenantId}`
     <AuthShell>
       <template #above>
         <div class="flex flex-col items-center gap-2 text-center">
-          <img v-if="hasLogo" :src="branding.logoUrl" :alt="branding.companyName" class="h-10 w-auto object-contain">
+          <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. -->
+          <div class="h-10">
+            <img
+              v-if="hasLogo"
+              :src="branding.logoUrl"
+              :alt="branding.companyName"
+              class="h-10 w-auto object-contain"
+            />
+          </div>
           <h1 class="text-xl font-semibold tracking-tight">You've been signed out</h1>
         </div>
       </template>

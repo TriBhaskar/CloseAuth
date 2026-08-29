@@ -32,7 +32,9 @@ import EntryShell from '@/shells/EntryShell.vue'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
+import TenantBrandingProvider, {
+  type Branding,
+} from '@/components/common/TenantBrandingProvider.vue'
 import NewPasswordFields from '@/components/common/NewPasswordFields.vue'
 import { submitRegistration } from '@/api/authRegistration'
 import { fetchBranding } from '@/api/publicBranding'
@@ -195,113 +197,136 @@ async function handleSubmit(): Promise<void> {
 <template>
   <template v-if="resolutionState === 'ready'">
     <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
-    <AuthShell>
-      <template #above>
-        <div class="flex flex-col items-center gap-2 text-center">
-          <img
-            v-if="hasLogo"
-            :src="branding.logoUrl"
-            :alt="companyLabel(branding)"
-            class="h-10 w-auto object-contain"
-          >
-          <h1 class="text-xl font-semibold tracking-tight">
-            {{ isInviteFlow ? `Accept your invite to ${companyLabel(branding)}` : `Create your ${companyLabel(branding)} account` }}
-          </h1>
-          <p class="text-sm text-muted-foreground">
-            {{ isInviteFlow ? 'Set a password to finish accepting your invitation.' : 'Fill in your details to get started.' }}
+      <AuthShell>
+        <template #above>
+          <div class="flex flex-col items-center gap-2 text-center">
+            <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. -->
+            <div class="h-10">
+              <img
+                v-if="hasLogo"
+                :src="branding.logoUrl"
+                :alt="companyLabel(branding)"
+                class="h-10 w-auto object-contain"
+              />
+            </div>
+            <h1 class="text-xl font-semibold tracking-tight">
+              {{
+                isInviteFlow
+                  ? `Accept your invite to ${companyLabel(branding)}`
+                  : `Create your ${companyLabel(branding)} account`
+              }}
+            </h1>
+            <p class="text-sm text-muted-foreground">
+              {{
+                isInviteFlow
+                  ? 'Set a password to finish accepting your invitation.'
+                  : 'Fill in your details to get started.'
+              }}
+            </p>
+          </div>
+        </template>
+
+        <!-- Success: immediate activation -->
+        <div v-if="phase === 'active'" class="flex flex-col gap-4 text-center">
+          <p class="text-sm text-foreground">Your account has been created and is ready to use.</p>
+          <RouterLink :to="loginPath">
+            <Button class="w-full">Continue to sign in</Button>
+          </RouterLink>
+        </div>
+
+        <!-- Success: PENDING, no actionable next step (ADMIN_APPROVED) -->
+        <div v-else-if="phase === 'pendingApproval'" class="flex flex-col gap-4 text-center">
+          <p class="text-sm text-foreground">
+            Your account has been created and is awaiting administrator approval. You'll be able to
+            sign in once it's approved.
           </p>
         </div>
-      </template>
 
-      <!-- Success: immediate activation -->
-      <div v-if="phase === 'active'" class="flex flex-col gap-4 text-center">
-        <p class="text-sm text-foreground">Your account has been created and is ready to use.</p>
-        <RouterLink :to="loginPath">
-          <Button class="w-full">Continue to sign in</Button>
-        </RouterLink>
-      </div>
-
-      <!-- Success: PENDING, no actionable next step (ADMIN_APPROVED) -->
-      <div v-else-if="phase === 'pendingApproval'" class="flex flex-col gap-4 text-center">
-        <p class="text-sm text-foreground">
-          Your account has been created and is awaiting administrator approval. You'll be able to sign in once it's
-          approved.
-        </p>
-      </div>
-
-      <!-- The one generic form -->
-      <form v-else class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
-        <div class="flex flex-col gap-1.5">
-          <Label for="register-email">Email</Label>
-          <Input
-            id="register-email"
-            v-model="form.email"
-            type="email"
-            autocomplete="email"
-            required
-            :readonly="isEmailLocked"
-            :disabled="isSubmitting"
-            :aria-invalid="!!fieldErrors.email"
-          />
-          <p v-if="fieldErrors.email" role="alert" class="text-sm text-destructive">{{ fieldErrors.email }}</p>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
+        <!-- The one generic form -->
+        <form v-else class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
           <div class="flex flex-col gap-1.5">
-            <Label for="register-first-name">First name</Label>
+            <Label for="register-email">Email</Label>
             <Input
-              id="register-first-name"
-              v-model="form.firstName"
-              type="text"
-              autocomplete="given-name"
+              id="register-email"
+              v-model="form.email"
+              type="email"
+              autocomplete="email"
+              required
+              :readonly="isEmailLocked"
               :disabled="isSubmitting"
-              :aria-invalid="!!fieldErrors.firstName"
+              :aria-invalid="!!fieldErrors.email"
             />
-            <p v-if="fieldErrors.firstName" role="alert" class="text-sm text-destructive">{{ fieldErrors.firstName }}</p>
+            <p v-if="fieldErrors.email" role="alert" class="text-sm text-destructive">
+              {{ fieldErrors.email }}
+            </p>
           </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1.5">
+              <Label for="register-first-name">First name</Label>
+              <Input
+                id="register-first-name"
+                v-model="form.firstName"
+                type="text"
+                autocomplete="given-name"
+                :disabled="isSubmitting"
+                :aria-invalid="!!fieldErrors.firstName"
+              />
+              <p v-if="fieldErrors.firstName" role="alert" class="text-sm text-destructive">
+                {{ fieldErrors.firstName }}
+              </p>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label for="register-last-name">Last name</Label>
+              <Input
+                id="register-last-name"
+                v-model="form.lastName"
+                type="text"
+                autocomplete="family-name"
+                :disabled="isSubmitting"
+                :aria-invalid="!!fieldErrors.lastName"
+              />
+              <p v-if="fieldErrors.lastName" role="alert" class="text-sm text-destructive">
+                {{ fieldErrors.lastName }}
+              </p>
+            </div>
+          </div>
+
           <div class="flex flex-col gap-1.5">
-            <Label for="register-last-name">Last name</Label>
+            <Label for="register-phone">Phone (optional)</Label>
             <Input
-              id="register-last-name"
-              v-model="form.lastName"
-              type="text"
-              autocomplete="family-name"
+              id="register-phone"
+              v-model="form.phone"
+              type="tel"
+              autocomplete="tel"
               :disabled="isSubmitting"
-              :aria-invalid="!!fieldErrors.lastName"
+              :aria-invalid="!!fieldErrors.phone"
             />
-            <p v-if="fieldErrors.lastName" role="alert" class="text-sm text-destructive">{{ fieldErrors.lastName }}</p>
+            <p v-if="fieldErrors.phone" role="alert" class="text-sm text-destructive">
+              {{ fieldErrors.phone }}
+            </p>
           </div>
-        </div>
 
-        <div class="flex flex-col gap-1.5">
-          <Label for="register-phone">Phone (optional)</Label>
-          <Input
-            id="register-phone"
-            v-model="form.phone"
-            type="tel"
-            autocomplete="tel"
-            :disabled="isSubmitting"
-            :aria-invalid="!!fieldErrors.phone"
+          <NewPasswordFields
+            ref="passwordFields"
+            id-prefix="register"
+            bare
+            show-checklist
+            :min-length="8"
+            :is-submitting="isSubmitting"
           />
-          <p v-if="fieldErrors.phone" role="alert" class="text-sm text-destructive">{{ fieldErrors.phone }}</p>
-        </div>
 
-        <NewPasswordFields
-          ref="passwordFields"
-          id-prefix="register"
-          bare
-          show-checklist
-          :min-length="8"
-          :is-submitting="isSubmitting"
-        />
+          <p v-if="bannerMessage" role="alert" class="text-sm text-destructive">
+            {{ bannerMessage }}
+          </p>
 
-        <p v-if="bannerMessage" role="alert" class="text-sm text-destructive">{{ bannerMessage }}</p>
-
-        <Button type="submit" class="w-full" :disabled="isSubmitting">
-          {{ isSubmitting ? 'Creating account…' : isInviteFlow ? 'Accept invite' : 'Create account' }}
-        </Button>
-      </form>
-    </AuthShell>
+          <Button type="submit" class="w-full" :disabled="isSubmitting">
+            {{
+              isSubmitting ? 'Creating account…' : isInviteFlow ? 'Accept invite' : 'Create account'
+            }}
+          </Button>
+        </form>
+      </AuthShell>
     </TenantBrandingProvider>
   </template>
 

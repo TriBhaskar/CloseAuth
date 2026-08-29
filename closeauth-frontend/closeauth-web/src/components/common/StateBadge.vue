@@ -16,6 +16,7 @@
 import type { TenantStatus } from '@/api/platformAdminTenants'
 import type { UserStatus } from '@/api/tenantAdminUsers'
 import type { PlatformAdminStatus } from '@/api/platformAdmins'
+import type { AuditEventView } from '@/api/tenantAdminAudit'
 
 export type Tone = 'warn' | 'ok' | 'danger' | 'muted' | 'accent'
 
@@ -99,6 +100,23 @@ export function platformAdminStatusTone(status: PlatformAdminStatus): Tone {
       return 'muted'
     default:
       return assertNever(status)
+  }
+}
+
+// FE-5.1: audit domain. AuditEventView.outcome (tenantAdminAudit.ts) mirrors
+// audit/enums/AuditOutcome.java exactly — SUCCESS/FAILURE/ERROR, no more —
+// so an unhandled outcome value is a compile error, not a blank badge,
+// exactly like the two enum domains above.
+export function auditOutcomeTone(outcome: AuditEventView['outcome']): Tone {
+  switch (outcome) {
+    case 'SUCCESS':
+      return 'ok'
+    case 'FAILURE':
+      return 'warn'
+    case 'ERROR':
+      return 'danger'
+    default:
+      return assertNever(outcome)
   }
 }
 </script>

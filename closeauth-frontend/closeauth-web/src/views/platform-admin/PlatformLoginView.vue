@@ -19,6 +19,7 @@ import FormField from '@/components/common/FormField.vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { login } from '@/api/platformAdminSession'
+import { isSameOriginPath } from '@/lib/safePath'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,7 +37,12 @@ async function handleSubmit(): Promise<void> {
     const result = await login(email.value, password.value)
     switch (result.kind) {
       case 'ok': {
-        const returnTo = typeof route.query.returnTo === 'string' ? route.query.returnTo : '/platform/console'
+        // FE-6.6: guards.ts's own SLUG_PATTERN discipline, applied here too
+        // — a returnTo it sets itself is always root-relative (to.fullPath),
+        // but this reads straight from the URL query string, so it's
+        // validated the same way rather than trusted on shape alone.
+        const requested = typeof route.query.returnTo === 'string' ? route.query.returnTo : ''
+        const returnTo = isSameOriginPath(requested) ? requested : '/platform/console'
         void router.push(returnTo)
         break
       }
@@ -45,8 +51,13 @@ async function handleSubmit(): Promise<void> {
         errorMessage.value = 'Incorrect email or password. Please try again.'
         break
       case 'notPlatformAdmin':
-        errorMessage.value =
-          'This account exists but does not hold PLATFORM_ADMIN, so it cannot use this console.'
+        // FE-6.6: uniform with invalidCredentials, not a distinct message —
+        // a different string here is a pre-auth account-existence oracle
+        // ("this account exists but isn't platform-admin"), which is exactly
+        // what spec's enumeration-safety principle (§6.2.2) forbids
+        // elsewhere in the app. See PlatformAdminLayout.vue's identical fix
+        // for the reauth-overlay path.
+        errorMessage.value = 'Incorrect email or password. Please try again.'
         break
       case 'unreachable':
         errorMessage.value = 'Could not reach the server. Please try again.'
@@ -63,7 +74,9 @@ async function handleSubmit(): Promise<void> {
     <template #above>
       <div class="flex flex-col items-center gap-2 text-center">
         <h1 class="text-xl font-semibold tracking-tight">Platform sign in</h1>
-        <p class="text-sm text-muted-foreground">CloseAuth staff sign-in. Sessions are 5 minutes and are not silently renewed.</p>
+        <p class="text-sm text-muted-foreground">
+          CloseAuth staff sign-in. Sessions are 5 minutes and are not silently renewed.
+        </p>
       </div>
     </template>
 

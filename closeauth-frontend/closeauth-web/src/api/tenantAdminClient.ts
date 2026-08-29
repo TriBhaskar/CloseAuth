@@ -12,10 +12,9 @@
 // no reason to duplicate that cache.
 import { fetchCsrfToken, getCsrfToken } from '@/api/csrf'
 import { unreachableResponse } from '@/api/transport'
+import { isSameOriginPath } from '@/lib/safePath'
 
-export type TenantAdminFetchResult =
-  | { kind: 'response'; response: Response }
-  | { kind: 'reauth' }
+export type TenantAdminFetchResult = { kind: 'response'; response: Response } | { kind: 'reauth' }
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -47,21 +46,49 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
  * immediately; it exists only to keep the STATIC import graph acyclic, not
  * to defer any real work.
  */
+// FE-6.6: every list endpoint returns a PageView<T> envelope whose
+// `tenantId` lives on each `items[]` element, not the top level — the
+// highest-volume response shape on this surface, and previously uncovered
+// entirely (the check only ever looked at a top-level field). Both shapes
+// are checked now; a single-entity response and a paged-list response are
+// covered by the same pass.
+interface MismatchCheckBody {
+  tenantId?: string
+  items?: Array<{ tenantId?: string }>
+}
+
 async function checkTenantMismatch(slug: string, path: string, response: Response): Promise<void> {
   if (!response.ok) return
 
   try {
     const peek = typeof response.clone === 'function' ? response.clone() : response
-    const body = (await peek.json()) as { tenantId?: string } | null
-    if (!body?.tenantId) return
+    const body = (await peek.json()) as MismatchCheckBody | null
+    if (!body) return
+
+    const observed = new Set<string>()
+    if (body.tenantId) observed.add(body.tenantId)
+    if (Array.isArray(body.items)) {
+      for (const item of body.items) {
+        if (item?.tenantId) observed.add(item.tenantId)
+      }
+    }
+    if (observed.size === 0) return
 
     const { useTenantAdminSessionStore } = await import('@/stores/tenantAdmin')
     const store = useTenantAdminSessionStore()
     const expected = store.state.kind === 'active' ? store.state.tenantId : null
-    if (!expected || body.tenantId === expected) return
+
+    // FE-6.6: a missing/empty `expected` used to short-circuit here,
+    // silently disabling the check for the rest of the session the first
+    // time the session probe ever came back without a tenantId. A response
+    // that carries real tenant data with no known scope to compare it
+    // against IS the "unknown scope" case §7.2 treats as fatal — it must
+    // never quietly pass through.
+    const mismatched = !expected || [...observed].some((id) => id !== expected)
+    if (!mismatched) return
 
     console.error(
-      `[closeauth] tenant_id mismatch on /t/${slug}/api${path}: response carried "${body.tenantId}", session is scoped to "${expected}" — clearing session and redirecting`,
+      `[closeauth] tenant_id mismatch on /t/${slug}/api${path}: response carried ${JSON.stringify([...observed])}, session is scoped to ${JSON.stringify(expected)} — clearing session and redirecting`,
     )
     store.state = { kind: 'anonymous' }
     const { default: router } = await import('@/app/router')
@@ -111,7 +138,12 @@ export async function tenantAdminFetch(
       .clone()
       .json()
       .catch(() => null)) as { error?: string; reauthPath?: string } | null
-    if (body?.error === 'reauth_required' && body.reauthPath) {
+    // FE-6.6: same-origin only (lib/safePath.ts). This is the BFF's own
+    // trusted response today, but the navigation target still comes from a
+    // response body, and every other place this codebase navigates off one
+    // (guards.ts's slug checks) holds itself to the same explicit
+    // discipline rather than trusting the shape.
+    if (body?.error === 'reauth_required' && body.reauthPath && isSameOriginPath(body.reauthPath)) {
       const returnTo = window.location.pathname + window.location.search
       window.location.assign(`${body.reauthPath}?returnTo=${encodeURIComponent(returnTo)}`)
       return { kind: 'reauth' }

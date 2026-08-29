@@ -8,15 +8,28 @@
 // isLoading/pingResult v-if chain TenantAdminHomeView.vue used in UI-3a,
 // promoted into one component so every later surface gets it for free.
 import type { HTMLAttributes } from 'vue'
+import ErrorState from '@/components/common/ErrorState.vue'
 
+// FE-6.1: the default (non-overridden) error slot used to be a bare
+// `<p role="alert">` with no way forward on a transient failure — every
+// detail screen built on this component (no #error override) had NO retry
+// path at all. `retryable` defaults `true` so a caller with a categorized
+// AdminResult can hide it for a 403 (spec §7.3), same convention as
+// ErrorState's own new prop. A caller that still only has a plain string
+// message gets a working Retry by default, which is strictly better than
+// today's dead end. Callers that already override #error are unaffected —
+// this only changes the FALLBACK.
 const props = withDefaults(
   defineProps<{
     loading: boolean
     error?: string | null
+    retryable?: boolean
     class?: HTMLAttributes['class']
   }>(),
-  { error: null },
+  { error: null, retryable: true },
 )
+
+defineEmits<{ retry: [] }>()
 </script>
 
 <template>
@@ -32,7 +45,7 @@ const props = withDefaults(
     </template>
     <template v-else-if="error">
       <slot name="error" :message="error">
-        <p role="alert" class="text-sm text-destructive">{{ error }}</p>
+        <ErrorState :message="error" :retryable="retryable" @retry="$emit('retry')" />
       </slot>
     </template>
     <template v-else>

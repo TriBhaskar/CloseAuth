@@ -22,7 +22,9 @@ const dialogStubs = {
 async function createRolesRouter() {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/t/:slug/console/roles', name: 'tenant-admin-roles', component: TenantRolesView }],
+    routes: [
+      { path: '/t/:slug/console/roles', name: 'tenant-admin-roles', component: TenantRolesView },
+    ],
   })
   await router.push('/t/acme/console/roles')
   await router.isReady()
@@ -62,7 +64,10 @@ describe('TenantRolesView', () => {
             status: 200,
             json: () =>
               Promise.resolve({
-                items: [roleFixture(), roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false })],
+                items: [
+                  roleFixture(),
+                  roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false }),
+                ],
                 page: 0,
                 size: 20,
                 totalElements: 2,
@@ -81,6 +86,63 @@ describe('TenantRolesView', () => {
     expect(wrapper.find('[data-role-id="role-1"]').text()).toContain('TENANT_ADMIN')
     expect(wrapper.find('[data-role-id="role-2"]').text()).toContain('BILLING_ADMIN')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.find('#roles-truncated-notice').exists()).toBe(false)
+  })
+
+  it('FE-6.1: totalPages > 1 renders a truncation notice — the catalog is silently incomplete otherwise', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [roleFixture()],
+                page: 0,
+                size: 100,
+                totalElements: 150,
+                totalPages: 2,
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createRolesRouter()
+    const wrapper = mount(TenantRolesView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    const notice = wrapper.find('#roles-truncated-notice')
+    expect(notice.exists()).toBe(true)
+    expect(notice.text()).toContain('more than 1 roles')
+  })
+
+  it('FE-6.1: a 403 renders ErrorState with no Retry action', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/roles?page=0&size=100') {
+          return Promise.resolve({
+            ok: false,
+            status: 403,
+            json: () => Promise.resolve({ error: 'forbidden', error_description: 'Forbidden' }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createRolesRouter()
+    const wrapper = mount(TenantRolesView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    const alert = wrapper.find('[role="alert"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain("You don't have access to this.")
+    expect(alert.find('button').exists()).toBe(false)
   })
 
   it('a system role exposes NO edit or delete control — the backend would refuse both with 403', async () => {
@@ -93,7 +155,10 @@ describe('TenantRolesView', () => {
             status: 200,
             json: () =>
               Promise.resolve({
-                items: [roleFixture(), roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false })],
+                items: [
+                  roleFixture(),
+                  roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false }),
+                ],
                 page: 0,
                 size: 20,
                 totalElements: 2,
@@ -134,7 +199,14 @@ describe('TenantRolesView', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [roleFixture()], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+            json: () =>
+              Promise.resolve({
+                items: [roleFixture()],
+                page: 0,
+                size: 100,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/t/acme/api/roles/role-1/assignees') {
@@ -143,7 +215,13 @@ describe('TenantRolesView', () => {
             status: 200,
             json: () =>
               Promise.resolve([
-                { userId: 'user-1', email: 'alice@acme.test', firstName: 'Alice', lastName: 'Admin', status: 'ACTIVE' },
+                {
+                  userId: 'user-1',
+                  email: 'alice@acme.test',
+                  firstName: 'Alice',
+                  lastName: 'Admin',
+                  status: 'ACTIVE',
+                },
               ]),
           })
         }
@@ -172,7 +250,14 @@ describe('TenantRolesView', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [roleFixture({ id: 'role-2', isSystem: false })], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+            json: () =>
+              Promise.resolve({
+                items: [roleFixture({ id: 'role-2', isSystem: false })],
+                page: 0,
+                size: 100,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/t/acme/api/roles/role-2/assignees') {
@@ -199,7 +284,11 @@ describe('TenantRolesView', () => {
         Promise.resolve({
           ok: false,
           status: 502,
-          json: () => Promise.resolve({ error: 'bad_gateway', error_description: 'Could not reach the backend.' }),
+          json: () =>
+            Promise.resolve({
+              error: 'bad_gateway',
+              error_description: 'Could not reach the backend.',
+            }),
         }),
       ),
     )
@@ -220,11 +309,16 @@ describe('TenantRolesView', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
+            json: () =>
+              Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
           })
         }
         if (url === '/api/csrf') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ token: 'csrf-token' }),
+          })
         }
         if (url === '/t/acme/api/roles' && init?.method === 'POST') {
           return Promise.resolve({
@@ -261,17 +355,32 @@ describe('TenantRolesView', () => {
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
         if (url === '/api/csrf') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ token: 'csrf-token' }),
+          })
         }
         if (url === '/t/acme/api/roles' && init?.method === 'POST') {
-          return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(roleFixture({ id: 'new-role', isSystem: false })) })
+          return Promise.resolve({
+            ok: true,
+            status: 201,
+            json: () => Promise.resolve(roleFixture({ id: 'new-role', isSystem: false })),
+          })
         }
         if (url === '/t/acme/api/roles?page=0&size=100') {
           listCallCount += 1
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 100, totalElements: listCallCount - 1, totalPages: 0 }),
+            json: () =>
+              Promise.resolve({
+                items: [],
+                page: 0,
+                size: 100,
+                totalElements: listCallCount - 1,
+                totalPages: 0,
+              }),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
@@ -300,7 +409,14 @@ describe('TenantRolesView', () => {
             status: 200,
             json: () =>
               Promise.resolve({
-                items: [roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false, description: 'Old' })],
+                items: [
+                  roleFixture({
+                    id: 'role-2',
+                    name: 'BILLING_ADMIN',
+                    isSystem: false,
+                    description: 'Old',
+                  }),
+                ],
                 page: 0,
                 size: 20,
                 totalElements: 1,
@@ -309,7 +425,11 @@ describe('TenantRolesView', () => {
           })
         }
         if (url === '/api/csrf') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ token: 'csrf-token' }),
+          })
         }
         if (url === '/t/acme/api/roles/role-2' && init?.method === 'PATCH') {
           const body = JSON.parse(String(init?.body))
@@ -317,7 +437,16 @@ describe('TenantRolesView', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve(roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false, description: 'New description', isDefault: true })),
+            json: () =>
+              Promise.resolve(
+                roleFixture({
+                  id: 'role-2',
+                  name: 'BILLING_ADMIN',
+                  isSystem: false,
+                  description: 'New description',
+                  isDefault: true,
+                }),
+              ),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
@@ -349,7 +478,9 @@ describe('TenantRolesView', () => {
             status: 200,
             json: () =>
               Promise.resolve({
-                items: deleted ? [] : [roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false })],
+                items: deleted
+                  ? []
+                  : [roleFixture({ id: 'role-2', name: 'BILLING_ADMIN', isSystem: false })],
                 page: 0,
                 size: 20,
                 totalElements: deleted ? 0 : 1,
@@ -358,7 +489,11 @@ describe('TenantRolesView', () => {
           })
         }
         if (url === '/api/csrf') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ token: 'csrf-token' }),
+          })
         }
         if (url === '/t/acme/api/roles/role-2' && init?.method === 'DELETE') {
           deleted = true

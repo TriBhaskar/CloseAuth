@@ -105,7 +105,12 @@ async function handleReauth(): Promise<void> {
         reauthError.value = 'Incorrect email or password. Please try again.'
         break
       case 'notPlatformAdmin':
-        reauthError.value = 'This account exists but does not hold PLATFORM_ADMIN, so it cannot use this console.'
+        // FE-6.6: uniform with invalidCredentials — see PlatformLoginView.vue's
+        // identical fix. A distinct message here is a pre-auth account-
+        // existence oracle: an unauthenticated caller learns "this specific
+        // account exists" purely from the wording, which spec's enumeration-
+        // safety principle (§6.2.2) forbids elsewhere in the app.
+        reauthError.value = 'Incorrect email or password. Please try again.'
         break
       case 'unreachable':
         reauthError.value = 'Could not reach the server. Please try again.'
@@ -118,11 +123,13 @@ async function handleReauth(): Promise<void> {
 </script>
 
 <template>
-  <ConsoleShell :nav-items="navItems" :mark-icon="ShieldAlert" identity-label="PLATFORM">
+  <ConsoleShell :nav-items="navItems" :mark-icon="ShieldAlert" identity-label="Platform">
     <template #topbar-actions>
       <div v-if="email" class="flex flex-col items-end leading-tight">
         <span class="text-sm text-muted-foreground">{{ email }}</span>
-        <span class="text-[11px] text-muted-foreground/70">{{ roles.join(', ') || 'no platform roles' }}</span>
+        <span class="text-[11px] text-muted-foreground/70">{{
+          roles.join(', ') || 'no platform roles'
+        }}</span>
       </div>
       <span
         v-if="!expiryUrgent"
@@ -162,15 +169,19 @@ async function handleReauth(): Promise<void> {
       aria-modal="true"
       aria-labelledby="reauth-title"
     >
-      <div class="w-full max-w-sm rounded-lg border border-border bg-surface p-6 flex flex-col gap-4">
+      <div
+        class="w-full max-w-sm rounded-lg border border-border bg-surface p-6 flex flex-col gap-4"
+      >
         <div>
           <h2 id="reauth-title" class="text-lg font-semibold">
-            {{ store.needsReauth === 'expired' ? 'Session expired' : `Session ends in ${expiryLabel}` }}
+            {{
+              store.needsReauth === 'expired' ? 'Session expired' : `Session ends in ${expiryLabel}`
+            }}
           </h2>
           <p class="text-sm text-muted-foreground">
             {{
               store.needsReauth === 'expired'
-                ? "Sign in again to continue. Nothing you had open has been lost."
+                ? 'Sign in again to continue. Nothing you had open is lost.'
                 : 'Sign in again now to keep working without interruption.'
             }}
           </p>

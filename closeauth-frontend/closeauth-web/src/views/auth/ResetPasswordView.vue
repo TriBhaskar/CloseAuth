@@ -32,7 +32,9 @@ import { useRoute } from 'vue-router'
 import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
 import NewPasswordFields from '@/components/common/NewPasswordFields.vue'
-import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
+import TenantBrandingProvider, {
+  type Branding,
+} from '@/components/common/TenantBrandingProvider.vue'
 import { confirmPasswordReset } from '@/api/authPasswordReset'
 import { readForgotPasswordQuery } from '@/api/helpers/passwordResetContext'
 import { hostedAuthPath } from '@/lib/hostedAuthPath'
@@ -112,46 +114,51 @@ async function handleSubmit(password: string): Promise<void> {
 
 <template>
   <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
-  <AuthShell>
-    <template #above>
-      <div class="flex flex-col items-center gap-2 text-center">
-        <img
-          v-if="hasLogo"
-          :src="branding.logoUrl"
-          :alt="companyLabel(branding)"
-          class="h-10 w-auto object-contain"
-        >
-        <h1 class="text-xl font-semibold tracking-tight">Set a new password for {{ companyLabel(branding) }}</h1>
-        <p class="text-sm text-muted-foreground">Choose a new password for your account.</p>
+    <AuthShell>
+      <template #above>
+        <div class="flex flex-col items-center gap-2 text-center">
+          <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. -->
+          <div class="h-10">
+            <img
+              v-if="hasLogo"
+              :src="branding.logoUrl"
+              :alt="companyLabel(branding)"
+              class="h-10 w-auto object-contain"
+            />
+          </div>
+          <h1 class="text-xl font-semibold tracking-tight">
+            Set a new password for {{ companyLabel(branding) }}
+          </h1>
+          <p class="text-sm text-muted-foreground">Choose a new password for your account.</p>
+        </div>
+      </template>
+
+      <!-- Success: the same "please log in" outcome as registration/verification -->
+      <div v-if="isReset" class="flex flex-col gap-4 text-center">
+        <p class="text-sm font-semibold text-foreground">Password updated</p>
+        <p class="text-sm text-foreground">You've been signed out on all devices.</p>
+        <RouterLink :to="loginHref">
+          <Button class="w-full">Continue to sign in</Button>
+        </RouterLink>
       </div>
-    </template>
 
-    <!-- Success: the same "please log in" outcome as registration/verification -->
-    <div v-if="isReset" class="flex flex-col gap-4 text-center">
-      <p class="text-sm font-semibold text-foreground">Password updated</p>
-      <p class="text-sm text-foreground">You've been signed out on all devices.</p>
-      <RouterLink :to="loginHref">
-        <Button class="w-full">Continue to sign in</Button>
-      </RouterLink>
-    </div>
-
-    <template v-else>
-      <NewPasswordFields
-        id-prefix="reset-password"
-        submit-label="Reset password"
-        submitting-label="Resetting…"
-        :is-submitting="isSubmitting"
-        :banner-message="bannerMessage"
-        @submit="handleSubmit"
-      />
-      <RouterLink
-        v-if="showRequestNew"
-        :to="forgotPasswordPath"
-        class="text-sm text-center text-muted-foreground hover:underline"
-      >
-        Request a new one
-      </RouterLink>
-    </template>
-  </AuthShell>
+      <template v-else>
+        <NewPasswordFields
+          id-prefix="reset-password"
+          submit-label="Reset password"
+          submitting-label="Resetting…"
+          :is-submitting="isSubmitting"
+          :banner-message="bannerMessage"
+          @submit="handleSubmit"
+        />
+        <RouterLink
+          v-if="showRequestNew"
+          :to="forgotPasswordPath"
+          class="text-sm text-center text-muted-foreground hover:underline"
+        >
+          Request a new one
+        </RouterLink>
+      </template>
+    </AuthShell>
   </TenantBrandingProvider>
 </template>

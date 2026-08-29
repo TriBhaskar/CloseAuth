@@ -26,13 +26,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import FormField from '@/components/common/FormField.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import StateBadge, { platformAdminStatusTone } from '@/components/common/StateBadge.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
-import { describeAdminError, type AdminResult } from '@/api/problem'
+import { describeAdminError, errorStateProps, type AdminResult } from '@/api/problem'
 import { usePlatformAdminSessionStore } from '@/stores/platformAdmin'
 import {
   activateAdmin,
@@ -49,23 +57,42 @@ import {
 import type { PageView } from '@/api/platformAdminTenants'
 
 const sessionStore = usePlatformAdminSessionStore()
-const ownAdminId = computed(() => (sessionStore.state.kind === 'active' ? sessionStore.state.adminId : null))
+const ownAdminId = computed(() =>
+  sessionStore.state.kind === 'active' ? sessionStore.state.adminId : null,
+)
+
+// FE-6.1: bumped from the default 20 to 200 — the same "small, internal,
+// platform-operator-only fleet" reasoning PlatformTenantsView.vue already
+// uses for its own client-side search, and the precondition for the search
+// box below to mean anything (see hasActiveFilters/filteredItems).
+const LIST_PAGE_SIZE = 200
 
 const page = ref(0)
 const pageData = ref<PageView<PlatformAdminView> | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
+const searchQuery = ref('')
 
 // Roles are fetched per-admin, on demand — the list endpoint doesn't carry
 // them (PlatformAdminView has no roles field). Keyed by admin id.
 const rolesByAdmin = ref<Record<string, string[]>>({})
 const rolesLoading = ref<Record<string, boolean>>({})
+// FE-6.1: a failed per-admin roles fetch used to be indistinguishable from
+// "this admin genuinely has zero roles" — the Roles column rendered "No
+// roles — cannot sign in yet" either way, a fetch failure presented as a
+// confident claim about the admin's access. Tracked separately so the
+// column can tell the two apart.
+const rolesFailed = ref<Record<string, boolean>>({})
 
 async function loadRolesFor(adminId: string): Promise<void> {
   rolesLoading.value = { ...rolesLoading.value, [adminId]: true }
+  rolesFailed.value = { ...rolesFailed.value, [adminId]: false }
   const result = await getAdminRoles(adminId)
   if (result.kind === 'ok') {
     rolesByAdmin.value = { ...rolesByAdmin.value, [adminId]: result.value }
+  } else if (result.kind !== 'reauth') {
+    rolesFailed.value = { ...rolesFailed.value, [adminId]: true }
   }
   rolesLoading.value = { ...rolesLoading.value, [adminId]: false }
 }
@@ -73,7 +100,7 @@ async function loadRolesFor(adminId: string): Promise<void> {
 async function load(): Promise<void> {
   isLoading.value = true
   errorMessage.value = null
-  const result = await listAdmins(page.value)
+  const result = await listAdmins(page.value, LIST_PAGE_SIZE)
   switch (result.kind) {
     case 'ok':
       pageData.value = result.value
@@ -84,16 +111,37 @@ async function load(): Promise<void> {
       // Never actually produced on this surface — parsePlatformResult maps a
       // session-expired outcome to the 'error' arm below instead.
       break
-    default:
+    default: {
       pageData.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
 void load()
 watch(page, load)
+
+const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
+
+const filteredItems = computed<PlatformAdminView[]>(() => {
+  const items = pageData.value?.items ?? []
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return items
+  return items.filter(
+    (a) => a.email.toLowerCase().includes(q) || fullName(a).toLowerCase().includes(q),
+  )
+})
+
+// FE-6.1: filtered client-side over one loaded page (see LIST_PAGE_SIZE
+// above) — honest about the search's real scope if the roster ever
+// outgrows it, same principle FE-5.2 established for the audit log.
+const searchScopeLimited = computed(
+  () => hasActiveFilters.value && (pageData.value?.totalPages ?? 0) > 1,
+)
 
 const dataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
   if (isLoading.value) return 'loading'
@@ -155,7 +203,10 @@ async function handleCreate(): Promise<void> {
         Object.assign(createErrors, result.errors)
         break
       case 'conflict':
-        createBanner.value = result.code === 'platform_admin.email_exists' ? 'A platform admin with this email already exists.' : result.message
+        createBanner.value =
+          result.code === 'platform_admin.email_exists'
+            ? 'A platform admin with this email already exists.'
+            : result.message
         break
       case 'reauth':
         break
@@ -172,7 +223,9 @@ async function handleCreate(): Promise<void> {
 
 const actionPending = ref(false)
 const actionError = ref('')
-const confirmState = ref<{ adminId: string; email: string; action: 'suspend' | 'activate' } | null>(null)
+const confirmState = ref<{ adminId: string; email: string; action: 'suspend' | 'activate' } | null>(
+  null,
+)
 
 function startAction(admin: PlatformAdminView, action: 'suspend' | 'activate'): void {
   if (actionPending.value) return
@@ -220,7 +273,9 @@ async function confirmAction(): Promise<void> {
 }
 
 const confirmTitle = computed(() =>
-  confirmState.value?.action === 'suspend' ? `Suspend ${confirmState.value.email}?` : `Activate ${confirmState.value?.email}?`,
+  confirmState.value?.action === 'suspend'
+    ? `Suspend ${confirmState.value.email}?`
+    : `Activate ${confirmState.value?.email}?`,
 )
 const confirmDescription = computed(() =>
   confirmState.value?.action === 'suspend'
@@ -243,7 +298,12 @@ const rolesDialogError = ref('')
 
 function openRolesDialog(admin: PlatformAdminView): void {
   const current = rolesByAdmin.value[admin.id] ?? []
-  rolesDialogState.value = { adminId: admin.id, email: admin.email, initialRoles: current, selected: new Set(current) }
+  rolesDialogState.value = {
+    adminId: admin.id,
+    email: admin.email,
+    initialRoles: current,
+    selected: new Set(current),
+  }
   rolesDialogError.value = ''
 }
 
@@ -373,23 +433,38 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
   {
     id: 'status',
     header: 'Status',
-    cell: ({ row }) => h(StateBadge, { tone: platformAdminStatusTone(row.original.status), label: row.original.status }),
+    cell: ({ row }) =>
+      h(StateBadge, {
+        tone: platformAdminStatusTone(row.original.status),
+        label: row.original.status,
+      }),
   },
   {
     id: 'roles',
     header: 'Roles',
     cell: ({ row }) => {
       const admin = row.original
-      if (rolesLoading.value[admin.id]) return h('span', { class: 'text-xs text-muted-foreground' }, 'Loading…')
+      if (rolesLoading.value[admin.id])
+        return h('span', { class: 'text-xs text-muted-foreground' }, 'Loading…')
+      if (rolesFailed.value[admin.id])
+        return h('span', { class: 'text-xs text-destructive' }, "Couldn't load roles")
       const roles = rolesByAdmin.value[admin.id] ?? []
-      if (roles.length === 0) return h('span', { class: 'text-xs text-muted-foreground' }, 'No roles — cannot sign in yet')
+      if (roles.length === 0)
+        return h(
+          'span',
+          { class: 'text-xs text-muted-foreground' },
+          'No roles — cannot sign in yet',
+        )
       return h('span', { class: 'text-xs font-mono' }, roles.join(', '))
     },
   },
   {
     id: 'lastLogin',
     header: 'Last login',
-    cell: ({ row }) => (row.original.lastLoginAt ? h(RelativeTime, { value: row.original.lastLoginAt }) : h('span', { class: 'text-sm' }, 'Never')),
+    cell: ({ row }) =>
+      row.original.lastLoginAt
+        ? h(RelativeTime, { value: row.original.lastLoginAt })
+        : h('span', { class: 'text-sm' }, 'Never'),
   },
   {
     id: 'actions',
@@ -404,7 +479,9 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight">Platform admins</h1>
-        <p class="text-sm text-muted-foreground">Create CloseAuth staff admins and manage who holds PLATFORM_ADMIN.</p>
+        <p class="text-sm text-muted-foreground">
+          Create CloseAuth staff admins and manage who holds PLATFORM_ADMIN.
+        </p>
       </div>
       <Dialog :open="isCreateOpen" @update:open="handleCreateOpenChange">
         <DialogTrigger as-child>
@@ -414,8 +491,8 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
           <DialogHeader>
             <DialogTitle>Create a platform admin</DialogTitle>
             <DialogDescription>
-              Creates the account only. It holds no platform roles by default and cannot sign in to this
-              console until PLATFORM_ADMIN is assigned.
+              Creates the account only. It holds no platform roles by default and cannot sign in to
+              this console until PLATFORM_ADMIN is assigned.
             </DialogDescription>
           </DialogHeader>
           <form class="flex flex-col gap-4" novalidate @submit.prevent="handleCreate">
@@ -433,7 +510,11 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
                 />
               </template>
             </FormField>
-            <FormField id="new-platform-admin-password" label="Password" :error="createErrors.password">
+            <FormField
+              id="new-platform-admin-password"
+              label="Password"
+              :error="createErrors.password"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="new-platform-admin-password"
@@ -448,7 +529,11 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
               </template>
             </FormField>
             <div class="grid grid-cols-2 gap-3">
-              <FormField id="new-platform-admin-first-name" label="First name" :error="createErrors.firstName">
+              <FormField
+                id="new-platform-admin-first-name"
+                label="First name"
+                :error="createErrors.firstName"
+              >
                 <template #default="{ hasError, describedBy }">
                   <Input
                     id="new-platform-admin-first-name"
@@ -461,7 +546,11 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
                   />
                 </template>
               </FormField>
-              <FormField id="new-platform-admin-last-name" label="Last name" :error="createErrors.lastName">
+              <FormField
+                id="new-platform-admin-last-name"
+                label="Last name"
+                :error="createErrors.lastName"
+              >
                 <template #default="{ hasError, describedBy }">
                   <Input
                     id="new-platform-admin-last-name"
@@ -476,11 +565,13 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
               </FormField>
             </div>
 
-            <p v-if="createBanner" role="alert" class="text-sm text-destructive">{{ createBanner }}</p>
+            <p v-if="createBanner" role="alert" class="text-sm text-destructive">
+              {{ createBanner }}
+            </p>
 
             <DialogFooter>
               <Button type="submit" :disabled="isCreating">
-                {{ isCreating ? 'Creating…' : 'Create' }}
+                {{ isCreating ? 'Creating…' : 'Create platform admin' }}
               </Button>
             </DialogFooter>
           </form>
@@ -488,26 +579,44 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
       </Dialog>
     </div>
 
-    <p v-if="createSuccessMessage" role="status" class="text-sm rounded-md border border-border bg-muted p-3">
+    <p
+      v-if="createSuccessMessage"
+      role="status"
+      class="text-sm rounded-md border border-border bg-muted p-3"
+    >
       {{ createSuccessMessage }}
     </p>
     <p v-if="actionError" role="alert" class="text-sm text-destructive">{{ actionError }}</p>
 
+    <p
+      v-if="searchScopeLimited"
+      id="admins-search-scope-notice"
+      class="text-xs text-muted-foreground"
+    >
+      Searching only this page's {{ pageData?.items.length ?? 0 }} admins — there may be more on
+      other pages.
+    </p>
+
     <DataTable
       :columns="columns"
-      :data="pageData?.items ?? []"
+      :data="filteredItems"
       :row-key="(a: PlatformAdminView) => a.id"
       :state="dataTableState"
       :row-attrs="(a: PlatformAdminView) => ({ 'data-admin-id': a.id })"
       :page="pageData?.page ?? 0"
-      :size="pageData?.size ?? 20"
+      :size="pageData?.size ?? LIST_PAGE_SIZE"
       :total-elements="pageData?.totalElements ?? 0"
       :total-pages="pageData?.totalPages ?? 0"
       :error-message="errorMessage ?? undefined"
+      :error-retryable="errorRetryable"
+      :has-active-filters="hasActiveFilters"
       empty-title="No platform admins yet."
       empty-description="Create one to get started."
+      filtered-empty-title="No platform admins match your search."
+      filtered-empty-description="Try a different name or email."
       search-placeholder="Search admins…"
       @update:page="(p: number) => (page = p)"
+      @update:search="(q: string) => (searchQuery = q)"
       @retry="load"
     >
       <template #action>
@@ -522,19 +631,30 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
       :confirm-label="confirmState?.action === 'suspend' ? 'Suspend' : 'Activate'"
       :destructive="confirmState?.action === 'suspend'"
       :pending="actionPending"
-      @update:open="(open: boolean) => { if (!open) cancelAction() }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) cancelAction()
+        }
+      "
       @confirm="confirmAction"
     />
 
     <!-- FE-3c: role assign/revoke as a deliberate, Save-gated second step —
          never a checkbox that mutates on contact. -->
-    <Dialog :open="rolesDialogState !== null" @update:open="(open: boolean) => { if (!open) closeRolesDialog() }">
+    <Dialog
+      :open="rolesDialogState !== null"
+      @update:open="
+        (open: boolean) => {
+          if (!open) closeRolesDialog()
+        }
+      "
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Manage roles — {{ rolesDialogState?.email }}</DialogTitle>
           <DialogDescription>
-            Changes take effect only when you click Save. Assigning PLATFORM_ADMIN lets this admin sign in;
-            revoking it (if it's their only role) locks them out.
+            Changes take effect only when you click Save. Assigning PLATFORM_ADMIN lets this admin
+            sign in; revoking it (if it's their only role) locks them out.
           </DialogDescription>
         </DialogHeader>
 
@@ -543,24 +663,43 @@ const columns = computed<ColumnDef<PlatformAdminView, unknown>[]>(() => [
             <Checkbox
               :id="`roles-dialog-${role}`"
               :model-value="rolesDialogState.selected.has(role)"
-              :disabled="rolesDialogPending || (role === 'PLATFORM_ADMIN' && rolesDialogState.adminId === ownAdminId)"
+              :disabled="
+                rolesDialogPending ||
+                (role === 'PLATFORM_ADMIN' && rolesDialogState.adminId === ownAdminId)
+              "
               @update:model-value="(v) => toggleRoleCheckbox(role, Boolean(v))"
             />
             <Label :for="`roles-dialog-${role}`" class="font-mono text-sm">{{ role }}</Label>
-            <span v-if="role === 'PLATFORM_ADMIN' && rolesDialogState.adminId === ownAdminId" class="text-xs text-muted-foreground">
+            <span
+              v-if="role === 'PLATFORM_ADMIN' && rolesDialogState.adminId === ownAdminId"
+              class="text-xs text-muted-foreground"
+            >
               You can't remove your own PLATFORM_ADMIN role.
             </span>
           </div>
         </div>
 
-        <p v-if="rolesDialogError" role="alert" class="text-sm text-destructive">{{ rolesDialogError }}</p>
+        <p v-if="rolesDialogError" role="alert" class="text-sm text-destructive">
+          {{ rolesDialogError }}
+        </p>
 
         <DialogFooter>
-          <Button id="roles-dialog-cancel" type="button" variant="outline" :disabled="rolesDialogPending" @click="closeRolesDialog">
+          <Button
+            id="roles-dialog-cancel"
+            type="button"
+            variant="outline"
+            :disabled="rolesDialogPending"
+            @click="closeRolesDialog"
+          >
             Cancel
           </Button>
-          <Button id="roles-dialog-save" type="button" :disabled="rolesDialogPending" @click="saveRoles">
-            {{ rolesDialogPending ? 'Saving…' : 'Save' }}
+          <Button
+            id="roles-dialog-save"
+            type="button"
+            :disabled="rolesDialogPending"
+            @click="saveRoles"
+          >
+            {{ rolesDialogPending ? 'Saving…' : 'Save roles' }}
           </Button>
         </DialogFooter>
       </DialogContent>

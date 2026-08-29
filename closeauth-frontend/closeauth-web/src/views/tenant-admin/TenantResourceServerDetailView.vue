@@ -36,13 +36,20 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import QueryState from '@/components/admin/QueryState.vue'
 import FormField from '@/components/common/FormField.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import ApplicationRolesPanel from '@/components/admin/ApplicationRolesPanel.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import {
   addScope,
   deleteResourceServer,
@@ -67,6 +74,7 @@ const rsId = String(route.params.rsId ?? '')
 const rs = ref<ResourceServerView | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 
 async function loadRS(): Promise<void> {
   isLoading.value = true
@@ -80,11 +88,14 @@ async function loadRS(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       rs.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -117,7 +128,10 @@ async function handleSaveEdit(): Promise<void> {
 
   isSaving.value = true
   try {
-    const result = await updateResourceServer(slug, rsId, { name: editForm.name, slug: editForm.slug })
+    const result = await updateResourceServer(slug, rsId, {
+      name: editForm.name,
+      slug: editForm.slug,
+    })
     switch (result.kind) {
       case 'ok':
         rs.value = result.value
@@ -182,9 +196,14 @@ async function confirmDelete(): Promise<void> {
 const SCOPE_CATALOG_PAGE_SIZE = 100
 
 const scopes = ref<ScopeView[]>([])
+// FE-6.1: was fetched and stored but never READ anywhere — only page 0 of
+// SCOPE_CATALOG_PAGE_SIZE is ever requested, so a catalog past that size was
+// silently truncated with no notice at all. Now drives the notice below,
+// same pattern TenantUserDetailView.vue's role-catalog panels use.
 const scopesTotalPages = ref(0)
 const isScopesLoading = ref(true)
 const scopesError = ref<string | null>(null)
+const scopesErrorRetryable = ref(true)
 const scopeSearchQuery = ref('')
 
 async function loadScopes(): Promise<void> {
@@ -199,11 +218,14 @@ async function loadScopes(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       scopes.value = []
-      scopesError.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      scopesError.value = props.message
+      scopesErrorRetryable.value = props.retryable
       isScopesLoading.value = false
       break
+    }
   }
 }
 
@@ -232,7 +254,12 @@ const scopeColumns = computed<ColumnDef<ScopeView, unknown>[]>(() => [
     // scopeName is stored bare — the slug: prefix is applied at token
     // issuance, not stored (ResourceServerScope's own doc comment). Spec
     // §6.4.4 wants the full prefixed form displayed regardless.
-    cell: ({ row }) => h('code', { class: 'font-mono text-xs' }, `${rs.value?.slug ?? ''}:${row.original.scopeName}`),
+    cell: ({ row }) =>
+      h(
+        'code',
+        { class: 'font-mono text-xs' },
+        `${rs.value?.slug ?? ''}:${row.original.scopeName}`,
+      ),
   },
   {
     id: 'description',
@@ -264,8 +291,26 @@ const scopeColumns = computed<ColumnDef<ScopeView, unknown>[]>(() => [
     cell: ({ row }): VNode => {
       const scope = row.original
       return h('div', { class: 'flex items-center gap-2' }, [
-        h(Button, { id: `scope-edit-${scope.id}`, variant: 'outline', size: 'sm', onClick: () => openEditScope(scope) }, { default: () => 'Edit' }),
-        h(Button, { id: `scope-delete-${scope.id}`, variant: 'destructive', size: 'sm', onClick: () => (scopePendingDelete.value = scope) }, { default: () => 'Delete' }),
+        h(
+          Button,
+          {
+            id: `scope-edit-${scope.id}`,
+            variant: 'outline',
+            size: 'sm',
+            onClick: () => openEditScope(scope),
+          },
+          { default: () => 'Edit' },
+        ),
+        h(
+          Button,
+          {
+            id: `scope-delete-${scope.id}`,
+            variant: 'destructive',
+            size: 'sm',
+            onClick: () => (scopePendingDelete.value = scope),
+          },
+          { default: () => 'Delete' },
+        ),
       ])
     },
   },
@@ -276,7 +321,12 @@ const scopeColumns = computed<ColumnDef<ScopeView, unknown>[]>(() => [
 type ScopeDialogMode = { kind: 'add' } | { kind: 'edit'; scopeId: string }
 
 const scopeDialog = ref<ScopeDialogMode | null>(null)
-const scopeForm = reactive({ scopeName: '', description: '', isDefault: false, requiresConsent: false })
+const scopeForm = reactive({
+  scopeName: '',
+  description: '',
+  isDefault: false,
+  requiresConsent: false,
+})
 const scopeErrors = reactive<Record<string, string>>({})
 const scopeBanner = ref('')
 const isScopeSaving = ref(false)
@@ -383,14 +433,23 @@ async function confirmScopeDelete(): Promise<void> {
 
 <template>
   <div class="flex flex-col gap-6 max-w-3xl">
-    <Button variant="ghost" size="sm" class="self-start" @click="backToList">&larr; Back to resource servers</Button>
+    <Button variant="ghost" size="sm" class="self-start" @click="backToList"
+      >&larr; Back to resource servers</Button
+    >
 
-    <QueryState :loading="isLoading" :error="errorMessage">
+    <QueryState
+      :loading="isLoading"
+      :error="errorMessage"
+      :retryable="errorRetryable"
+      @retry="loadRS"
+    >
       <div v-if="rs" class="flex flex-col gap-6">
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <div class="flex items-center justify-between">
             <div>
-              <h1 id="rs-detail-name" class="text-xl font-semibold tracking-tight">{{ rs.name }}</h1>
+              <h1 id="rs-detail-name" class="text-xl font-semibold tracking-tight">
+                {{ rs.name }}
+              </h1>
               <p class="text-sm text-muted-foreground font-mono">{{ rs.slug }}</p>
             </div>
             <Badge :variant="rs.autoCreated ? 'secondary' : 'outline'">
@@ -401,15 +460,23 @@ async function confirmScopeDelete(): Promise<void> {
           <div class="flex flex-col gap-1.5">
             <Label>Audience identifier</Label>
             <p class="text-xs text-muted-foreground">
-              Placed in issued tokens' <code class="font-mono">aud</code> claim. Immutable after creation — there is
-              no way to change it here, by design.
+              Placed in issued tokens' <code class="font-mono">aud</code> claim. Immutable after
+              creation — there is no way to change it here, by design.
             </p>
-            <code id="rs-audience" class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all">
+            <code
+              id="rs-audience"
+              class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all"
+            >
               {{ rs.audienceIdentifier }}
             </code>
           </div>
 
-          <form id="rs-edit-form" class="flex flex-col gap-4 border-t border-border pt-4" novalidate @submit.prevent="handleSaveEdit">
+          <form
+            id="rs-edit-form"
+            class="flex flex-col gap-4 border-t border-border pt-4"
+            novalidate
+            @submit.prevent="handleSaveEdit"
+          >
             <FormField id="rs-edit-name" label="Name" :error="editErrors.name">
               <template #default="{ hasError, describedBy }">
                 <Input
@@ -437,7 +504,13 @@ async function confirmScopeDelete(): Promise<void> {
               </template>
             </FormField>
             <p v-if="editBanner" role="alert" class="text-sm text-destructive">{{ editBanner }}</p>
-            <Button id="rs-save-edit" type="submit" variant="outline" class="self-start" :disabled="isSaving">
+            <Button
+              id="rs-save-edit"
+              type="submit"
+              variant="outline"
+              class="self-start"
+              :disabled="isSaving"
+            >
               {{ isSaving ? 'Saving…' : 'Save changes' }}
             </Button>
           </form>
@@ -452,10 +525,12 @@ async function confirmScopeDelete(): Promise<void> {
               Delete resource server
             </Button>
             <p v-else class="text-sm text-muted-foreground">
-              This resource server was created automatically with its client and cannot be deleted directly — delete
-              the client instead.
+              This resource server was created automatically with its client and cannot be deleted
+              directly — delete the client instead.
             </p>
-            <p v-if="deleteError" role="alert" class="text-sm text-destructive mt-2">{{ deleteError }}</p>
+            <p v-if="deleteError" role="alert" class="text-sm text-destructive mt-2">
+              {{ deleteError }}
+            </p>
           </div>
         </div>
 
@@ -466,6 +541,14 @@ async function confirmScopeDelete(): Promise<void> {
           </div>
           <p class="text-xs text-muted-foreground">
             "Used by" counts application roles bundling each scope. Client usage isn't tracked yet.
+          </p>
+          <p
+            v-if="scopesTotalPages > 1"
+            id="scopes-truncated-notice"
+            class="text-xs text-muted-foreground"
+          >
+            This resource server has more than {{ scopes.length }} scopes; only the first
+            {{ scopes.length }} are shown here.
           </p>
 
           <DataTable
@@ -479,6 +562,7 @@ async function confirmScopeDelete(): Promise<void> {
             :total-elements="scopes.length"
             :total-pages="1"
             :error-message="scopesError ?? undefined"
+            :error-retryable="scopesErrorRetryable"
             :has-active-filters="hasActiveScopeFilter"
             empty-title="No scopes defined yet."
             empty-description="Add one to get started."
@@ -488,7 +572,9 @@ async function confirmScopeDelete(): Promise<void> {
             @update:search="(q: string) => (scopeSearchQuery = q)"
             @retry="loadScopes"
           />
-          <p v-if="scopeDeleteError" role="alert" class="text-sm text-destructive">{{ scopeDeleteError }}</p>
+          <p v-if="scopeDeleteError" role="alert" class="text-sm text-destructive">
+            {{ scopeDeleteError }}
+          </p>
         </div>
 
         <div class="rounded-xl border border-border p-6">
@@ -500,7 +586,9 @@ async function confirmScopeDelete(): Promise<void> {
     <Dialog :open="scopeDialog !== null" @update:open="closeScopeDialog">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{{ scopeDialog?.kind === 'add' ? 'Add a scope' : 'Edit scope' }}</DialogTitle>
+          <DialogTitle>{{
+            scopeDialog?.kind === 'add' ? 'Add a scope' : 'Edit scope'
+          }}</DialogTitle>
           <DialogDescription>
             {{
               scopeDialog?.kind === 'add'
@@ -509,7 +597,12 @@ async function confirmScopeDelete(): Promise<void> {
             }}
           </DialogDescription>
         </DialogHeader>
-        <form id="scope-form" class="flex flex-col gap-4" novalidate @submit.prevent="handleScopeSubmit">
+        <form
+          id="scope-form"
+          class="flex flex-col gap-4"
+          novalidate
+          @submit.prevent="handleScopeSubmit"
+        >
           <FormField
             v-if="scopeDialog?.kind === 'add'"
             id="scope-name"
@@ -530,7 +623,10 @@ async function confirmScopeDelete(): Promise<void> {
           </FormField>
           <div v-else class="flex flex-col gap-1.5">
             <Label>Scope name</Label>
-            <code id="scope-name-readonly" class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono">
+            <code
+              id="scope-name-readonly"
+              class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono"
+            >
               {{ scopeForm.scopeName }}
             </code>
           </div>
@@ -555,7 +651,9 @@ async function confirmScopeDelete(): Promise<void> {
               :disabled="isScopeSaving"
               @update:model-value="(v) => (scopeForm.isDefault = Boolean(v))"
             />
-            <Label for="scope-is-default" class="font-normal">Default (auto-granted when a client accesses this resource server)</Label>
+            <Label for="scope-is-default" class="font-normal"
+              >Default (auto-granted when a client accesses this resource server)</Label
+            >
           </div>
           <div class="flex items-center gap-2">
             <Checkbox
@@ -571,7 +669,13 @@ async function confirmScopeDelete(): Promise<void> {
 
           <DialogFooter>
             <Button id="scope-form-submit" type="submit" :disabled="isScopeSaving">
-              {{ isScopeSaving ? 'Saving…' : scopeDialog?.kind === 'add' ? 'Add scope' : 'Save changes' }}
+              {{
+                isScopeSaving
+                  ? 'Saving…'
+                  : scopeDialog?.kind === 'add'
+                    ? 'Add scope'
+                    : 'Save changes'
+              }}
             </Button>
           </DialogFooter>
         </form>
@@ -594,7 +698,11 @@ async function confirmScopeDelete(): Promise<void> {
       :description="`This removes '${scopePendingDelete?.scopeName}' from the catalog. Clients currently requesting it will no longer be able to.`"
       confirm-label="Delete"
       :pending="isScopeDeleting"
-      @update:open="(open) => { if (!open) scopePendingDelete = null }"
+      @update:open="
+        (open) => {
+          if (!open) scopePendingDelete = null
+        }
+      "
       @confirm="confirmScopeDelete"
     />
   </div>

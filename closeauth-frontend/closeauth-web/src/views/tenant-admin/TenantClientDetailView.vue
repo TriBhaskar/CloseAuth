@@ -32,7 +32,7 @@ import TypedConfirmDialog from '@/components/common/TypedConfirmDialog.vue'
 import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import { getClient, regenerateClientSecret, type ClientView } from '@/api/tenantAdminClients'
 import { useTenantAdminClientCredentialsStore } from '@/stores/tenantAdminClientCredentials'
 
@@ -49,7 +49,9 @@ const VALID_TABS: DetailTab[] = ['configuration', 'credentials', 'branding']
 
 function initialTab(): DetailTab {
   const q = route.query.tab
-  return typeof q === 'string' && VALID_TABS.includes(q as DetailTab) ? (q as DetailTab) : 'configuration'
+  return typeof q === 'string' && VALID_TABS.includes(q as DetailTab)
+    ? (q as DetailTab)
+    : 'configuration'
 }
 
 const activeTab = ref<DetailTab>(initialTab())
@@ -63,6 +65,7 @@ watch(activeTab, (tab) => {
 const client = ref<ClientView | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 
 async function loadClient(): Promise<void> {
   isLoading.value = true
@@ -75,11 +78,14 @@ async function loadClient(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       client.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -129,13 +135,22 @@ const canRotate = computed(() => client.value !== null && !client.value.publicCl
 
 <template>
   <div class="flex flex-col gap-6 max-w-3xl">
-    <Button variant="ghost" size="sm" class="self-start" @click="backToClients">&larr; Back to clients</Button>
+    <Button variant="ghost" size="sm" class="self-start" @click="backToClients"
+      >&larr; Back to clients</Button
+    >
 
-    <QueryState :loading="isLoading" :error="errorMessage">
+    <QueryState
+      :loading="isLoading"
+      :error="errorMessage"
+      :retryable="errorRetryable"
+      @retry="loadClient"
+    >
       <div v-if="client" class="flex flex-col gap-6">
         <div class="flex items-center justify-between">
           <div>
-            <h1 id="client-detail-name" class="text-xl font-semibold tracking-tight">{{ client.clientName }}</h1>
+            <h1 id="client-detail-name" class="text-xl font-semibold tracking-tight">
+              {{ client.clientName }}
+            </h1>
             <IdentifierChip kind="client" :value="client.clientId" />
           </div>
           <Badge :variant="client.publicClient ? 'outline' : 'default'">
@@ -182,19 +197,27 @@ const canRotate = computed(() => client.value !== null && !client.value.publicCl
               </dl>
 
               <p class="text-sm text-muted-foreground border-t border-border pt-4">
-                The client secret cannot be shown here — it was displayed exactly once, at creation (or at its last
-                rotation). Only its hash is stored.
+                The client secret cannot be shown here — it was displayed exactly once, at creation
+                (or at its last rotation). Only its hash is stored.
               </p>
 
               <div v-if="canRotate" class="flex flex-col gap-2">
-                <Button id="client-regenerate-secret" variant="outline" class="self-start" @click="isConfirmOpen = true">
+                <Button
+                  id="client-regenerate-secret"
+                  variant="outline"
+                  class="self-start"
+                  @click="isConfirmOpen = true"
+                >
                   Rotate secret
                 </Button>
               </div>
               <p v-else class="text-sm text-muted-foreground">
-                This is a public client (PKCE-only) — it has no secret, so there is nothing to regenerate.
+                This is a public client (PKCE-only) — it has no secret, so there is nothing to
+                regenerate.
               </p>
-              <p v-if="rotateError" role="alert" class="text-sm text-destructive">{{ rotateError }}</p>
+              <p v-if="rotateError" role="alert" class="text-sm text-destructive">
+                {{ rotateError }}
+              </p>
             </div>
           </TabsContent>
 

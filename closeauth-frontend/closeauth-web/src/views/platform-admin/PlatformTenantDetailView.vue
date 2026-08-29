@@ -19,7 +19,14 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import QueryState from '@/components/admin/QueryState.vue'
 import FormField from '@/components/common/FormField.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -29,11 +36,16 @@ import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import StateBadge, { tenantStatusTone } from '@/components/common/StateBadge.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
-import { describeAdminError } from '@/api/problem'
+import { errorStateProps } from '@/api/problem'
 import { tenantSignInUrl } from '@/lib/tenantSignInUrl'
 import { useTenantLifecycleActions } from '@/composables/useTenantLifecycleActions'
 import { useTenantOnboarding } from '@/composables/useTenantOnboarding'
-import { availableTenantActions, getTenant, type TenantLifecycleAction, type TenantView } from '@/api/platformAdminTenants'
+import {
+  availableTenantActions,
+  getTenant,
+  type TenantLifecycleAction,
+  type TenantView,
+} from '@/api/platformAdminTenants'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,6 +54,7 @@ const tenantId = String(route.params.tenantId ?? '')
 const tenant = ref<TenantView | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 
 async function load(): Promise<void> {
   isLoading.value = true
@@ -54,11 +67,14 @@ async function load(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       tenant.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -87,7 +103,9 @@ const signInUrl = computed(() => (tenant.value ? tenantSignInUrl(tenant.value.sl
 const lifecycleTransitions = computed(() =>
   tenant.value ? availableTenantActions(tenant.value.status).filter((a) => a !== 'delete') : [],
 )
-const canDelete = computed(() => (tenant.value ? availableTenantActions(tenant.value.status).includes('delete') : false))
+const canDelete = computed(() =>
+  tenant.value ? availableTenantActions(tenant.value.status).includes('delete') : false,
+)
 
 function transitionEffect(action: TenantLifecycleAction): string {
   return action === 'suspend'
@@ -98,15 +116,24 @@ function transitionEffect(action: TenantLifecycleAction): string {
 
 <template>
   <div class="flex flex-col gap-6 max-w-3xl">
-    <Button variant="ghost" size="sm" class="self-start" @click="backToList">&larr; Back to tenants</Button>
+    <Button variant="ghost" size="sm" class="self-start" @click="backToList"
+      >&larr; Back to tenants</Button
+    >
 
-    <QueryState :loading="isLoading" :error="errorMessage">
+    <QueryState
+      :loading="isLoading"
+      :error="errorMessage"
+      :retryable="errorRetryable"
+      @retry="load"
+    >
       <div v-if="tenant" class="flex flex-col gap-6">
         <!-- Header -->
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <div class="flex items-center justify-between">
             <div>
-              <h1 id="tenant-detail-name" class="text-xl font-semibold tracking-tight">{{ tenant.name }}</h1>
+              <h1 id="tenant-detail-name" class="text-xl font-semibold tracking-tight">
+                {{ tenant.name }}
+              </h1>
               <div class="flex items-center gap-2 mt-1">
                 <IdentifierChip kind="tenant" :value="tenant.slug" />
                 <RelativeTime :value="tenant.createdAt" />
@@ -116,7 +143,10 @@ function transitionEffect(action: TenantLifecycleAction): string {
           </div>
 
           <div class="flex items-center gap-2">
-            <code id="tenant-detail-signin-url" class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all">
+            <code
+              id="tenant-detail-signin-url"
+              class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all"
+            >
               {{ signInUrl }}
             </code>
             <CopyButton
@@ -132,7 +162,9 @@ function transitionEffect(action: TenantLifecycleAction): string {
 
           <div v-if="tenant.adminCount === null" class="text-sm text-muted-foreground">—</div>
           <div v-else class="flex items-center gap-2">
-            <span class="text-sm">{{ tenant.adminCount }} admin{{ tenant.adminCount === 1 ? '' : 's' }}</span>
+            <span class="text-sm"
+              >{{ tenant.adminCount }} admin{{ tenant.adminCount === 1 ? '' : 's' }}</span
+            >
             <StateBadge
               v-if="tenant.status === 'ACTIVE' && tenant.adminCount === 0"
               tone="warn"
@@ -161,14 +193,22 @@ function transitionEffect(action: TenantLifecycleAction): string {
           >
             Reissue a credential
           </Button>
-          <p v-if="tenant.status !== 'ACTIVE'" class="text-xs text-muted-foreground">Activate this tenant to add an admin.</p>
+          <p v-if="tenant.status !== 'ACTIVE'" class="text-xs text-muted-foreground">
+            Activate this tenant to add an admin.
+          </p>
         </div>
 
         <!-- Lifecycle: spelled-out effect per transition (spec §6.3.3), suspend/activate only — delete lives in Danger Zone. -->
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <h2 class="text-lg font-semibold tracking-tight">Lifecycle</h2>
-          <p v-if="lifecycleTransitions.length === 0" class="text-sm text-muted-foreground">No transitions available — this tenant is terminal.</p>
-          <div v-for="action in lifecycleTransitions" :key="action" class="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+          <p v-if="lifecycleTransitions.length === 0" class="text-sm text-muted-foreground">
+            No transitions available — this tenant is terminal.
+          </p>
+          <div
+            v-for="action in lifecycleTransitions"
+            :key="action"
+            class="flex items-center justify-between gap-4 rounded-md border border-border p-3"
+          >
             <p class="text-sm text-muted-foreground">{{ transitionEffect(action) }}</p>
             <Button
               :id="`tenant-detail-action-${action}`"
@@ -180,14 +220,20 @@ function transitionEffect(action: TenantLifecycleAction): string {
               {{ action === 'activate' ? 'Activate' : 'Suspend' }}
             </Button>
           </div>
-          <p v-if="lifecycle.actionError.value" role="alert" class="text-sm text-destructive">{{ lifecycle.actionError.value }}</p>
+          <p v-if="lifecycle.actionError.value" role="alert" class="text-sm text-destructive">
+            {{ lifecycle.actionError.value }}
+          </p>
         </div>
 
         <!-- Danger Zone -->
-        <div v-if="canDelete" class="rounded-xl border border-danger bg-danger-wash p-6 flex flex-col gap-4">
+        <div
+          v-if="canDelete"
+          class="rounded-xl border border-danger bg-danger-wash p-6 flex flex-col gap-4"
+        >
           <h2 class="text-lg font-semibold tracking-tight text-danger">Danger zone</h2>
           <p class="text-sm text-muted-foreground">
-            Soft-delete is terminal: this tenant cannot be reactivated, and its users’ live tokens are revoked immediately.
+            Soft-delete is terminal: this tenant cannot be reactivated, and its users’ live tokens
+            are revoked immediately.
           </p>
           <Button
             id="tenant-detail-delete"
@@ -210,7 +256,11 @@ function transitionEffect(action: TenantLifecycleAction): string {
       :confirm-label="lifecycle.confirmState.value?.action === 'suspend' ? 'Suspend' : 'Activate'"
       :destructive="lifecycle.confirmState.value?.action === 'suspend'"
       :pending="lifecycle.actionPending.value"
-      @update:open="(open: boolean) => { if (!open) lifecycle.cancelAction() }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) lifecycle.cancelAction()
+        }
+      "
       @confirm="lifecycle.confirmAction"
     />
     <TypedConfirmDialog
@@ -221,12 +271,23 @@ function transitionEffect(action: TenantLifecycleAction): string {
       match-label="Type the Tenant ID to confirm"
       confirm-label="Delete"
       :pending="lifecycle.actionPending.value"
-      @update:open="(open: boolean) => { if (!open) lifecycle.cancelAction() }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) lifecycle.cancelAction()
+        }
+      "
       @confirm="lifecycle.confirmAction"
     />
 
     <!-- Onboarding: bootstrap form / reissue picker / activate-failed recovery. -->
-    <Dialog :open="onboarding.onboardingState.value !== null" @update:open="(open: boolean) => { if (!open) onboarding.closeOnboarding() }">
+    <Dialog
+      :open="onboarding.onboardingState.value !== null"
+      @update:open="
+        (open: boolean) => {
+          if (!open) onboarding.closeOnboarding()
+        }
+      "
+    >
       <DialogContent>
         <template v-if="onboarding.onboardingState.value?.kind === 'activateFailed'">
           <DialogHeader>
@@ -234,10 +295,20 @@ function transitionEffect(action: TenantLifecycleAction): string {
             <DialogDescription>{{ onboarding.onboardingState.value.message }}</DialogDescription>
           </DialogHeader>
           <DialogFooter class="flex-col sm:flex-row gap-2">
-            <Button id="tenant-detail-activate-later" type="button" variant="outline" @click="onboarding.closeOnboarding()">
+            <Button
+              id="tenant-detail-activate-later"
+              type="button"
+              variant="outline"
+              @click="onboarding.closeOnboarding()"
+            >
               Later
             </Button>
-            <Button id="tenant-detail-activate-retry" type="button" :disabled="onboarding.activatePending.value" @click="onboarding.retryActivate()">
+            <Button
+              id="tenant-detail-activate-retry"
+              type="button"
+              :disabled="onboarding.activatePending.value"
+              @click="onboarding.retryActivate()"
+            >
               {{ onboarding.activatePending.value ? 'Retrying…' : 'Retry' }}
             </Button>
           </DialogFooter>
@@ -247,8 +318,9 @@ function transitionEffect(action: TenantLifecycleAction): string {
           <DialogHeader>
             <DialogTitle>Add {{ onboarding.onboardingState.value.slug }}'s first admin</DialogTitle>
             <DialogDescription>
-              This address receives the onboarding link and becomes a TENANT_ADMIN for this tenant. It cannot be
-              changed afterwards — reissuing a credential only re-sends to this same address.
+              This address receives the onboarding link and becomes a TENANT_ADMIN for this tenant.
+              It cannot be changed afterwards — reissuing a credential only re-sends to this same
+              address.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -257,7 +329,11 @@ function transitionEffect(action: TenantLifecycleAction): string {
             novalidate
             @submit.prevent="onboarding.handleBootstrap"
           >
-            <FormField id="tenant-detail-bootstrap-email" label="Email" :error="onboarding.bootstrapErrors.email">
+            <FormField
+              id="tenant-detail-bootstrap-email"
+              label="Email"
+              :error="onboarding.bootstrapErrors.email"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="tenant-detail-bootstrap-email"
@@ -271,7 +347,11 @@ function transitionEffect(action: TenantLifecycleAction): string {
                 />
               </template>
             </FormField>
-            <FormField id="tenant-detail-bootstrap-confirm-email" label="Confirm email" :error="onboarding.bootstrapErrors.confirmEmail">
+            <FormField
+              id="tenant-detail-bootstrap-confirm-email"
+              label="Confirm email"
+              :error="onboarding.bootstrapErrors.confirmEmail"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="tenant-detail-bootstrap-confirm-email"
@@ -286,7 +366,11 @@ function transitionEffect(action: TenantLifecycleAction): string {
               </template>
             </FormField>
             <div class="grid grid-cols-2 gap-3">
-              <FormField id="tenant-detail-bootstrap-first-name" label="First name" :error="onboarding.bootstrapErrors.firstName">
+              <FormField
+                id="tenant-detail-bootstrap-first-name"
+                label="First name"
+                :error="onboarding.bootstrapErrors.firstName"
+              >
                 <template #default="{ hasError, describedBy }">
                   <Input
                     id="tenant-detail-bootstrap-first-name"
@@ -299,7 +383,11 @@ function transitionEffect(action: TenantLifecycleAction): string {
                   />
                 </template>
               </FormField>
-              <FormField id="tenant-detail-bootstrap-last-name" label="Last name" :error="onboarding.bootstrapErrors.lastName">
+              <FormField
+                id="tenant-detail-bootstrap-last-name"
+                label="Last name"
+                :error="onboarding.bootstrapErrors.lastName"
+              >
                 <template #default="{ hasError, describedBy }">
                   <Input
                     id="tenant-detail-bootstrap-last-name"
@@ -314,7 +402,13 @@ function transitionEffect(action: TenantLifecycleAction): string {
               </FormField>
             </div>
 
-            <p v-if="onboarding.bootstrapBanner.value" role="alert" class="text-sm text-destructive">{{ onboarding.bootstrapBanner.value }}</p>
+            <p
+              v-if="onboarding.bootstrapBanner.value"
+              role="alert"
+              class="text-sm text-destructive"
+            >
+              {{ onboarding.bootstrapBanner.value }}
+            </p>
 
             <DialogFooter>
               <Button type="submit" :disabled="onboarding.isBootstrapping.value">
@@ -328,17 +422,29 @@ function transitionEffect(action: TenantLifecycleAction): string {
           <DialogHeader>
             <DialogTitle>Reissue an onboarding credential</DialogTitle>
             <DialogDescription>
-              Choose the admin to reissue for — this lists every user in "{{ onboarding.onboardingState.value.slug }}",
-              not filtered to admins (role isn't part of this read). Reissuing re-sends a fresh link and temporary
-              password to that user's existing email; it's refused if they already set their own password.
+              Choose the admin to reissue for — this lists every user in "{{
+                onboarding.onboardingState.value.slug
+              }}", not filtered to admins (role isn't part of this read). Reissuing re-sends a fresh
+              link and temporary password to that user's existing email; it's refused if they
+              already set their own password.
             </DialogDescription>
           </DialogHeader>
-          <p v-if="onboarding.reissueError.value" role="alert" class="text-sm text-destructive">{{ onboarding.reissueError.value }}</p>
-          <div v-if="onboarding.reissueLoading.value" class="text-sm text-muted-foreground">Loading users…</div>
-          <div v-else-if="onboarding.reissueUsers.value && onboarding.reissueUsers.value.length === 0" class="text-sm text-muted-foreground">
+          <p v-if="onboarding.reissueError.value" role="alert" class="text-sm text-destructive">
+            {{ onboarding.reissueError.value }}
+          </p>
+          <div v-if="onboarding.reissueLoading.value" class="text-sm text-muted-foreground">
+            Loading users…
+          </div>
+          <div
+            v-else-if="onboarding.reissueUsers.value && onboarding.reissueUsers.value.length === 0"
+            class="text-sm text-muted-foreground"
+          >
             This tenant has no users yet.
           </div>
-          <ul v-else-if="onboarding.reissueUsers.value" class="flex flex-col gap-2 max-h-72 overflow-y-auto">
+          <ul
+            v-else-if="onboarding.reissueUsers.value"
+            class="flex flex-col gap-2 max-h-72 overflow-y-auto"
+          >
             <li
               v-for="user in onboarding.reissueUsers.value"
               :key="user.id"
@@ -357,7 +463,12 @@ function transitionEffect(action: TenantLifecycleAction): string {
             </li>
           </ul>
           <DialogFooter>
-            <Button id="tenant-detail-reissue-cancel" type="button" variant="outline" @click="onboarding.closeOnboarding()">
+            <Button
+              id="tenant-detail-reissue-cancel"
+              type="button"
+              variant="outline"
+              @click="onboarding.closeOnboarding()"
+            >
               Cancel
             </Button>
           </DialogFooter>
@@ -368,7 +479,7 @@ function transitionEffect(action: TenantLifecycleAction): string {
     <SecretRevealPanel
       :open="onboarding.successPanel.value !== null"
       :title="`First admin created — ${onboarding.successPanel.value?.email ?? ''}`"
-      warning-message="An onboarding link was already emailed to this address — that's the intended path, nothing else is needed. The temporary password below is only a fallback, shown ONE TIME ONLY: it cannot be retrieved again after you leave this dialog. Share it over a channel you trust — it expires as noted below, and they'll be required to choose their own password before they can sign in."
+      warning-message="An onboarding link was already emailed to this address — that's the intended path, nothing else is needed. The temporary password below is only a fallback, shown once: it cannot be retrieved again after you leave this dialog. Share it over a channel you trust — it expires as noted below, and they'll be required to choose their own password before they can sign in."
       :fields="onboarding.successPanelFields.value"
       @continue="onboarding.closeSuccessPanel()"
     />

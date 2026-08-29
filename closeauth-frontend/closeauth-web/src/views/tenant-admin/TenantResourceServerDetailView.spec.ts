@@ -32,7 +32,11 @@ async function createDetailRouter() {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
-      { path: '/t/:slug/console/resource-servers', name: 'tenant-admin-resource-servers', component: { template: '<div />' } },
+      {
+        path: '/t/:slug/console/resource-servers',
+        name: 'tenant-admin-resource-servers',
+        component: { template: '<div />' },
+      },
       {
         path: '/t/:slug/console/resource-servers/:rsId',
         name: 'tenant-admin-resource-server-detail',
@@ -85,10 +89,16 @@ function scopeFixture(overrides: Partial<Record<string, unknown>> = {}) {
 // Every test needs both the RS's own scopes AND ApplicationRolesPanel's
 // roles list stubbed — the panel is unconditionally mounted alongside the
 // scopes card. Callers layer their own scope-list/mutation stubs on top.
-function baseFetch(extra: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined) {
+function baseFetch(
+  extra: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined,
+) {
   return vi.fn((url: string, init?: RequestInit) => {
     if (url === '/t/acme/api/resource-servers/rs-1/roles?page=0&size=100') {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emptyAppRolesPage) })
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(emptyAppRolesPage),
+      })
     }
     const handled = extra(url, init)
     if (handled) return handled
@@ -110,17 +120,27 @@ describe('TenantResourceServerDetailView', () => {
       'fetch',
       baseFetch((url) => {
         if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture()) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture()),
+          }) as unknown as Response
         }
         if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emptyScopesPage) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(emptyScopesPage),
+          }) as unknown as Response
         }
         return undefined
       }),
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     const audienceEl = wrapper.find('#rs-audience')
@@ -131,22 +151,99 @@ describe('TenantResourceServerDetailView', () => {
     expect(wrapper.find('input#rs-audience').exists()).toBe(false)
   })
 
-  it('standalone RS: delete control is present', async () => {
+  it('FE-6.1: totalPages > 1 on the scope catalog renders a truncation notice — was fetched and silently discarded before', async () => {
     vi.stubGlobal(
       'fetch',
       baseFetch((url) => {
         if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture({ autoCreated: false })) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture()),
+          }) as unknown as Response
         }
         if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emptyScopesPage) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [scopeFixture()],
+                page: 0,
+                size: 100,
+                totalElements: 150,
+                totalPages: 2,
+              }),
+          }) as unknown as Response
         }
         return undefined
       }),
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
+    await flushPromises()
+
+    const notice = wrapper.find('#scopes-truncated-notice')
+    expect(notice.exists()).toBe(true)
+    expect(notice.text()).toContain('more than 1 scopes')
+  })
+
+  it('FE-6.1: a non-retryable RS-load failure (403) shows ErrorState with no Retry action', async () => {
+    vi.stubGlobal(
+      'fetch',
+      baseFetch((url) => {
+        if (url === '/t/acme/api/resource-servers/rs-1') {
+          return Promise.resolve({
+            ok: false,
+            status: 403,
+            json: () => Promise.resolve({ error: 'forbidden', error_description: 'Forbidden' }),
+          }) as unknown as Response
+        }
+        return undefined
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
+    await flushPromises()
+
+    const alert = wrapper.find('[role="alert"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain("You don't have access to this.")
+    expect(alert.find('button').exists()).toBe(false)
+  })
+
+  it('standalone RS: delete control is present', async () => {
+    vi.stubGlobal(
+      'fetch',
+      baseFetch((url) => {
+        if (url === '/t/acme/api/resource-servers/rs-1') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture({ autoCreated: false })),
+          }) as unknown as Response
+        }
+        if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(emptyScopesPage),
+          }) as unknown as Response
+        }
+        return undefined
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     expect(wrapper.find('#rs-delete-button').exists()).toBe(true)
@@ -157,35 +254,17 @@ describe('TenantResourceServerDetailView', () => {
       'fetch',
       baseFetch((url) => {
         if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture({ autoCreated: true })) }) as unknown as Response
-        }
-        if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emptyScopesPage) }) as unknown as Response
-        }
-        return undefined
-      }),
-    )
-
-    const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
-    await flushPromises()
-
-    expect(wrapper.find('#rs-delete-button').exists()).toBe(false)
-    expect(wrapper.text()).toContain('created automatically with its client and cannot be deleted directly')
-  })
-
-  it('scope catalog shows the slug-prefixed name and the "used by N roles" count', async () => {
-    vi.stubGlobal(
-      'fetch',
-      baseFetch((url) => {
-        if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture()) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture({ autoCreated: true })),
+          }) as unknown as Response
         }
         if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [scopeFixture()], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+            json: () => Promise.resolve(emptyScopesPage),
           }) as unknown as Response
         }
         return undefined
@@ -193,7 +272,50 @@ describe('TenantResourceServerDetailView', () => {
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('#rs-delete-button').exists()).toBe(false)
+    expect(wrapper.text()).toContain(
+      'created automatically with its client and cannot be deleted directly',
+    )
+  })
+
+  it('scope catalog shows the slug-prefixed name and the "used by N roles" count', async () => {
+    vi.stubGlobal(
+      'fetch',
+      baseFetch((url) => {
+        if (url === '/t/acme/api/resource-servers/rs-1') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture()),
+          }) as unknown as Response
+        }
+        if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [scopeFixture()],
+                page: 0,
+                size: 100,
+                totalElements: 1,
+                totalPages: 1,
+              }),
+          }) as unknown as Response
+        }
+        return undefined
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     const row = wrapper.find('[data-scope-id="scope-1"]')
@@ -207,25 +329,45 @@ describe('TenantResourceServerDetailView', () => {
       'fetch',
       baseFetch((url, init) => {
         if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture()) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture()),
+          }) as unknown as Response
         }
         if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [scopeFixture()], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+            json: () =>
+              Promise.resolve({
+                items: [scopeFixture()],
+                page: 0,
+                size: 100,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           }) as unknown as Response
         }
         if (url === '/api/csrf') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ token: 'csrf-token' }),
+          }) as unknown as Response
         }
-        if (url === '/t/acme/api/resource-servers/rs-1/scopes/scope-1' && init?.method === 'PATCH') {
+        if (
+          url === '/t/acme/api/resource-servers/rs-1/scopes/scope-1' &&
+          init?.method === 'PATCH'
+        ) {
           patchBodies.push(JSON.parse(String(init.body)))
           return Promise.resolve({
             ok: true,
             status: 200,
             json: () =>
-              Promise.resolve(scopeFixture({ description: 'Updated', isDefault: false, requiresConsent: true })),
+              Promise.resolve(
+                scopeFixture({ description: 'Updated', isDefault: false, requiresConsent: true }),
+              ),
           }) as unknown as Response
         }
         return undefined
@@ -233,7 +375,9 @@ describe('TenantResourceServerDetailView', () => {
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     await wrapper.find('#scope-edit-scope-1').trigger('click')
@@ -245,7 +389,11 @@ describe('TenantResourceServerDetailView', () => {
     await flushPromises()
 
     expect(patchBodies).toHaveLength(1)
-    expect(patchBodies[0]).toEqual({ description: 'Updated', isDefault: false, requiresConsent: true })
+    expect(patchBodies[0]).toEqual({
+      description: 'Updated',
+      isDefault: false,
+      requiresConsent: true,
+    })
   })
 
   it('scope edit dialog shows the scope name read-only — no editable field for it', async () => {
@@ -253,13 +401,24 @@ describe('TenantResourceServerDetailView', () => {
       'fetch',
       baseFetch((url) => {
         if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture()) }) as unknown as Response
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture()),
+          }) as unknown as Response
         }
         if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [scopeFixture()], page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+            json: () =>
+              Promise.resolve({
+                items: [scopeFixture()],
+                page: 0,
+                size: 100,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           }) as unknown as Response
         }
         return undefined
@@ -267,7 +426,9 @@ describe('TenantResourceServerDetailView', () => {
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     await wrapper.find('#scope-edit-scope-1').trigger('click')
@@ -282,10 +443,18 @@ describe('TenantResourceServerDetailView', () => {
       'fetch',
       vi.fn((url: string) => {
         if (url === '/t/acme/api/resource-servers/rs-1') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rsFixture()) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rsFixture()),
+          })
         }
         if (url === '/t/acme/api/resource-servers/rs-1/scopes?page=0&size=100') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emptyScopesPage) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(emptyScopesPage),
+          })
         }
         if (url === '/t/acme/api/resource-servers/rs-1/roles?page=0&size=100') {
           return Promise.resolve({
@@ -293,7 +462,19 @@ describe('TenantResourceServerDetailView', () => {
             status: 200,
             json: () =>
               Promise.resolve({
-                items: [{ id: 'app-role-1', resourceServerId: 'rs-1', tenantId: 'tenant-1', name: 'Invoice reader', description: null, isDefault: false, isSystem: false, createdAt: '', updatedAt: '' }],
+                items: [
+                  {
+                    id: 'app-role-1',
+                    resourceServerId: 'rs-1',
+                    tenantId: 'tenant-1',
+                    name: 'Invoice reader',
+                    description: null,
+                    isDefault: false,
+                    isSystem: false,
+                    createdAt: '',
+                    updatedAt: '',
+                  },
+                ],
                 page: 0,
                 size: 100,
                 totalElements: 1,
@@ -306,9 +487,13 @@ describe('TenantResourceServerDetailView', () => {
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantResourceServerDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantResourceServerDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
-    expect(wrapper.find('[data-application-role-id="app-role-1"]').text()).toContain('Invoice reader')
+    expect(wrapper.find('[data-application-role-id="app-role-1"]').text()).toContain(
+      'Invoice reader',
+    )
   })
 })

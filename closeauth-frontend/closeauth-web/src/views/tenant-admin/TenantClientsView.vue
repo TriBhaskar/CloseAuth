@@ -18,7 +18,7 @@ import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import CreateClientDialog from '@/components/admin/CreateClientDialog.vue'
-import { describeAdminError } from '@/api/problem'
+import { errorStateProps } from '@/api/problem'
 import { listClients, type ClientView } from '@/api/tenantAdminClients'
 import type { PageView } from '@/api/tenantAdminUsers'
 
@@ -37,6 +37,7 @@ const page = ref(0)
 const pageData = ref<PageView<ClientView> | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 const searchQuery = ref('')
 
 async function load(): Promise<void> {
@@ -50,11 +51,14 @@ async function load(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       pageData.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -76,12 +80,22 @@ function handleWizardOpenChange(open: boolean): void {
 
 const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
 
+// FE-6.1: this list is filtered CLIENT-SIDE over one loaded page
+// (LIST_PAGE_SIZE, see the header comment) — if the tenant's real client
+// count exceeds it, a search here can never see the rest. Honest about that
+// scope rather than silently presenting a partial search as complete —
+// same principle FE-5.2 established for the audit log's filters.
+const searchScopeLimited = computed(
+  () => hasActiveFilters.value && (pageData.value?.totalPages ?? 0) > 1,
+)
+
 const filteredItems = computed<ClientView[]>(() => {
   const items = pageData.value?.items ?? []
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return items
   return items.filter(
-    (client) => client.clientName.toLowerCase().includes(q) || client.clientId.toLowerCase().includes(q),
+    (client) =>
+      client.clientName.toLowerCase().includes(q) || client.clientId.toLowerCase().includes(q),
   )
 })
 
@@ -110,8 +124,11 @@ const columns = computed<ColumnDef<ClientView, unknown>[]>(() => [
     id: 'type',
     header: 'Type',
     cell: ({ row }) =>
-      h(Badge, { variant: row.original.publicClient ? 'outline' : 'secondary' },
-        { default: () => (row.original.publicClient ? 'Public' : 'Confidential') }),
+      h(
+        Badge,
+        { variant: row.original.publicClient ? 'outline' : 'secondary' },
+        { default: () => (row.original.publicClient ? 'Public' : 'Confidential') },
+      ),
   },
   {
     id: 'grantTypes',
@@ -131,10 +148,21 @@ const columns = computed<ColumnDef<ClientView, unknown>[]>(() => [
     <div class="flex items-start justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight">Clients</h1>
-        <p class="text-sm text-muted-foreground">Register OAuth2 clients for applications that authenticate against this tenant.</p>
+        <p class="text-sm text-muted-foreground">
+          Register OAuth2 clients for applications that authenticate against this tenant.
+        </p>
       </div>
       <Button id="open-create-client-wizard" @click="isWizardOpen = true">Register a client</Button>
     </div>
+
+    <p
+      v-if="searchScopeLimited"
+      id="clients-search-scope-notice"
+      class="text-xs text-muted-foreground"
+    >
+      Searching only this page's {{ pageData?.items.length ?? 0 }} clients — there may be more on
+      other pages.
+    </p>
 
     <DataTable
       :columns="columns"
@@ -148,6 +176,7 @@ const columns = computed<ColumnDef<ClientView, unknown>[]>(() => [
       :total-elements="pageData?.totalElements ?? 0"
       :total-pages="pageData?.totalPages ?? 0"
       :error-message="errorMessage ?? undefined"
+      :error-retryable="errorRetryable"
       :has-active-filters="hasActiveFilters"
       empty-title="No clients yet."
       empty-description="Register one to get started."

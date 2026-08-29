@@ -1,13 +1,50 @@
 import { fileURLToPath, URL } from 'node:url'
 
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 
+// FE-6.5: preloads the two Latin-subset variable font files (Geist Sans +
+// Geist Mono — the only script this app's copy actually uses; Cyrillic and
+// Latin-Extended chunks from the same @fontsource-variable packages are
+// left to load lazily, same as today) so the browser fetches them
+// immediately rather than discovering them only after main.css parses.
+// `font-display: swap` (base.css's own @import) already avoids a blocked
+// first paint; this closes the remaining gap — text re-flowing into the
+// real face after a visible fallback-font flash.
+//
+// Runs as `transformIndexHtml`'s POST hook so `ctx.bundle` (the real,
+// content-hashed output filenames) is available — hand-writing the hash
+// here would break on every dependency bump. `-ext-wght` (Latin Extended)
+// deliberately does NOT match `-wght` immediately following `latin`, so it
+// isn't preloaded; only the two files this regex intends survive.
+function fontPreloadPlugin(): Plugin {
+  return {
+    name: 'closeauth-font-preload',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        if (!ctx.bundle) return html // dev server — no build output to reference
+        const fontFiles = Object.keys(ctx.bundle).filter((file) =>
+          /^assets\/geist(-mono)?-latin-wght-normal-.*\.woff2$/.test(file),
+        )
+        if (fontFiles.length === 0) return html
+        const links = fontFiles
+          .map(
+            (file) =>
+              `    <link rel="preload" href="/${file}" as="font" type="font/woff2" crossorigin>`,
+          )
+          .join('\n')
+        return html.replace('</head>', `${links}\n  </head>`)
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [tailwindcss(), vue(), vueDevTools()],
+  plugins: [tailwindcss(), vue(), vueDevTools(), fontPreloadPlugin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

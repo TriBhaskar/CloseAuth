@@ -29,11 +29,19 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import FormField from '@/components/common/FormField.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import {
   createRole,
   deleteRole,
@@ -58,7 +66,12 @@ const ROLE_LIST_PAGE_SIZE = 100
 const roles = ref<TenantRoleView[]>([])
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 const searchQuery = ref('')
+// FE-6.1: only page 0 is ever fetched — totalPages > 1 means the catalog is
+// bigger than ROLE_LIST_PAGE_SIZE and this list is silently incomplete.
+// Same pattern TenantUserDetailView.vue's role-catalog panels already use.
+const rolesTruncated = ref(false)
 
 async function load(): Promise<void> {
   isLoading.value = true
@@ -67,15 +80,19 @@ async function load(): Promise<void> {
   switch (result.kind) {
     case 'ok':
       roles.value = result.value.items
+      rolesTruncated.value = result.value.totalPages > 1
       isLoading.value = false
       break
     case 'reauth':
       break
-    default:
+    default: {
       roles.value = []
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -296,7 +313,8 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
   {
     id: 'system',
     header: 'System',
-    cell: ({ row }) => (row.original.isSystem ? h(Badge, { variant: 'secondary' }, { default: () => 'System' }) : '—'),
+    cell: ({ row }) =>
+      row.original.isSystem ? h(Badge, { variant: 'secondary' }, { default: () => 'System' }) : '—',
   },
   {
     id: 'actions',
@@ -305,16 +323,49 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
       const role = row.original
       const actions = tenantRoleActions(role)
       const children: VNode[] = [
-        h(Button, { id: `role-assignees-${role.id}`, variant: 'outline', size: 'sm', onClick: () => openAssignees(role) }, { default: () => 'Assignees' }),
+        h(
+          Button,
+          {
+            id: `role-assignees-${role.id}`,
+            variant: 'outline',
+            size: 'sm',
+            onClick: () => openAssignees(role),
+          },
+          { default: () => 'Assignees' },
+        ),
       ]
       if (actions.includes('edit')) {
-        children.push(h(Button, { id: `role-edit-${role.id}`, variant: 'outline', size: 'sm', onClick: () => openEdit(role) }, { default: () => 'Edit' }))
+        children.push(
+          h(
+            Button,
+            {
+              id: `role-edit-${role.id}`,
+              variant: 'outline',
+              size: 'sm',
+              onClick: () => openEdit(role),
+            },
+            { default: () => 'Edit' },
+          ),
+        )
       }
       if (actions.includes('delete')) {
-        children.push(h(Button, { id: `role-delete-${role.id}`, variant: 'destructive', size: 'sm', onClick: () => (pendingDelete.value = role) }, { default: () => 'Delete' }))
+        children.push(
+          h(
+            Button,
+            {
+              id: `role-delete-${role.id}`,
+              variant: 'destructive',
+              size: 'sm',
+              onClick: () => (pendingDelete.value = role),
+            },
+            { default: () => 'Delete' },
+          ),
+        )
       }
       if (actions.length === 0) {
-        children.push(h('span', { class: 'text-xs text-muted-foreground' }, 'System — cannot be changed'))
+        children.push(
+          h('span', { class: 'text-xs text-muted-foreground' }, 'System — cannot be changed'),
+        )
       }
       return h('div', { class: 'flex flex-wrap items-center gap-2' }, children)
     },
@@ -327,7 +378,9 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight">Tenant roles</h1>
-        <p class="text-sm text-muted-foreground">Manage this tenant's roles. System roles are immutable.</p>
+        <p class="text-sm text-muted-foreground">
+          Manage this tenant's roles. System roles are immutable.
+        </p>
       </div>
       <Dialog :open="isCreateOpen" @update:open="handleCreateOpenChange">
         <DialogTrigger as-child>
@@ -353,7 +406,11 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
               </template>
             </FormField>
 
-            <FormField id="new-role-description" label="Description" :error="createErrors.description">
+            <FormField
+              id="new-role-description"
+              label="Description"
+              :error="createErrors.description"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="new-role-description"
@@ -373,18 +430,29 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
                 :disabled="isCreating"
                 @update:model-value="(v) => (createForm.isDefault = Boolean(v))"
               />
-              <Label for="new-role-is-default" class="font-normal">Default (auto-granted to new users)</Label>
+              <Label for="new-role-is-default" class="font-normal"
+                >Default (auto-granted to new users)</Label
+              >
             </div>
 
-            <p v-if="createBanner" role="alert" class="text-sm text-destructive">{{ createBanner }}</p>
+            <p v-if="createBanner" role="alert" class="text-sm text-destructive">
+              {{ createBanner }}
+            </p>
 
             <DialogFooter>
-              <Button type="submit" :disabled="isCreating">{{ isCreating ? 'Creating…' : 'Create role' }}</Button>
+              <Button type="submit" :disabled="isCreating">{{
+                isCreating ? 'Creating…' : 'Create role'
+              }}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
     </div>
+
+    <p v-if="rolesTruncated" id="roles-truncated-notice" class="text-xs text-muted-foreground">
+      This tenant has more than {{ roles.length }} roles; only the first {{ roles.length }} are
+      shown here.
+    </p>
 
     <DataTable
       :columns="columns"
@@ -397,6 +465,7 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
       :total-elements="roles.length"
       :total-pages="1"
       :error-message="errorMessage ?? undefined"
+      :error-retryable="errorRetryable"
       :has-active-filters="hasActiveFilters"
       empty-title="No tenant roles yet."
       empty-description="Create one to get started."
@@ -412,12 +481,22 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit role</DialogTitle>
-          <DialogDescription>The role name is immutable and shown here read-only.</DialogDescription>
+          <DialogDescription
+            >The role name is immutable and shown here read-only.</DialogDescription
+          >
         </DialogHeader>
-        <form id="role-edit-form" class="flex flex-col gap-4" novalidate @submit.prevent="handleEditSubmit">
+        <form
+          id="role-edit-form"
+          class="flex flex-col gap-4"
+          novalidate
+          @submit.prevent="handleEditSubmit"
+        >
           <div class="flex flex-col gap-1.5">
             <Label>Name</Label>
-            <code id="role-edit-name-readonly" class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono">
+            <code
+              id="role-edit-name-readonly"
+              class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono"
+            >
               {{ editingRole?.name }}
             </code>
           </div>
@@ -442,7 +521,9 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
               :disabled="isSaving"
               @update:model-value="(v) => (editForm.isDefault = Boolean(v))"
             />
-            <Label for="role-edit-is-default" class="font-normal">Default (auto-granted to new users)</Label>
+            <Label for="role-edit-is-default" class="font-normal"
+              >Default (auto-granted to new users)</Label
+            >
           </div>
 
           <p v-if="editBanner" role="alert" class="text-sm text-destructive">{{ editBanner }}</p>
@@ -464,12 +545,23 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
         </DialogHeader>
         <div class="flex flex-col gap-2">
           <p v-if="isAssigneesLoading" class="text-sm text-muted-foreground">Loading…</p>
-          <p v-else-if="assigneesError" role="alert" class="text-sm text-destructive">{{ assigneesError }}</p>
-          <p v-else-if="assignees.length === 0" class="text-sm text-muted-foreground">No one holds this role yet.</p>
+          <p v-else-if="assigneesError" role="alert" class="text-sm text-destructive">
+            {{ assigneesError }}
+          </p>
+          <p v-else-if="assignees.length === 0" class="text-sm text-muted-foreground">
+            No one holds this role yet.
+          </p>
           <ul v-else class="flex flex-col gap-2">
-            <li v-for="a in assignees" :key="a.userId" :data-assignee-id="a.userId" class="flex flex-col gap-0.5 rounded-md border border-line p-2 text-sm">
+            <li
+              v-for="a in assignees"
+              :key="a.userId"
+              :data-assignee-id="a.userId"
+              class="flex flex-col gap-0.5 rounded-md border border-line p-2 text-sm"
+            >
               <span>{{ a.email }}</span>
-              <span class="text-xs text-muted-foreground">{{ assigneeName(a) }} · {{ a.status }}</span>
+              <span class="text-xs text-muted-foreground"
+                >{{ assigneeName(a) }} · {{ a.status }}</span
+              >
             </li>
           </ul>
         </div>
@@ -485,7 +577,11 @@ const columns = computed<ColumnDef<TenantRoleView, unknown>[]>(() => [
       :description="`Every user holding '${pendingDelete?.name}' loses it immediately — CloseAuth cannot report how many users that affects.`"
       confirm-label="Delete"
       :pending="isDeleting"
-      @update:open="(open) => { if (!open) pendingDelete = null }"
+      @update:open="
+        (open) => {
+          if (!open) pendingDelete = null
+        }
+      "
       @confirm="confirmDelete"
     />
   </div>

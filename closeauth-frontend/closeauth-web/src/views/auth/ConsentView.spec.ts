@@ -43,7 +43,11 @@ function consentContextResponse() {
         state: 'st-abc123',
         scopes: [
           { scope: 'openid', description: 'Verify your identity', requiresConsent: false },
-          { scope: 'todo-api:write', description: 'Modify your to-do items', requiresConsent: true },
+          {
+            scope: 'todo-api:write',
+            description: 'Modify your to-do items',
+            requiresConsent: true,
+          },
         ],
         alreadyGranted: [],
         // THE field the BFF proxy injects (handlers_consent_proxy.go) — the
@@ -124,11 +128,13 @@ describe('ConsentView', () => {
       (call[0] as string).startsWith('/oauth2/consent'),
     )
     expect(consentCalls).toHaveLength(1)
-    expect(consentCalls[0]?.[0]).toBe('/oauth2/consent?client_id=app-123&scope=openid%20todo-api%3Awrite&state=st-abc123')
+    expect(consentCalls[0]?.[0]).toBe(
+      '/oauth2/consent?client_id=app-123&scope=openid%20todo-api%3Awrite&state=st-abc123',
+    )
     expect(wrapper.text()).toContain('Acme App')
   })
 
-  it('THE safety-critical test: both the approve and deny forms POST natively to the backend\'s own origin, never the BFF/relative, and are never intercepted by JavaScript', async () => {
+  it("THE safety-critical test: both the approve and deny forms POST natively to the backend's own origin, never the BFF/relative, and are never intercepted by JavaScript", async () => {
     const wrapper = await mountConsentView()
 
     const approveForm = wrapper.find('[data-testid="approve-form"]')
@@ -166,7 +172,7 @@ describe('ConsentView', () => {
     }
   })
 
-  it('the deny form carries ONLY client_id and state — structurally no scope input at all, regardless of the approve form\'s checkbox state', async () => {
+  it("the deny form carries ONLY client_id and state — structurally no scope input at all, regardless of the approve form's checkbox state", async () => {
     const wrapper = await mountConsentView()
 
     // Even with the approve form's checkbox checked, the deny form (a
@@ -215,6 +221,61 @@ describe('ConsentView', () => {
     expect(wrapper.find('[data-testid="approve-form"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="deny-form"]').exists()).toBe(false)
   })
+
+  it('FE-6.1: Retry after a context-fetch failure recovers and renders the forms', async () => {
+    let shouldFail = true
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.startsWith('/branding')) return brandingResponse()
+        if (url.startsWith('/oauth2/consent')) {
+          return shouldFail ? Promise.resolve({ ok: false, status: 502 }) : consentContextResponse()
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const wrapper = await mountConsentView()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="approve-form"]').exists()).toBe(false)
+
+    shouldFail = false
+    await wrapper.find('button').trigger('click') // the Retry action
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="approve-form"]').exists()).toBe(true)
+  })
+
+  it('FE-6.1: an empty scopes array shows a message and disables Allow — never approving nothing silently', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.startsWith('/branding')) return brandingResponse()
+        if (url.startsWith('/oauth2/consent')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                clientId: 'app-123',
+                clientName: 'Acme App',
+                state: 'st-abc123',
+                scopes: [],
+                alreadyGranted: [],
+                authorizeUrl: AUTHORIZE_URL,
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const wrapper = await mountConsentView()
+
+    expect(wrapper.text()).toContain("doesn't ask for any specific access")
+    const allowButton = wrapper.find('[data-testid="approve-form"] button[type="submit"]')
+    expect(allowButton.attributes('disabled')).toBeDefined()
+  })
 })
 
 // FE-2f: the display requirements spec §6.2.8 names beyond the
@@ -222,7 +283,7 @@ describe('ConsentView', () => {
 // scope string, alreadyGranted pre-check + label, the description fallback,
 // and the client-initial avatar. The existing 8 tests above are untouched.
 describe('ConsentView — FE-2f display requirements', () => {
-  it('shows each scope\'s raw scope string in mono alongside its description', async () => {
+  it("shows each scope's raw scope string in mono alongside its description", async () => {
     const wrapper = await mountConsentView()
 
     const text = wrapper.text()
@@ -253,7 +314,11 @@ describe('ConsentView — FE-2f display requirements', () => {
                 state: 'st-abc123',
                 scopes: [
                   { scope: 'openid', description: 'Verify your identity', requiresConsent: false },
-                  { scope: 'todo-api:write', description: 'Modify your to-do items', requiresConsent: true },
+                  {
+                    scope: 'todo-api:write',
+                    description: 'Modify your to-do items',
+                    requiresConsent: true,
+                  },
                 ],
                 // Stubbed non-empty — the only way to exercise this path
                 // today; through the real BFF proxy this is always empty
@@ -295,7 +360,9 @@ describe('ConsentView — FE-2f display requirements', () => {
                 clientId: 'app-123',
                 clientName: 'Acme App',
                 state: 'st-abc123',
-                scopes: [{ scope: 'weird-rs:custom-scope', description: '', requiresConsent: true }],
+                scopes: [
+                  { scope: 'weird-rs:custom-scope', description: '', requiresConsent: true },
+                ],
                 alreadyGranted: [],
                 authorizeUrl: AUTHORIZE_URL,
               }),

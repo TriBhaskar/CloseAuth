@@ -26,8 +26,15 @@ import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import StateBadge, { userStatusTone } from '@/components/common/StateBadge.vue'
 import NewPasswordFields from '@/components/common/NewPasswordFields.vue'
-import { describeAdminError } from '@/api/problem'
-import { getMe, listMySessions, revokeMySession, changeMyPassword, type MeProfileView, type MySessionView } from '@/api/meAccount'
+import { describeAdminError, errorStateProps } from '@/api/problem'
+import {
+  getMe,
+  listMySessions,
+  revokeMySession,
+  changeMyPassword,
+  type MeProfileView,
+  type MySessionView,
+} from '@/api/meAccount'
 import { useTenantAdminSessionStore } from '@/stores/tenantAdmin'
 
 const route = useRoute()
@@ -42,7 +49,9 @@ const VALID_TABS: AccountTab[] = ['profile', 'password', 'sessions']
 
 function initialTab(): AccountTab {
   const q = route.query.tab
-  return typeof q === 'string' && VALID_TABS.includes(q as AccountTab) ? (q as AccountTab) : 'profile'
+  return typeof q === 'string' && VALID_TABS.includes(q as AccountTab)
+    ? (q as AccountTab)
+    : 'profile'
 }
 
 const activeTab = ref<AccountTab>(initialTab())
@@ -57,6 +66,7 @@ function onTabChange(v: string | number): void {
 const profile = ref<MeProfileView | null>(null)
 const isProfileLoading = ref(true)
 const profileError = ref<string | null>(null)
+const profileErrorRetryable = ref(true)
 
 async function loadProfile(): Promise<void> {
   isProfileLoading.value = true
@@ -69,10 +79,13 @@ async function loadProfile(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
-      profileError.value = describeAdminError(result)
+    default: {
+      const props = errorStateProps(result)
+      profileError.value = props.message
+      profileErrorRetryable.value = props.retryable
       isProfileLoading.value = false
       break
+    }
   }
 }
 
@@ -93,13 +106,16 @@ async function handlePasswordSubmit(): Promise<void> {
   const newPassword = passwordFieldsRef.value?.validate()
   if (!newPassword) return
   if (!currentPassword.value) {
-    currentPasswordError.value = 'Required.'
+    currentPasswordError.value = 'Enter your current password.'
     return
   }
 
   isChangingPassword.value = true
   try {
-    const result = await changeMyPassword(slug, { currentPassword: currentPassword.value, newPassword })
+    const result = await changeMyPassword(slug, {
+      currentPassword: currentPassword.value,
+      newPassword,
+    })
     switch (result.kind) {
       case 'ok':
         passwordChanged.value = true
@@ -135,6 +151,7 @@ function signOutAfterPasswordChange(): void {
 const sessions = ref<MySessionView[]>([])
 const isSessionsLoading = ref(true)
 const sessionsError = ref<string | null>(null)
+const sessionsErrorRetryable = ref(true)
 const revokeTarget = ref<MySessionView | null>(null)
 const isRevoking = ref(false)
 const revokeError = ref('')
@@ -150,10 +167,13 @@ async function loadSessions(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
-      sessionsError.value = describeAdminError(result)
+    default: {
+      const props = errorStateProps(result)
+      sessionsError.value = props.message
+      sessionsErrorRetryable.value = props.retryable
       isSessionsLoading.value = false
       break
+    }
   }
 }
 
@@ -185,7 +205,10 @@ onMounted(() => {
 })
 
 const displayName = computed(() =>
-  profile.value ? [profile.value.firstName, profile.value.lastName].filter(Boolean).join(' ') || 'No name on file' : '',
+  profile.value
+    ? [profile.value.firstName, profile.value.lastName].filter(Boolean).join(' ') ||
+      'No name on file'
+    : '',
 )
 </script>
 
@@ -193,7 +216,9 @@ const displayName = computed(() =>
   <div class="flex flex-col gap-6 max-w-3xl">
     <div>
       <h1 class="text-xl font-semibold tracking-tight">My account</h1>
-      <p class="text-sm text-muted-foreground">Your own profile, password, and sessions for this tenant.</p>
+      <p class="text-sm text-muted-foreground">
+        Your own profile, password, and sessions for this tenant.
+      </p>
     </div>
 
     <Tabs :model-value="activeTab" @update:model-value="onTabChange">
@@ -206,11 +231,18 @@ const displayName = computed(() =>
       </TabsList>
 
       <TabsContent value="profile">
-        <QueryState :loading="isProfileLoading" :error="profileError">
+        <QueryState
+          :loading="isProfileLoading"
+          :error="profileError"
+          :retryable="profileErrorRetryable"
+          @retry="loadProfile"
+        >
           <div v-if="profile" class="rounded-xl border border-border p-6 flex flex-col gap-4">
             <div class="flex items-center justify-between">
               <div class="flex flex-col gap-1">
-                <h2 id="account-profile-email" class="text-lg font-semibold tracking-tight">{{ profile.email }}</h2>
+                <h2 id="account-profile-email" class="text-lg font-semibold tracking-tight">
+                  {{ profile.email }}
+                </h2>
                 <p class="text-sm text-muted-foreground">{{ displayName }}</p>
               </div>
               <StateBadge :tone="userStatusTone(profile.status)" :label="profile.status" />
@@ -222,8 +254,8 @@ const displayName = computed(() =>
               <dd>{{ profile.roles.join(', ') || 'None' }}</dd>
             </dl>
             <p class="text-xs text-muted-foreground">
-              Profile fields are read-only here — there is no way to edit your name, email, or phone from this
-              console yet.
+              Profile fields are read-only here — there is no way to edit your name, email, or phone
+              from this console yet.
             </p>
           </div>
         </QueryState>
@@ -233,12 +265,20 @@ const displayName = computed(() =>
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <div v-if="passwordChanged" class="flex flex-col gap-3">
             <p role="status" class="text-sm text-foreground">
-              Password updated. You've been signed out of every session — signing you out now so you can sign back
-              in with your new password.
+              Password updated. You've been signed out of every session — signing you out now so you
+              can sign back in with your new password.
             </p>
-            <Button id="account-password-signout" @click="signOutAfterPasswordChange">Continue</Button>
+            <Button id="account-password-signout" @click="signOutAfterPasswordChange"
+              >Continue</Button
+            >
           </div>
-          <form v-else id="account-password-form" class="flex flex-col gap-4" novalidate @submit.prevent="handlePasswordSubmit">
+          <form
+            v-else
+            id="account-password-form"
+            class="flex flex-col gap-4"
+            novalidate
+            @submit.prevent="handlePasswordSubmit"
+          >
             <div class="flex flex-col gap-1.5">
               <Label for="account-current-password">Current password</Label>
               <Input
@@ -250,7 +290,9 @@ const displayName = computed(() =>
                 :disabled="isChangingPassword"
                 :aria-invalid="Boolean(currentPasswordError)"
               />
-              <p v-if="currentPasswordError" role="alert" class="text-sm text-destructive">{{ currentPasswordError }}</p>
+              <p v-if="currentPasswordError" role="alert" class="text-sm text-destructive">
+                {{ currentPasswordError }}
+              </p>
             </div>
 
             <NewPasswordFields
@@ -265,9 +307,16 @@ const displayName = computed(() =>
             <p class="text-xs text-muted-foreground">
               Changing your password signs you out of every session, including this one.
             </p>
-            <p v-if="passwordBanner" role="alert" class="text-sm text-destructive">{{ passwordBanner }}</p>
+            <p v-if="passwordBanner" role="alert" class="text-sm text-destructive">
+              {{ passwordBanner }}
+            </p>
 
-            <Button id="account-password-submit" type="submit" class="self-start" :disabled="isChangingPassword">
+            <Button
+              id="account-password-submit"
+              type="submit"
+              class="self-start"
+              :disabled="isChangingPassword"
+            >
               {{ isChangingPassword ? 'Changing…' : 'Change password' }}
             </Button>
           </form>
@@ -278,13 +327,20 @@ const displayName = computed(() =>
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <h2 class="text-lg font-semibold tracking-tight">Sessions</h2>
           <p class="text-xs text-muted-foreground">
-            This list can't yet identify which session is the one you're using right now — revoking any session
-            below, including your current one, signs that device out immediately.
+            This list can't yet identify which session is the one you're using right now — revoking
+            any session below, including your current one, signs that device out immediately.
           </p>
 
-          <QueryState :loading="isSessionsLoading" :error="sessionsError">
+          <QueryState
+            :loading="isSessionsLoading"
+            :error="sessionsError"
+            :retryable="sessionsErrorRetryable"
+            @retry="loadSessions"
+          >
             <div class="flex flex-col gap-3">
-              <p v-if="sessions.length === 0" class="text-sm text-muted-foreground">No active sessions.</p>
+              <p v-if="sessions.length === 0" class="text-sm text-muted-foreground">
+                No active sessions.
+              </p>
 
               <div
                 v-for="session in sessions"
@@ -295,7 +351,8 @@ const displayName = computed(() =>
                 <div class="flex flex-col gap-1 text-sm">
                   <span class="font-mono text-xs">{{ session.userAgent ?? 'Unknown device' }}</span>
                   <span class="text-xs text-muted-foreground">
-                    {{ session.ipAddress ?? 'Unknown IP' }} · last active <RelativeTime :value="session.lastAccessedAt" />
+                    {{ session.ipAddress ?? 'Unknown IP' }} · last active
+                    <RelativeTime :value="session.lastAccessedAt" />
                   </span>
                 </div>
                 <Button
@@ -309,7 +366,9 @@ const displayName = computed(() =>
                 </Button>
               </div>
 
-              <p v-if="revokeError" role="alert" class="text-sm text-destructive">{{ revokeError }}</p>
+              <p v-if="revokeError" role="alert" class="text-sm text-destructive">
+                {{ revokeError }}
+              </p>
             </div>
           </QueryState>
         </div>
@@ -322,7 +381,11 @@ const displayName = computed(() =>
       description="That device is signed out immediately — if it's the one you're using right now, you'll be signed out too."
       confirm-label="Revoke"
       :pending="isRevoking"
-      @update:open="(open: boolean) => { if (!open) revokeTarget = null }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) revokeTarget = null
+        }
+      "
       @confirm="confirmRevoke"
     />
   </div>

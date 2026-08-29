@@ -43,7 +43,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import FormField from '@/components/common/FormField.vue'
 import ScopeSelector from '@/components/common/ScopeSelector.vue'
 import { describeAdminError } from '@/api/problem'
@@ -129,7 +136,9 @@ const catalogError = ref('')
 const banner = ref('')
 const isSubmitting = ref(false)
 
-const needsRedirects = computed(() => (selectedType.value ? TYPE_CONFIG[selectedType.value].needsRedirects : false))
+const needsRedirects = computed(() =>
+  selectedType.value ? TYPE_CONFIG[selectedType.value].needsRedirects : false,
+)
 
 function resetWizard(): void {
   step.value = 1
@@ -199,7 +208,8 @@ function validateUri(value: string): string | null {
   }
   if (parsed.hash) return 'Must not include a fragment.'
   const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
-  if (parsed.protocol !== 'https:' && !isLocal) return 'Must use https, unless the host is localhost.'
+  if (parsed.protocol !== 'https:' && !isLocal)
+    return 'Must use https, unless the host is localhost.'
   return null
 }
 
@@ -210,7 +220,7 @@ function validateDetails(): boolean {
   let valid = true
 
   if (!details.clientName.trim()) {
-    detailErrors.clientName = 'Required.'
+    detailErrors.clientName = 'Enter a name for this client.'
     valid = false
   }
 
@@ -267,7 +277,8 @@ async function fetchCatalog(): Promise<void> {
   const result = await loadScopeCatalog(props.slug)
   isCatalogLoading.value = false
   if (result === null) {
-    catalogError.value = 'Could not load the scope catalog. You can still register the client without scopes and add them later.'
+    catalogError.value =
+      'Could not load the scope catalog. You can still register the client without scopes and add them later.'
     return
   }
   catalogGroups.value = result.groups
@@ -288,8 +299,12 @@ async function handleSubmit(): Promise<void> {
       publicClient: config.publicClient,
       grantTypes: config.grantTypes,
       scopes: Array.from(selectedScopes.value),
-      redirectUris: needsRedirects.value ? redirectUris.value.map((u) => u.trim()).filter(Boolean) : [],
-      postLogoutUris: needsRedirects.value ? postLogoutUris.value.map((u) => u.trim()).filter(Boolean) : [],
+      redirectUris: needsRedirects.value
+        ? redirectUris.value.map((u) => u.trim()).filter(Boolean)
+        : [],
+      postLogoutUris: needsRedirects.value
+        ? postLogoutUris.value.map((u) => u.trim()).filter(Boolean)
+        : [],
       requireProofKey: config.requireProofKey,
       trusted: details.trusted,
     })
@@ -326,7 +341,7 @@ async function handleSubmit(): Promise<void> {
               ? 'Client type determines everything downstream.'
               : step === 2
                 ? 'Name and endpoints.'
-                : "Scopes this client can request."
+                : 'Scopes this client can request.'
           }}
         </DialogDescription>
       </DialogHeader>
@@ -350,15 +365,23 @@ async function handleSubmit(): Promise<void> {
               class="size-4"
               @change="chooseType(type)"
             />
-            <Label :for="`client-wizard-type-${type}`" class="font-medium">{{ TYPE_CONFIG[type].label }}</Label>
+            <Label :for="`client-wizard-type-${type}`" class="font-medium">{{
+              TYPE_CONFIG[type].label
+            }}</Label>
           </div>
-          <p class="text-xs text-muted-foreground font-mono pl-6">{{ TYPE_CONFIG[type].subtitle }}</p>
+          <p class="text-xs text-muted-foreground font-mono pl-6">
+            {{ TYPE_CONFIG[type].subtitle }}
+          </p>
         </div>
       </div>
 
       <!-- Step 2: details -->
       <div v-else-if="step === 2" class="flex flex-col gap-4">
-        <FormField id="client-wizard-client-name" label="Client name" :error="detailErrors.clientName">
+        <FormField
+          id="client-wizard-client-name"
+          label="Client name"
+          :error="detailErrors.clientName"
+        >
           <template #default="{ hasError, describedBy }">
             <Input
               id="client-wizard-client-name"
@@ -393,12 +416,23 @@ async function handleSubmit(): Promise<void> {
                   Remove
                 </Button>
               </div>
-              <p v-if="redirectErrors[index]" role="alert" class="text-sm text-destructive">{{ redirectErrors[index] }}</p>
+              <p v-if="redirectErrors[index]" role="alert" class="text-sm text-destructive">
+                {{ redirectErrors[index] }}
+              </p>
             </div>
-            <Button id="client-wizard-redirect-add" type="button" variant="outline" size="sm" class="self-start" @click="addRedirectRow">
+            <Button
+              id="client-wizard-redirect-add"
+              type="button"
+              variant="outline"
+              size="sm"
+              class="self-start"
+              @click="addRedirectRow"
+            >
               Add redirect URI
             </Button>
-            <p v-if="detailErrors.redirectUris" role="alert" class="text-sm text-destructive">{{ detailErrors.redirectUris }}</p>
+            <p v-if="detailErrors.redirectUris" role="alert" class="text-sm text-destructive">
+              {{ detailErrors.redirectUris }}
+            </p>
           </div>
 
           <div class="flex flex-col gap-2">
@@ -423,9 +457,18 @@ async function handleSubmit(): Promise<void> {
                   Remove
                 </Button>
               </div>
-              <p v-if="postLogoutErrors[index]" role="alert" class="text-sm text-destructive">{{ postLogoutErrors[index] }}</p>
+              <p v-if="postLogoutErrors[index]" role="alert" class="text-sm text-destructive">
+                {{ postLogoutErrors[index] }}
+              </p>
             </div>
-            <Button id="client-wizard-post-logout-add" type="button" variant="outline" size="sm" class="self-start" @click="addPostLogoutRow">
+            <Button
+              id="client-wizard-post-logout-add"
+              type="button"
+              variant="outline"
+              size="sm"
+              class="self-start"
+              @click="addPostLogoutRow"
+            >
               Add post-logout URI
             </Button>
           </div>
@@ -449,23 +492,53 @@ async function handleSubmit(): Promise<void> {
           More scopes exist than are shown here — some may be missing from this list.
         </p>
         <p v-if="isCatalogLoading" class="text-sm text-muted-foreground">Loading scope catalog…</p>
-        <p v-else-if="catalogError" role="alert" class="text-sm text-destructive">{{ catalogError }}</p>
+        <p v-else-if="catalogError" role="alert" class="text-sm text-destructive">
+          {{ catalogError }}
+        </p>
         <ScopeSelector v-else v-model="selectedScopes" :groups="catalogGroups" />
         <p v-if="banner" role="alert" class="text-sm text-destructive">{{ banner }}</p>
       </div>
 
       <DialogFooter>
         <Button v-if="step === 1" type="button" variant="outline" @click="close">Cancel</Button>
-        <Button v-if="step === 2" id="client-wizard-back" type="button" variant="outline" @click="backToType">Back</Button>
-        <Button v-if="step === 3" id="client-wizard-back" type="button" variant="outline" @click="backToDetails" :disabled="isSubmitting">
+        <Button
+          v-if="step === 2"
+          id="client-wizard-back"
+          type="button"
+          variant="outline"
+          @click="backToType"
+          >Back</Button
+        >
+        <Button
+          v-if="step === 3"
+          id="client-wizard-back"
+          type="button"
+          variant="outline"
+          @click="backToDetails"
+          :disabled="isSubmitting"
+        >
           Back
         </Button>
 
-        <Button v-if="step === 1" id="client-wizard-next" type="button" :disabled="!selectedType" @click="goToDetails">
+        <Button
+          v-if="step === 1"
+          id="client-wizard-next"
+          type="button"
+          :disabled="!selectedType"
+          @click="goToDetails"
+        >
           Next
         </Button>
-        <Button v-if="step === 2" id="client-wizard-next" type="button" @click="goToScopes">Next</Button>
-        <Button v-if="step === 3" id="client-wizard-submit" type="button" :disabled="isSubmitting" @click="handleSubmit">
+        <Button v-if="step === 2" id="client-wizard-next" type="button" @click="goToScopes"
+          >Next</Button
+        >
+        <Button
+          v-if="step === 3"
+          id="client-wizard-submit"
+          type="button"
+          :disabled="isSubmitting"
+          @click="handleSubmit"
+        >
           {{ isSubmitting ? 'Registering…' : 'Register client' }}
         </Button>
       </DialogFooter>

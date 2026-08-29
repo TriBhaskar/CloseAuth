@@ -18,7 +18,15 @@ import { computed, defineComponent, h, reactive, ref, watch, type PropType, type
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import FormField from '@/components/common/FormField.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import TypedConfirmDialog from '@/components/common/TypedConfirmDialog.vue'
@@ -27,7 +35,7 @@ import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import StateBadge, { tenantStatusTone } from '@/components/common/StateBadge.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import { previewTenantId } from '@/lib/tenantIdPreview'
 import { useToast } from '@/composables/useToast'
 import { useTenantLifecycleActions } from '@/composables/useTenantLifecycleActions'
@@ -57,6 +65,7 @@ const page = ref(0)
 const pageData = ref<PageView<TenantView> | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 const searchQuery = ref('')
 
 async function load(): Promise<void> {
@@ -74,11 +83,14 @@ async function load(): Promise<void> {
       // no silent-navigation path here; see platformAdminClient.ts's header
       // comment). Kept only so the switch is exhaustive over AdminResult<T>.
       break
-    default:
+    default: {
       pageData.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -86,6 +98,13 @@ void load()
 watch(page, load)
 
 const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
+
+// FE-6.1: filtered client-side over one loaded page (see the header
+// comment) — honest about the search's real scope if the fleet ever
+// outgrows LIST_PAGE_SIZE.
+const searchScopeLimited = computed(
+  () => hasActiveFilters.value && (pageData.value?.totalPages ?? 0) > 1,
+)
 
 const filteredItems = computed<TenantView[]>(() => {
   const items = pageData.value?.items ?? []
@@ -149,7 +168,11 @@ async function handleProvision(): Promise<void> {
         // through this whole round trip, so there's no flash of nothing
         // between it closing and the bootstrap dialog opening; both state
         // changes land in the same tick.
-        await onboarding.activateAndOpenBootstrap(result.value.id, result.value.slug, result.value.name)
+        await onboarding.activateAndOpenBootstrap(
+          result.value.id,
+          result.value.slug,
+          result.value.name,
+        )
         isProvisionOpen.value = false
         break
       }
@@ -158,7 +181,9 @@ async function handleProvision(): Promise<void> {
         break
       case 'conflict':
         provisionBanner.value =
-          result.code === 'tenant.slug_conflict' ? "Couldn't provision that tenant — try again." : result.message
+          result.code === 'tenant.slug_conflict'
+            ? "Couldn't provision that tenant — try again."
+            : result.message
         break
       case 'reauth':
         // Never actually produced on this surface — see load()'s identical comment.
@@ -194,7 +219,10 @@ const TenantActionsCell = defineComponent({
               disabled: lifecycle.actionPending.value,
               onClick: () => lifecycle.startAction(tenant, action),
             },
-            { default: () => (action === 'activate' ? 'Activate' : action === 'suspend' ? 'Suspend' : 'Delete') },
+            {
+              default: () =>
+                action === 'activate' ? 'Activate' : action === 'suspend' ? 'Suspend' : 'Delete',
+            },
           ),
         )
       }
@@ -228,16 +256,28 @@ const TenantActionsCell = defineComponent({
         )
       }
 
-      const rowChildren: VNode[] = [h('div', { class: 'flex flex-wrap items-center gap-2' }, children)]
+      const rowChildren: VNode[] = [
+        h('div', { class: 'flex flex-wrap items-center gap-2' }, children),
+      ]
       if (children.length === 0) {
-        rowChildren[0] = h('span', { class: 'text-xs text-muted-foreground' }, 'No actions (terminal)')
+        rowChildren[0] = h(
+          'span',
+          { class: 'text-xs text-muted-foreground' },
+          'No actions (terminal)',
+        )
       }
       if (tenant.status === 'PROVISIONING' || tenant.status === 'SUSPENDED') {
-        rowChildren.push(h('span', { class: 'text-xs text-muted-foreground' }, 'Activate to add an admin'))
+        rowChildren.push(
+          h('span', { class: 'text-xs text-muted-foreground' }, 'Activate to add an admin'),
+        )
       }
       // Row click navigates to the detail page (onRowClick, below) — this
       // cell's own buttons must never also trigger that navigation.
-      return h('div', { class: 'flex flex-col gap-2', onClick: (e: MouseEvent) => e.stopPropagation() }, rowChildren)
+      return h(
+        'div',
+        { class: 'flex flex-col gap-2', onClick: (e: MouseEvent) => e.stopPropagation() },
+        rowChildren,
+      )
     }
   },
 })
@@ -260,14 +300,16 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
   {
     id: 'status',
     header: 'Status',
-    cell: ({ row }) => h(StateBadge, { tone: tenantStatusTone(row.original.status), label: row.original.status }),
+    cell: ({ row }) =>
+      h(StateBadge, { tone: tenantStatusTone(row.original.status), label: row.original.status }),
   },
   {
     id: 'admins',
     header: 'Admins',
     cell: ({ row }) => {
       const tenant = row.original
-      if (tenant.adminCount === null) return h('span', { class: 'text-xs text-muted-foreground' }, '—')
+      if (tenant.adminCount === null)
+        return h('span', { class: 'text-xs text-muted-foreground' }, '—')
       if (tenant.adminCount === 0) {
         return h('div', { class: 'flex items-center gap-2' }, [
           h('span', tenant.adminCount),
@@ -309,8 +351,8 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
           <DialogHeader>
             <DialogTitle>Provision a tenant</DialogTitle>
             <DialogDescription>
-              Creates a tenant in PROVISIONING status with starter roles, default branding, registration config, and
-              admin-only registration.
+              Creates a tenant in PROVISIONING status with starter roles, default branding,
+              registration config, and admin-only registration.
             </DialogDescription>
           </DialogHeader>
           <form class="flex flex-col gap-4" novalidate @submit.prevent="handleProvision">
@@ -328,11 +370,15 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
               </template>
             </FormField>
             <p id="new-tenant-id-preview" class="text-xs font-mono text-muted-foreground">
-              <template v-if="tenantIdPreview">Tenant ID will be {{ tenantIdPreview }} · can't be changed later</template>
+              <template v-if="tenantIdPreview"
+                >Tenant ID will be {{ tenantIdPreview }} · can't be changed later</template
+              >
               <template v-else>Tenant ID will be generated automatically.</template>
             </p>
 
-            <p v-if="provisionBanner" role="alert" class="text-sm text-destructive">{{ provisionBanner }}</p>
+            <p v-if="provisionBanner" role="alert" class="text-sm text-destructive">
+              {{ provisionBanner }}
+            </p>
 
             <DialogFooter>
               <Button type="submit" :disabled="isProvisioning">
@@ -344,7 +390,18 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
       </Dialog>
     </div>
 
-    <p v-if="lifecycle.actionError.value" role="alert" class="text-sm text-destructive">{{ lifecycle.actionError.value }}</p>
+    <p v-if="lifecycle.actionError.value" role="alert" class="text-sm text-destructive">
+      {{ lifecycle.actionError.value }}
+    </p>
+
+    <p
+      v-if="searchScopeLimited"
+      id="tenants-search-scope-notice"
+      class="text-xs text-muted-foreground"
+    >
+      Searching only this page's {{ pageData?.items.length ?? 0 }} tenants — there may be more on
+      other pages.
+    </p>
 
     <DataTable
       :columns="columns"
@@ -358,6 +415,7 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
       :total-elements="pageData?.totalElements ?? 0"
       :total-pages="pageData?.totalPages ?? 0"
       :error-message="errorMessage ?? undefined"
+      :error-retryable="errorRetryable"
       :has-active-filters="hasActiveFilters"
       empty-title="No tenants yet."
       empty-description="Provision one to get started."
@@ -382,7 +440,11 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
       :confirm-label="lifecycle.confirmState.value?.action === 'suspend' ? 'Suspend' : 'Activate'"
       :destructive="lifecycle.confirmState.value?.action === 'suspend'"
       :pending="lifecycle.actionPending.value"
-      @update:open="(open: boolean) => { if (!open) lifecycle.cancelAction() }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) lifecycle.cancelAction()
+        }
+      "
       @confirm="lifecycle.confirmAction"
     />
     <TypedConfirmDialog
@@ -393,7 +455,11 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
       match-label="Type the Tenant ID to confirm"
       confirm-label="Delete"
       :pending="lifecycle.actionPending.value"
-      @update:open="(open: boolean) => { if (!open) lifecycle.cancelAction() }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) lifecycle.cancelAction()
+        }
+      "
       @confirm="lifecycle.confirmAction"
     />
 
@@ -401,7 +467,14 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
          one Dialog, body keyed by onboardingState.kind. The success hand-off
          is a SEPARATE, standalone SecretRevealPanel below — never nested in
          this Dialog (see useTenantOnboarding.ts's header comment). -->
-    <Dialog :open="onboarding.onboardingState.value !== null" @update:open="(open: boolean) => { if (!open) onboarding.closeOnboarding() }">
+    <Dialog
+      :open="onboarding.onboardingState.value !== null"
+      @update:open="
+        (open: boolean) => {
+          if (!open) onboarding.closeOnboarding()
+        }
+      "
+    >
       <DialogContent>
         <template v-if="onboarding.onboardingState.value?.kind === 'activateFailed'">
           <DialogHeader>
@@ -409,10 +482,20 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
             <DialogDescription>{{ onboarding.onboardingState.value.message }}</DialogDescription>
           </DialogHeader>
           <DialogFooter class="flex-col sm:flex-row gap-2">
-            <Button id="onboarding-activate-later" type="button" variant="outline" @click="onboarding.closeOnboarding()">
+            <Button
+              id="onboarding-activate-later"
+              type="button"
+              variant="outline"
+              @click="onboarding.closeOnboarding()"
+            >
               Later
             </Button>
-            <Button id="onboarding-activate-retry" type="button" :disabled="onboarding.activatePending.value" @click="onboarding.retryActivate()">
+            <Button
+              id="onboarding-activate-retry"
+              type="button"
+              :disabled="onboarding.activatePending.value"
+              @click="onboarding.retryActivate()"
+            >
               {{ onboarding.activatePending.value ? 'Retrying…' : 'Retry' }}
             </Button>
           </DialogFooter>
@@ -422,10 +505,13 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
           <DialogHeader>
             <DialogTitle>Add {{ onboarding.onboardingState.value.slug }}'s first admin</DialogTitle>
             <DialogDescription>
-              CloseAuth already created this tenant's starter-pack roles and scopes, default branding, registration
-              config, and the admin-console-{{ onboarding.onboardingState.value.slug }} client its admins sign in
-              through. This address receives the onboarding link and becomes a TENANT_ADMIN for this tenant. It
-              cannot be changed afterwards — reissuing a credential only re-sends to this same address.
+              CloseAuth already created this tenant's starter-pack roles and scopes, default
+              branding, registration config, and the admin-console-{{
+                onboarding.onboardingState.value.slug
+              }}
+              client its admins sign in through. This address receives the onboarding link and
+              becomes a TENANT_ADMIN for this tenant. It cannot be changed afterwards — reissuing a
+              credential only re-sends to this same address.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -434,7 +520,11 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
             novalidate
             @submit.prevent="onboarding.handleBootstrap"
           >
-            <FormField id="bootstrap-admin-email" label="Email" :error="onboarding.bootstrapErrors.email">
+            <FormField
+              id="bootstrap-admin-email"
+              label="Email"
+              :error="onboarding.bootstrapErrors.email"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="bootstrap-admin-email"
@@ -448,7 +538,11 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
                 />
               </template>
             </FormField>
-            <FormField id="bootstrap-admin-confirm-email" label="Confirm email" :error="onboarding.bootstrapErrors.confirmEmail">
+            <FormField
+              id="bootstrap-admin-confirm-email"
+              label="Confirm email"
+              :error="onboarding.bootstrapErrors.confirmEmail"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="bootstrap-admin-confirm-email"
@@ -463,7 +557,11 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
               </template>
             </FormField>
             <div class="grid grid-cols-2 gap-3">
-              <FormField id="bootstrap-admin-first-name" label="First name" :error="onboarding.bootstrapErrors.firstName">
+              <FormField
+                id="bootstrap-admin-first-name"
+                label="First name"
+                :error="onboarding.bootstrapErrors.firstName"
+              >
                 <template #default="{ hasError, describedBy }">
                   <Input
                     id="bootstrap-admin-first-name"
@@ -476,7 +574,11 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
                   />
                 </template>
               </FormField>
-              <FormField id="bootstrap-admin-last-name" label="Last name" :error="onboarding.bootstrapErrors.lastName">
+              <FormField
+                id="bootstrap-admin-last-name"
+                label="Last name"
+                :error="onboarding.bootstrapErrors.lastName"
+              >
                 <template #default="{ hasError, describedBy }">
                   <Input
                     id="bootstrap-admin-last-name"
@@ -491,7 +593,13 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
               </FormField>
             </div>
 
-            <p v-if="onboarding.bootstrapBanner.value" role="alert" class="text-sm text-destructive">{{ onboarding.bootstrapBanner.value }}</p>
+            <p
+              v-if="onboarding.bootstrapBanner.value"
+              role="alert"
+              class="text-sm text-destructive"
+            >
+              {{ onboarding.bootstrapBanner.value }}
+            </p>
 
             <DialogFooter>
               <Button type="submit" :disabled="onboarding.isBootstrapping.value">
@@ -505,17 +613,29 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
           <DialogHeader>
             <DialogTitle>Reissue an onboarding credential</DialogTitle>
             <DialogDescription>
-              Choose the admin to reissue for — this lists every user in "{{ onboarding.onboardingState.value.slug }}",
-              not filtered to admins (role isn't part of this read). Reissuing re-sends a fresh link and temporary
-              password to that user's existing email; it's refused if they already set their own password.
+              Choose the admin to reissue for — this lists every user in "{{
+                onboarding.onboardingState.value.slug
+              }}", not filtered to admins (role isn't part of this read). Reissuing re-sends a fresh
+              link and temporary password to that user's existing email; it's refused if they
+              already set their own password.
             </DialogDescription>
           </DialogHeader>
-          <p v-if="onboarding.reissueError.value" role="alert" class="text-sm text-destructive">{{ onboarding.reissueError.value }}</p>
-          <div v-if="onboarding.reissueLoading.value" class="text-sm text-muted-foreground">Loading users…</div>
-          <div v-else-if="onboarding.reissueUsers.value && onboarding.reissueUsers.value.length === 0" class="text-sm text-muted-foreground">
+          <p v-if="onboarding.reissueError.value" role="alert" class="text-sm text-destructive">
+            {{ onboarding.reissueError.value }}
+          </p>
+          <div v-if="onboarding.reissueLoading.value" class="text-sm text-muted-foreground">
+            Loading users…
+          </div>
+          <div
+            v-else-if="onboarding.reissueUsers.value && onboarding.reissueUsers.value.length === 0"
+            class="text-sm text-muted-foreground"
+          >
             This tenant has no users yet.
           </div>
-          <ul v-else-if="onboarding.reissueUsers.value" class="flex flex-col gap-2 max-h-72 overflow-y-auto">
+          <ul
+            v-else-if="onboarding.reissueUsers.value"
+            class="flex flex-col gap-2 max-h-72 overflow-y-auto"
+          >
             <li
               v-for="user in onboarding.reissueUsers.value"
               :key="user.id"
@@ -534,7 +654,12 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
             </li>
           </ul>
           <DialogFooter>
-            <Button id="onboarding-reissue-cancel" type="button" variant="outline" @click="onboarding.closeOnboarding()">
+            <Button
+              id="onboarding-reissue-cancel"
+              type="button"
+              variant="outline"
+              @click="onboarding.closeOnboarding()"
+            >
               Cancel
             </Button>
           </DialogFooter>
@@ -548,7 +673,7 @@ const columns = computed<ColumnDef<TenantView, unknown>[]>(() => [
     <SecretRevealPanel
       :open="onboarding.successPanel.value !== null"
       :title="`First admin created — ${onboarding.successPanel.value?.email ?? ''}`"
-      warning-message="An onboarding link was already emailed to this address — that's the intended path, nothing else is needed. The temporary password below is only a fallback, shown ONE TIME ONLY: it cannot be retrieved again after you leave this dialog. Share it over a channel you trust — it expires as noted below, and they'll be required to choose their own password before they can sign in."
+      warning-message="An onboarding link was already emailed to this address — that's the intended path, nothing else is needed. The temporary password below is only a fallback, shown once: it cannot be retrieved again after you leave this dialog. Share it over a channel you trust — it expires as noted below, and they'll be required to choose their own password before they can sign in."
       :fields="onboarding.successPanelFields.value"
       @continue="onboarding.closeSuccessPanel()"
     />

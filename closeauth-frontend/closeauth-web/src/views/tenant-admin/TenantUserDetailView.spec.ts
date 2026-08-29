@@ -38,8 +38,16 @@ async function createDetailRouter() {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
-      { path: '/t/:slug/console/users', name: 'tenant-admin-users', component: { template: '<div />' } },
-      { path: '/t/:slug/console/users/:userId', name: 'tenant-admin-user-detail', component: TenantUserDetailView },
+      {
+        path: '/t/:slug/console/users',
+        name: 'tenant-admin-users',
+        component: { template: '<div />' },
+      },
+      {
+        path: '/t/:slug/console/users/:userId',
+        name: 'tenant-admin-user-detail',
+        component: TenantUserDetailView,
+      },
     ],
   })
   await router.push('/t/acme/console/users/user-1')
@@ -67,25 +75,76 @@ function userFixture(status: string, isLastActiveAdmin: boolean | null = null) {
 }
 
 const roleCatalog = [
-  { id: 'role-admin', tenantId: 'tenant-1', name: 'TENANT_ADMIN', description: null, isDefault: false, isSystem: true, createdAt: '', updatedAt: '' },
-  { id: 'role-member', tenantId: 'tenant-1', name: 'TENANT_MEMBER', description: null, isDefault: true, isSystem: true, createdAt: '', updatedAt: '' },
-  { id: 'role-billing', tenantId: 'tenant-1', name: 'BILLING_ADMIN', description: null, isDefault: false, isSystem: true, createdAt: '', updatedAt: '' },
+  {
+    id: 'role-admin',
+    tenantId: 'tenant-1',
+    name: 'TENANT_ADMIN',
+    description: null,
+    isDefault: false,
+    isSystem: true,
+    createdAt: '',
+    updatedAt: '',
+  },
+  {
+    id: 'role-member',
+    tenantId: 'tenant-1',
+    name: 'TENANT_MEMBER',
+    description: null,
+    isDefault: true,
+    isSystem: true,
+    createdAt: '',
+    updatedAt: '',
+  },
+  {
+    id: 'role-billing',
+    tenantId: 'tenant-1',
+    name: 'BILLING_ADMIN',
+    description: null,
+    isDefault: false,
+    isSystem: true,
+    createdAt: '',
+    updatedAt: '',
+  },
 ]
 
 const resourceServers = [
-  { id: 'rs-1', tenantId: 'tenant-1', slug: 'billing-api', name: 'Billing API', audienceIdentifier: 'https://acme.rs.closeauth.io/billing-api', autoCreated: false, createdAt: '', updatedAt: null },
+  {
+    id: 'rs-1',
+    tenantId: 'tenant-1',
+    slug: 'billing-api',
+    name: 'Billing API',
+    audienceIdentifier: 'https://acme.rs.closeauth.io/billing-api',
+    autoCreated: false,
+    createdAt: '',
+    updatedAt: null,
+  },
 ]
 
-function stubBaseFetch(status: string, heldRoleNames: string[], opts: { isLastActiveAdmin?: boolean | null; sessions?: unknown[] } = {}) {
+function stubBaseFetch(
+  status: string,
+  heldRoleNames: string[],
+  opts: { isLastActiveAdmin?: boolean | null; sessions?: unknown[] } = {},
+) {
   return vi.fn((url: string, init?: RequestInit) => {
     if (url === '/t/acme/api/users/user-1') {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(userFixture(status, opts.isLastActiveAdmin ?? null)) })
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(userFixture(status, opts.isLastActiveAdmin ?? null)),
+      })
     }
     if (url === '/t/acme/api/roles?page=0&size=100') {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ items: roleCatalog, page: 0, size: 100, totalElements: 3, totalPages: 1 }),
+        json: () =>
+          Promise.resolve({
+            items: roleCatalog,
+            page: 0,
+            size: 100,
+            totalElements: 3,
+            totalPages: 1,
+          }),
       })
     }
     if (url === '/t/acme/api/users/user-1/tenant-roles') {
@@ -95,14 +154,29 @@ function stubBaseFetch(status: string, heldRoleNames: string[], opts: { isLastAc
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ items: resourceServers, page: 0, size: 100, totalElements: 1, totalPages: 1 }),
+        json: () =>
+          Promise.resolve({
+            items: resourceServers,
+            page: 0,
+            size: 100,
+            totalElements: 1,
+            totalPages: 1,
+          }),
       })
     }
     if (url === '/t/acme/api/users/user-1/sessions') {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(opts.sessions ?? []) })
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(opts.sessions ?? []),
+      })
     }
     if (url === '/api/csrf') {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ token: 'csrf-token' }),
+      })
     }
     return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
   })
@@ -121,7 +195,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', ['TENANT_MEMBER']))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     expect(wrapper.find('#user-action-suspend').exists()).toBe(true)
@@ -134,7 +210,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('PENDING', []))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     expect(wrapper.find('#user-action-approve').exists()).toBe(true)
@@ -147,7 +225,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('DELETED', []))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     expect(wrapper.find('#user-action-approve').exists()).toBe(false)
@@ -162,7 +242,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', ['TENANT_ADMIN'], { isLastActiveAdmin: true }))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     const suspend = wrapper.find('#user-action-suspend')
@@ -180,7 +262,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', ['TENANT_ADMIN'], { isLastActiveAdmin: false }))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     expect(wrapper.find('#user-action-suspend').attributes('disabled')).toBeUndefined()
@@ -194,7 +278,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', ['TENANT_MEMBER', 'GHOST_ROLE']))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="roles"]').trigger('mousedown')
     await flushPromises()
@@ -212,6 +298,115 @@ describe('TenantUserDetailView', () => {
     expect(wrapper.text()).toContain('held — not in the role catalog')
   })
 
+  it('FE-6.1: an empty tenant role catalog shows an EmptyState, never a blank panel', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/users/user-1') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(userFixture('ACTIVE', null)),
+          })
+        }
+        if (url === '/t/acme/api/roles?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
+          })
+        }
+        if (url === '/t/acme/api/users/user-1/tenant-roles') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: resourceServers,
+                page: 0,
+                size: 100,
+                totalElements: 1,
+                totalPages: 1,
+              }),
+          })
+        }
+        if (url === '/t/acme/api/users/user-1/sessions') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
+    await flushPromises()
+    await wrapper.find('[data-tab="roles"]').trigger('mousedown')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('This tenant has no roles yet.')
+  })
+
+  it('FE-6.1: an empty resource-server catalog explains itself instead of showing a bare placeholder-only select', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/users/user-1') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(userFixture('ACTIVE', null)),
+          })
+        }
+        if (url === '/t/acme/api/roles?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: roleCatalog,
+                page: 0,
+                size: 100,
+                totalElements: 3,
+                totalPages: 1,
+              }),
+          })
+        }
+        if (url === '/t/acme/api/users/user-1/tenant-roles') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=100') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
+          })
+        }
+        if (url === '/t/acme/api/users/user-1/sessions') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
+    await flushPromises()
+    await wrapper.find('[data-tab="roles"]').trigger('mousedown')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('This tenant has no resource servers yet.')
+    expect(wrapper.find('#app-role-rs-select').exists()).toBe(false)
+  })
+
   it('toggling an unheld role assigns it via the tenant-roles endpoint', async () => {
     const fetchMock = stubBaseFetch('ACTIVE', ['TENANT_MEMBER'])
     const withAssign = vi.fn((url: string, init?: RequestInit) => {
@@ -223,7 +418,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', withAssign)
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="roles"]').trigger('mousedown')
     await flushPromises()
@@ -243,7 +440,8 @@ describe('TenantUserDetailView', () => {
     const withAssign = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/t/acme/api/users/user-1/tenant-roles/role-billing' && init?.method === 'POST') {
         return new Promise((resolve) => {
-          resolveAssign = () => resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) })
+          resolveAssign = () =>
+            resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) })
         })
       }
       return fetchMock(url, init)
@@ -251,7 +449,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', withAssign)
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="roles"]').trigger('mousedown')
     await flushPromises()
@@ -279,7 +479,7 @@ describe('TenantUserDetailView', () => {
           json: () =>
             Promise.resolve({
               error: 'tenant_role.last_admin',
-              error_description: "Cannot remove the last TENANT_ADMIN from tenant tenant-1",
+              error_description: 'Cannot remove the last TENANT_ADMIN from tenant tenant-1',
             }),
         })
       }
@@ -288,7 +488,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', withSuspend)
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     await wrapper.find('#user-action-suspend').trigger('click')
@@ -296,7 +498,7 @@ describe('TenantUserDetailView', () => {
     await wrapper.find('#confirm-dialog-confirm').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain("last active administrator")
+    expect(wrapper.text()).toContain('last active administrator')
     // The generic conflict message must NOT be the one shown.
     expect(wrapper.text()).not.toContain('This action conflicts with the current state.')
   })
@@ -309,14 +511,22 @@ describe('TenantUserDetailView', () => {
           return Promise.resolve({
             ok: false,
             status: 404,
-            json: () => Promise.resolve({ error: 'user.not_found', error_description: 'User not found.' }),
+            json: () =>
+              Promise.resolve({ error: 'user.not_found', error_description: 'User not found.' }),
           })
         }
         if (url === '/t/acme/api/roles?page=0&size=100') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: roleCatalog, page: 0, size: 100, totalElements: 3, totalPages: 1 }),
+            json: () =>
+              Promise.resolve({
+                items: roleCatalog,
+                page: 0,
+                size: 100,
+                totalElements: 3,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/t/acme/api/users/user-1/tenant-roles') {
@@ -326,7 +536,8 @@ describe('TenantUserDetailView', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
+            json: () =>
+              Promise.resolve({ items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 }),
           })
         }
         if (url === '/t/acme/api/users/user-1/sessions') {
@@ -337,7 +548,9 @@ describe('TenantUserDetailView', () => {
     )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
 
     const alert = wrapper.find('[role="alert"]')
@@ -349,8 +562,28 @@ describe('TenantUserDetailView', () => {
   // ---- application roles (UI-3d) -----------------------------------------
 
   const appRoleCatalog = [
-    { id: 'app-role-reader', resourceServerId: 'rs-1', tenantId: 'tenant-1', name: 'INVOICE_READER', description: null, isDefault: false, isSystem: false, createdAt: '', updatedAt: '' },
-    { id: 'app-role-admin', resourceServerId: 'rs-1', tenantId: 'tenant-1', name: 'INVOICE_ADMIN', description: null, isDefault: false, isSystem: false, createdAt: '', updatedAt: '' },
+    {
+      id: 'app-role-reader',
+      resourceServerId: 'rs-1',
+      tenantId: 'tenant-1',
+      name: 'INVOICE_READER',
+      description: null,
+      isDefault: false,
+      isSystem: false,
+      createdAt: '',
+      updatedAt: '',
+    },
+    {
+      id: 'app-role-admin',
+      resourceServerId: 'rs-1',
+      tenantId: 'tenant-1',
+      name: 'INVOICE_ADMIN',
+      description: null,
+      isDefault: false,
+      isSystem: false,
+      createdAt: '',
+      updatedAt: '',
+    },
   ]
 
   function stubWithAppRoles(status: string, heldRoleNames: string[], heldAppRoleNames: string[]) {
@@ -360,11 +593,22 @@ describe('TenantUserDetailView', () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ items: appRoleCatalog, page: 0, size: 20, totalElements: 2, totalPages: 1 }),
+          json: () =>
+            Promise.resolve({
+              items: appRoleCatalog,
+              page: 0,
+              size: 20,
+              totalElements: 2,
+              totalPages: 1,
+            }),
         })
       }
       if (url === '/t/acme/api/users/user-1/application-roles?resourceServerId=rs-1') {
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(heldAppRoleNames) })
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(heldAppRoleNames),
+        })
       }
       return base(url, init)
     })
@@ -374,7 +618,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', ['TENANT_MEMBER']))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="roles"]').trigger('mousedown')
     await flushPromises()
@@ -388,7 +634,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubWithAppRoles('ACTIVE', ['TENANT_MEMBER'], ['INVOICE_READER']))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="roles"]').trigger('mousedown')
     await flushPromises()
@@ -403,10 +651,15 @@ describe('TenantUserDetailView', () => {
   })
 
   it('a held application-role name absent from the RS catalog is shown disabled and explained, never dropped', async () => {
-    vi.stubGlobal('fetch', stubWithAppRoles('ACTIVE', ['TENANT_MEMBER'], ['INVOICE_READER', 'GHOST_APP_ROLE']))
+    vi.stubGlobal(
+      'fetch',
+      stubWithAppRoles('ACTIVE', ['TENANT_MEMBER'], ['INVOICE_READER', 'GHOST_APP_ROLE']),
+    )
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="roles"]').trigger('mousedown')
     await flushPromises()
@@ -436,7 +689,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', [], { sessions: [sessionFixture] }))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="sessions"]').trigger('mousedown')
     await flushPromises()
@@ -451,7 +706,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', stubBaseFetch('ACTIVE', [], { sessions: [] }))
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="sessions"]').trigger('mousedown')
     await flushPromises()
@@ -480,7 +737,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', withRevoke)
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="sessions"]').trigger('mousedown')
     await flushPromises()
@@ -516,7 +775,9 @@ describe('TenantUserDetailView', () => {
     vi.stubGlobal('fetch', withRevokeAll)
 
     const router = await createDetailRouter()
-    const wrapper = mount(TenantUserDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    const wrapper = mount(TenantUserDetailView, {
+      global: { plugins: [router], stubs: dialogStubs },
+    })
     await flushPromises()
     await wrapper.find('[data-tab="sessions"]').trigger('mousedown')
     await flushPromises()
@@ -525,7 +786,10 @@ describe('TenantUserDetailView', () => {
     await flushPromises()
 
     // The DELETE-all call must not fire before the typed value matches.
-    expect(withRevokeAll).not.toHaveBeenCalledWith('/t/acme/api/users/user-1/sessions', expect.objectContaining({ method: 'DELETE' }))
+    expect(withRevokeAll).not.toHaveBeenCalledWith(
+      '/t/acme/api/users/user-1/sessions',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
     expect(wrapper.find('#typed-confirm-dialog-confirm').attributes('disabled')).toBeDefined()
 
     await wrapper.find('#typed-confirm-input').setValue('alice@acme.test')
@@ -535,6 +799,9 @@ describe('TenantUserDetailView', () => {
     await wrapper.find('#typed-confirm-dialog-confirm').trigger('click')
     await flushPromises()
 
-    expect(withRevokeAll).toHaveBeenCalledWith('/t/acme/api/users/user-1/sessions', expect.objectContaining({ method: 'DELETE' }))
+    expect(withRevokeAll).toHaveBeenCalledWith(
+      '/t/acme/api/users/user-1/sessions',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
   })
 })

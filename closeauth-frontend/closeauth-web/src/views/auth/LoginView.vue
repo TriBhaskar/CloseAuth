@@ -14,7 +14,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
+import TenantBrandingProvider, {
+  type Branding,
+} from '@/components/common/TenantBrandingProvider.vue'
 import { submitLogin } from '@/api/authLogin'
 import { saveForgotPasswordQuery } from '@/api/helpers/passwordResetContext'
 import { hostedAuthPath } from '@/lib/hostedAuthPath'
@@ -51,7 +53,9 @@ const clientId = computed(() => new URLSearchParams(authorizeQuery).get('client_
 // consistent across the hop, and — for /forgot-password specifically —
 // feeds ResetPasswordView's nice-to-have post-success context restoration.
 const magicLinkRequestPath = computed(() => hostedAuthPath(route, '/magic-link') + authorizeQuery)
-const forgotPasswordPath = computed(() => hostedAuthPath(route, '/forgot-password') + authorizeQuery)
+const forgotPasswordPath = computed(
+  () => hostedAuthPath(route, '/forgot-password') + authorizeQuery,
+)
 const registerPath = computed(() => hostedAuthPath(route, '/register') + authorizeQuery)
 
 // Best-effort: stash the query string so ResetPasswordView.vue's post-
@@ -86,7 +90,9 @@ function companyLabel(branding: Branding): string {
 const OPEN_REGISTRATION_MODES = new Set(['OPEN', 'EMAIL_VERIFIED'])
 
 function showCreateAccount(branding: Branding): boolean {
-  return branding.registrationMode !== null && OPEN_REGISTRATION_MODES.has(branding.registrationMode)
+  return (
+    branding.registrationMode !== null && OPEN_REGISTRATION_MODES.has(branding.registrationMode)
+  )
 }
 
 async function handleSubmit(): Promise<void> {
@@ -123,79 +129,91 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
-  <AuthShell>
-    <template #above>
-      <div class="flex flex-col items-center gap-2 text-center">
-        <img
-          v-if="hasLogo"
-          :src="branding.logoUrl"
-          :alt="companyLabel(branding)"
-          class="h-10 w-auto object-contain"
-        >
-        <h1 class="text-xl font-semibold tracking-tight">Sign in to {{ companyLabel(branding) }}</h1>
-        <p class="text-sm text-muted-foreground">Enter your credentials to continue.</p>
-      </div>
-    </template>
-
-    <form class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
-      <div class="flex flex-col gap-1.5">
-        <Label for="login-email">Email</Label>
-        <Input
-          id="login-email"
-          v-model="email"
-          type="email"
-          autocomplete="email"
-          required
-          :disabled="isSubmitting"
-        />
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <div class="flex items-center justify-between">
-          <Label for="login-password">Password</Label>
-          <RouterLink
-            :to="forgotPasswordPath"
-            class="text-sm text-muted-foreground hover:underline"
-            @click="handleForgotPasswordClick"
-          >
-            Forgot password?
-          </RouterLink>
+    <AuthShell>
+      <template #above>
+        <div class="flex flex-col items-center gap-2 text-center">
+          <!-- FE-6.5: the box is reserved (h-10) whether or not the logo has
+             resolved yet — without this, the heading below shifts down the
+             moment branding loads and hasLogo flips true, a real CLS. -->
+          <div class="h-10">
+            <img
+              v-if="hasLogo"
+              :src="branding.logoUrl"
+              :alt="companyLabel(branding)"
+              class="h-10 w-auto object-contain"
+            />
+          </div>
+          <h1 class="text-xl font-semibold tracking-tight">
+            Sign in to {{ companyLabel(branding) }}
+          </h1>
+          <p class="text-sm text-muted-foreground">Enter your credentials to continue.</p>
         </div>
-        <Input
-          id="login-password"
-          v-model="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          :disabled="isSubmitting"
-        />
-      </div>
+      </template>
 
-      <div class="flex items-center gap-2">
-        <Checkbox id="login-remember-me" v-model="rememberMe" :disabled="isSubmitting" />
-        <Label for="login-remember-me" class="text-muted-foreground font-normal">Remember me</Label>
-      </div>
+      <form class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
+        <div class="flex flex-col gap-1.5">
+          <Label for="login-email">Email</Label>
+          <Input
+            id="login-email"
+            v-model="email"
+            type="email"
+            autocomplete="email"
+            required
+            :disabled="isSubmitting"
+          />
+        </div>
 
-      <p v-if="errorMessage" role="alert" class="text-sm text-destructive">
-        {{ errorMessage }}
-      </p>
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <Label for="login-password">Password</Label>
+            <RouterLink
+              :to="forgotPasswordPath"
+              class="text-sm text-muted-foreground hover:underline"
+              @click="handleForgotPasswordClick"
+            >
+              Forgot password?
+            </RouterLink>
+          </div>
+          <Input
+            id="login-password"
+            v-model="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            :disabled="isSubmitting"
+          />
+        </div>
 
-      <Button type="submit" class="w-full" :disabled="isSubmitting">
-        {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
-      </Button>
+        <div class="flex items-center gap-2">
+          <Checkbox id="login-remember-me" v-model="rememberMe" :disabled="isSubmitting" />
+          <Label for="login-remember-me" class="text-muted-foreground font-normal"
+            >Remember me</Label
+          >
+        </div>
 
-      <RouterLink :to="magicLinkRequestPath" class="text-sm text-center text-muted-foreground hover:underline">
-        Email me a link instead
-      </RouterLink>
+        <p v-if="errorMessage" role="alert" class="text-sm text-destructive">
+          {{ errorMessage }}
+        </p>
 
-      <RouterLink
-        v-if="showCreateAccount(branding)"
-        :to="registerPath"
-        class="text-sm text-center text-muted-foreground hover:underline"
-      >
-        Create an account
-      </RouterLink>
-    </form>
-  </AuthShell>
+        <Button type="submit" class="w-full" :disabled="isSubmitting">
+          {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
+        </Button>
+
+        <RouterLink
+          :to="magicLinkRequestPath"
+          class="text-sm text-center text-muted-foreground hover:underline"
+        >
+          Email me a link instead
+        </RouterLink>
+
+        <RouterLink
+          v-if="showCreateAccount(branding)"
+          :to="registerPath"
+          class="text-sm text-center text-muted-foreground hover:underline"
+        >
+          Create an account
+        </RouterLink>
+      </form>
+    </AuthShell>
   </TenantBrandingProvider>
 </template>

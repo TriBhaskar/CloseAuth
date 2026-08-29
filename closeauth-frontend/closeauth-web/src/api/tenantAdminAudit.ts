@@ -41,6 +41,39 @@ export interface AuditFilters {
 
 export const DEFAULT_AUDIT_PAGE_SIZE = 20
 
+// FE-5.1 (spec §6.4.6): the filter bar's date-range presets. 'custom' is the
+// only preset with no fixed lookback — the caller supplies from/to itself
+// (the pre-existing datetime-local pair). AuditQueryParams.instant("to", …)
+// is exclusive, but a preset's "now" is a moving target, not a value worth
+// pinning into a shareable filter: a preset resolves ONLY a `from` cutoff
+// and leaves `to` open, so revisiting a "last 1h" link later means "the
+// hour before whenever this loads," which is what the preset actually means
+// to an admin — not a frozen historical window.
+export type AuditRangePreset = '1h' | '24h' | '7d' | '30d' | 'custom'
+export const AUDIT_RANGE_PRESETS: AuditRangePreset[] = ['1h', '24h', '7d', '30d', 'custom']
+
+const PRESET_HOURS: Record<Exclude<AuditRangePreset, 'custom'>, number> = {
+  '1h': 1,
+  '24h': 24,
+  '7d': 24 * 7,
+  '30d': 24 * 30,
+}
+
+/**
+ * Resolves a preset into the real `from` instant the filter bar sends —
+ * `custom` resolves to `{}`, deferring entirely to whatever the caller's
+ * own From/To inputs hold. `now` is a parameter (default `new Date()`)
+ * rather than read internally so a test can pass a fixed instant.
+ */
+export function resolveRangePreset(
+  preset: AuditRangePreset,
+  now: Date = new Date(),
+): { from?: string } {
+  if (preset === 'custom') return {}
+  const hours = PRESET_HOURS[preset]
+  return { from: new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString() }
+}
+
 export async function listAuditEvents(
   slug: string,
   filters: AuditFilters,

@@ -29,12 +29,12 @@ const COLOUR_LITERAL_EXCEPTIONS = new Map([
     'the single source of colour (spec §3.3/§3.8) — every other literal in the codebase must trace back to this file',
   ],
   [
-    'views/tenant-admin/TenantSettingsView.vue',
+    'views/tenant-admin/settings/BrandingSettingsTab.vue',
     "tenant branding form defaults (primaryColor/backgroundColor/accentColor placeholders) — a TENANT's brand colour value, not CloseAuth's own app styling",
   ],
   [
-    'components/common/TenantBrandingProvider.vue',
-    "the sRGB hex equivalents of tokens.css's --ca-canvas literals, used for a WCAG contrast calculation that needs a plain numeric luminance — CSS can't export a JS-consumable value, so this is a deliberate, documented cross-reference (see the component's own comment), not drift",
+    'lib/brandingValidation.ts',
+    "the sRGB hex equivalents of tokens.css's --ca-canvas literals, used for a WCAG contrast calculation that needs a plain numeric luminance — CSS can't export a JS-consumable value, so this is a deliberate, documented cross-reference (see the file's own comment), not drift. Shared by TenantBrandingProvider.vue and BrandingLoginPreview.vue (FE-5.3), which is why it's no longer inline in the provider.",
   ],
 ])
 
@@ -94,4 +94,6 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log('\u2713 check-tokens.mjs: no dark:/raw-palette/colour-literal violations outside styles/tokens.css')
+console.log(
+  '\u2713 check-tokens.mjs: no dark:/raw-palette/colour-literal violations outside styles/tokens.css',
+)

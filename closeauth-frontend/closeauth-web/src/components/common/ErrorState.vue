@@ -13,10 +13,22 @@
 // agent needs — not a new, unspecced IdentifierChip kind.
 import CopyButton from './CopyButton.vue'
 
-defineProps<{
-  message: string
-  traceId?: string
-}>()
+// FE-6.1 (spec §7.3): "Only server/network are retryable — a 403/404/429
+// retry would just fail identically." api/problem.ts's errorStateProps()
+// already computes this per-result; `retryable` defaults to `true` so every
+// pre-existing caller that only ever passed `message`/`traceId` keeps
+// showing Retry exactly as before — a caller that now HAS a category
+// (list/detail views wired to errorStateProps this session) passes it
+// explicitly and a 403 stops showing an action that's guaranteed to fail
+// identically.
+withDefaults(
+  defineProps<{
+    message: string
+    traceId?: string
+    retryable?: boolean
+  }>(),
+  { retryable: true },
+)
 
 defineEmits<{ (e: 'retry'): void }>()
 </script>
@@ -31,10 +43,16 @@ defineEmits<{ (e: 'retry'): void }>()
     >
       <span class="text-ink-muted">trace_id</span>
       <span class="font-mono text-ink">{{ traceId }}</span>
-      <CopyButton :value="traceId" label="Copy" copied-label="Copied" class="text-ink-muted hover:text-ink" />
+      <CopyButton
+        :value="traceId"
+        label="Copy"
+        copied-label="Copied"
+        class="text-ink-muted hover:text-ink"
+      />
     </div>
 
     <button
+      v-if="retryable"
       type="button"
       class="text-sm font-medium text-primary hover:underline"
       @click="$emit('retry')"

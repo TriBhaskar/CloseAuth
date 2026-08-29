@@ -58,7 +58,8 @@ import TypedConfirmDialog from '@/components/common/TypedConfirmDialog.vue'
 import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import StateBadge, { userStatusTone } from '@/components/common/StateBadge.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
+import EmptyState from '@/components/common/EmptyState.vue'
 import {
   activateUser,
   approveUser,
@@ -69,7 +70,14 @@ import {
   type UserLifecycleAction,
   type UserView,
 } from '@/api/tenantAdminUsers'
-import { assignRole, getHeldRoleNames, joinHeldRoles, listRoles, revokeRole, type TenantRoleView } from '@/api/tenantAdminRoles'
+import {
+  assignRole,
+  getHeldRoleNames,
+  joinHeldRoles,
+  listRoles,
+  revokeRole,
+  type TenantRoleView,
+} from '@/api/tenantAdminRoles'
 import { listResourceServers, type ResourceServerView } from '@/api/tenantAdminResourceServers'
 import {
   assignApplicationRole,
@@ -113,6 +121,7 @@ watch(activeTab, (tab) => {
 const user = ref<UserView | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 
 async function loadUser(): Promise<void> {
   isLoading.value = true
@@ -125,11 +134,14 @@ async function loadUser(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       user.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -137,7 +149,9 @@ const actionPending = ref(false)
 const actionError = ref('')
 const confirmAction = ref<'suspend' | 'delete' | null>(null)
 
-const lifecycleActions = computed<UserLifecycleAction[]>(() => (user.value ? availableActions(user.value.status) : []))
+const lifecycleActions = computed<UserLifecycleAction[]>(() =>
+  user.value ? availableActions(user.value.status) : [],
+)
 
 // FE-4a: the pre-emptive block — disabled before any click, not a post-
 // submit error. `isLastActiveAdmin` is `null` until loadUser resolves; only
@@ -197,11 +211,13 @@ async function runLifecycle(action: UserLifecycleAction): Promise<void> {
   }
 }
 
-const confirmTitle = computed(() => (confirmAction.value === 'suspend' ? 'Suspend this user?' : 'Delete this user?'))
+const confirmTitle = computed(() =>
+  confirmAction.value === 'suspend' ? 'Suspend this user?' : 'Delete this user?',
+)
 const confirmDescription = computed(() =>
   confirmAction.value === 'suspend'
     ? "This immediately revokes the user's live access tokens and Auth Server sessions — any signed-in session stops working within seconds, not at token expiry."
-    : "This is permanent: a deleted user has no path back to any other status. Their live access tokens and sessions are revoked immediately.",
+    : 'This is permanent: a deleted user has no path back to any other status. Their live access tokens and sessions are revoked immediately.',
 )
 
 // ---- tenant roles ----------------------------------------------------
@@ -210,6 +226,7 @@ const roleCatalog = ref<TenantRoleView[]>([])
 const heldNames = ref<string[]>([])
 const isRolesLoading = ref(true)
 const rolesError = ref<string | null>(null)
+const rolesErrorRetryable = ref(true)
 const catalogTruncated = ref(false)
 // FE-4a: per-row pending, replacing the old panel-wide boolean (§7.5:
 // mutations disable their own trigger only, never the whole form).
@@ -220,18 +237,25 @@ async function loadRoles(): Promise<void> {
   isRolesLoading.value = true
   rolesError.value = null
 
-  const [catalogResult, heldResult] = await Promise.all([listRoles(slug), getHeldRoleNames(slug, userId)])
+  const [catalogResult, heldResult] = await Promise.all([
+    listRoles(slug),
+    getHeldRoleNames(slug, userId),
+  ])
 
   if (catalogResult.kind === 'reauth' || heldResult.kind === 'reauth') {
     return
   }
   if (catalogResult.kind !== 'ok') {
-    rolesError.value = describeAdminError(catalogResult)
+    const props = errorStateProps(catalogResult)
+    rolesError.value = props.message
+    rolesErrorRetryable.value = props.retryable
     isRolesLoading.value = false
     return
   }
   if (heldResult.kind !== 'ok') {
-    rolesError.value = describeAdminError(heldResult)
+    const props = errorStateProps(heldResult)
+    rolesError.value = props.message
+    rolesErrorRetryable.value = props.retryable
     isRolesLoading.value = false
     return
   }
@@ -248,8 +272,12 @@ async function refreshHeldRoles(): Promise<void> {
 }
 
 const heldRoles = computed(() => joinHeldRoles(heldNames.value, roleCatalog.value))
-const heldNameSet = computed(() => new Set(heldRoles.value.filter((r) => r.kind === 'joined').map((r) => r.name)))
-const catalogRows = computed(() => roleCatalog.value.map((role) => ({ role, held: heldNameSet.value.has(role.name) })))
+const heldNameSet = computed(
+  () => new Set(heldRoles.value.filter((r) => r.kind === 'joined').map((r) => r.name)),
+)
+const catalogRows = computed(() =>
+  roleCatalog.value.map((role) => ({ role, held: heldNameSet.value.has(role.name) })),
+)
 const unresolvedHeld = computed(() => heldRoles.value.filter((r) => r.kind === 'unresolved'))
 
 async function toggleRole(role: TenantRoleView, currentlyHeld: boolean): Promise<void> {
@@ -257,7 +285,9 @@ async function toggleRole(role: TenantRoleView, currentlyHeld: boolean): Promise
   rolesActionError.value = ''
   pendingRoleIds.value = new Set(pendingRoleIds.value).add(role.id)
   try {
-    const result = currentlyHeld ? await revokeRole(slug, userId, role.id) : await assignRole(slug, userId, role.id)
+    const result = currentlyHeld
+      ? await revokeRole(slug, userId, role.id)
+      : await assignRole(slug, userId, role.id)
     switch (result.kind) {
       case 'ok':
         await refreshHeldRoles()
@@ -286,6 +316,7 @@ async function toggleRole(role: TenantRoleView, currentlyHeld: boolean): Promise
 const resourceServers = ref<ResourceServerView[]>([])
 const isRSLoading = ref(true)
 const rsError = ref<string | null>(null)
+const rsErrorRetryable = ref(true)
 const rsTruncated = ref(false)
 const selectedRsId = ref('')
 
@@ -301,11 +332,14 @@ async function loadResourceServers(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       resourceServers.value = []
-      rsError.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      rsError.value = props.message
+      rsErrorRetryable.value = props.retryable
       isRSLoading.value = false
       break
+    }
   }
 }
 
@@ -313,6 +347,7 @@ const appRoleCatalog = ref<ApplicationRoleView[]>([])
 const appHeldNames = ref<string[]>([])
 const isAppRolesLoading = ref(false)
 const appRolesError = ref<string | null>(null)
+const appRolesErrorRetryable = ref(true)
 const appCatalogTruncated = ref(false)
 const pendingAppRoleIds = ref<Set<string>>(new Set())
 const appRolesActionError = ref('')
@@ -335,12 +370,16 @@ async function loadApplicationRoles(): Promise<void> {
     return
   }
   if (catalogResult.kind !== 'ok') {
-    appRolesError.value = describeAdminError(catalogResult)
+    const props = errorStateProps(catalogResult)
+    appRolesError.value = props.message
+    appRolesErrorRetryable.value = props.retryable
     isAppRolesLoading.value = false
     return
   }
   if (heldResult.kind !== 'ok') {
-    appRolesError.value = describeAdminError(heldResult)
+    const props = errorStateProps(heldResult)
+    appRolesError.value = props.message
+    appRolesErrorRetryable.value = props.retryable
     isAppRolesLoading.value = false
     return
   }
@@ -362,14 +401,21 @@ watch(selectedRsId, () => {
   void loadApplicationRoles()
 })
 
-const appHeldRoles = computed(() => joinHeldApplicationRoles(appHeldNames.value, appRoleCatalog.value))
-const appHeldNameSet = computed(() => new Set(appHeldRoles.value.filter((r) => r.kind === 'joined').map((r) => r.name)))
+const appHeldRoles = computed(() =>
+  joinHeldApplicationRoles(appHeldNames.value, appRoleCatalog.value),
+)
+const appHeldNameSet = computed(
+  () => new Set(appHeldRoles.value.filter((r) => r.kind === 'joined').map((r) => r.name)),
+)
 const appCatalogRows = computed(() =>
   appRoleCatalog.value.map((role) => ({ role, held: appHeldNameSet.value.has(role.name) })),
 )
 const appUnresolvedHeld = computed(() => appHeldRoles.value.filter((r) => r.kind === 'unresolved'))
 
-async function toggleApplicationRole(role: ApplicationRoleView, currentlyHeld: boolean): Promise<void> {
+async function toggleApplicationRole(
+  role: ApplicationRoleView,
+  currentlyHeld: boolean,
+): Promise<void> {
   if (pendingAppRoleIds.value.has(role.id)) return
   appRolesActionError.value = ''
   pendingAppRoleIds.value = new Set(pendingAppRoleIds.value).add(role.id)
@@ -399,6 +445,7 @@ async function toggleApplicationRole(role: ApplicationRoleView, currentlyHeld: b
 const sessions = ref<AdminSessionView[]>([])
 const isSessionsLoading = ref(true)
 const sessionsError = ref<string | null>(null)
+const sessionsErrorRetryable = ref(true)
 const sessionActionPending = ref(false)
 const sessionsActionError = ref('')
 const revokeSessionTarget = ref<AdminSessionView | null>(null)
@@ -415,11 +462,14 @@ async function loadSessions(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       sessions.value = []
-      sessionsError.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      sessionsError.value = props.message
+      sessionsErrorRetryable.value = props.retryable
       isSessionsLoading.value = false
       break
+    }
   }
 }
 
@@ -489,14 +539,25 @@ const actionLabels: Record<UserLifecycleAction, string> = {
 
 <template>
   <div class="flex flex-col gap-6 max-w-3xl">
-    <Button variant="ghost" size="sm" class="self-start" @click="backToList">&larr; Back to users</Button>
+    <Button variant="ghost" size="sm" class="self-start" @click="backToList"
+      >&larr; Back to users</Button
+    >
 
-    <QueryState :loading="isLoading" :error="errorMessage">
+    <QueryState
+      :loading="isLoading"
+      :error="errorMessage"
+      :retryable="errorRetryable"
+      @retry="loadUser"
+    >
       <div v-if="user" class="flex flex-col gap-6">
         <div class="flex items-center justify-between">
           <div class="flex flex-col gap-1">
-            <h1 id="user-detail-email" class="text-xl font-semibold tracking-tight">{{ user.email }}</h1>
-            <p class="text-sm text-muted-foreground">{{ [user.firstName, user.lastName].filter(Boolean).join(' ') || 'No name on file' }}</p>
+            <h1 id="user-detail-email" class="text-xl font-semibold tracking-tight">
+              {{ user.email }}
+            </h1>
+            <p class="text-sm text-muted-foreground">
+              {{ [user.firstName, user.lastName].filter(Boolean).join(' ') || 'No name on file' }}
+            </p>
           </div>
           <StateBadge :tone="userStatusTone(user.status)" :label="user.status" />
         </div>
@@ -522,11 +583,15 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                 <dt class="text-muted-foreground">Created</dt>
                 <dd><RelativeTime :value="user.createdAt" /></dd>
                 <dt class="text-muted-foreground">Last login</dt>
-                <dd><RelativeTime v-if="user.lastLoginAt" :value="user.lastLoginAt" /><template v-else>Never</template></dd>
+                <dd>
+                  <RelativeTime v-if="user.lastLoginAt" :value="user.lastLoginAt" /><template v-else
+                    >Never</template
+                  >
+                </dd>
               </dl>
               <p class="text-xs text-muted-foreground">
-                Profile fields are read-only here — there is no way to edit a user's name, email, or phone from this
-                console yet.
+                Profile fields are read-only here — there is no way to edit a user's name, email, or
+                phone from this console yet.
               </p>
 
               <div class="flex items-center gap-2 flex-wrap">
@@ -542,8 +607,12 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                   {{ actionLabels[action] }}
                 </Button>
               </div>
-              <p v-if="isLastActiveAdmin" class="text-xs text-muted-foreground">{{ lastAdminBlockReason }}</p>
-              <p v-if="actionError" role="alert" class="text-sm text-destructive">{{ actionError }}</p>
+              <p v-if="isLastActiveAdmin" class="text-xs text-muted-foreground">
+                {{ lastAdminBlockReason }}
+              </p>
+              <p v-if="actionError" role="alert" class="text-sm text-destructive">
+                {{ actionError }}
+              </p>
             </div>
           </TabsContent>
 
@@ -552,13 +621,32 @@ const actionLabels: Record<UserLifecycleAction, string> = {
               <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
                 <h2 class="text-lg font-semibold tracking-tight">Tenant roles</h2>
 
-                <QueryState :loading="isRolesLoading" :error="rolesError">
+                <QueryState
+                  :loading="isRolesLoading"
+                  :error="rolesError"
+                  :retryable="rolesErrorRetryable"
+                  @retry="loadRoles"
+                >
                   <div class="flex flex-col gap-3">
                     <p v-if="catalogTruncated" role="alert" class="text-sm text-muted-foreground">
-                      This tenant has more than {{ roleCatalog.length }} roles; only the first {{ roleCatalog.length }} are shown here.
+                      This tenant has more than {{ roleCatalog.length }} roles; only the first
+                      {{ roleCatalog.length }} are shown here.
                     </p>
 
-                    <div v-for="{ role, held } in catalogRows" :key="role.id" class="flex items-center gap-2">
+                    <!-- FE-6.1: was a blank div when this tenant's role
+                         catalog is empty — the Application-roles panel below
+                         already handled its own empty case; this one didn't. -->
+                    <EmptyState
+                      v-if="catalogRows.length === 0 && unresolvedHeld.length === 0"
+                      title="This tenant has no roles yet."
+                      description="Create one from the Roles section to assign it here."
+                    />
+
+                    <div
+                      v-for="{ role, held } in catalogRows"
+                      :key="role.id"
+                      class="flex items-center gap-2"
+                    >
                       <Checkbox
                         :id="`role-${role.id}`"
                         :model-value="held"
@@ -566,10 +654,16 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                         @update:model-value="() => toggleRole(role, held)"
                       />
                       <Label :for="`role-${role.id}`">{{ role.name }}</Label>
-                      <span v-if="role.isSystem" class="text-xs text-muted-foreground">(system)</span>
+                      <span v-if="role.isSystem" class="text-xs text-muted-foreground"
+                        >(system)</span
+                      >
                     </div>
 
-                    <div v-for="unresolved in unresolvedHeld" :key="unresolved.name" class="flex items-center gap-2">
+                    <div
+                      v-for="unresolved in unresolvedHeld"
+                      :key="unresolved.name"
+                      class="flex items-center gap-2"
+                    >
                       <Checkbox :model-value="true" disabled />
                       <Label class="text-muted-foreground">{{ unresolved.name }}</Label>
                       <span role="alert" class="text-xs text-destructive">
@@ -577,7 +671,9 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                       </span>
                     </div>
 
-                    <p v-if="rolesActionError" role="alert" class="text-sm text-destructive">{{ rolesActionError }}</p>
+                    <p v-if="rolesActionError" role="alert" class="text-sm text-destructive">
+                      {{ rolesActionError }}
+                    </p>
                   </div>
                 </QueryState>
               </div>
@@ -585,18 +681,32 @@ const actionLabels: Record<UserLifecycleAction, string> = {
               <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
                 <h2 class="text-lg font-semibold tracking-tight">Application roles</h2>
                 <p class="text-sm text-muted-foreground">
-                  Application roles are scoped to one resource server. Select one to see and change this user's roles
-                  there.
+                  Application roles are scoped to one resource server. Select one to see and change
+                  this user's roles there.
                 </p>
 
-                <QueryState :loading="isRSLoading" :error="rsError">
+                <QueryState
+                  :loading="isRSLoading"
+                  :error="rsError"
+                  :retryable="rsErrorRetryable"
+                  @retry="loadResourceServers"
+                >
                   <div class="flex flex-col gap-3">
                     <p v-if="rsTruncated" role="alert" class="text-sm text-muted-foreground">
-                      This tenant has more than {{ resourceServers.length }} resource servers; only the first
-                      {{ resourceServers.length }} are shown here.
+                      This tenant has more than {{ resourceServers.length }} resource servers; only
+                      the first {{ resourceServers.length }} are shown here.
                     </p>
 
-                    <div class="flex flex-col gap-1.5 max-w-xs">
+                    <!-- FE-6.1: the <select> used to show only its
+                         placeholder with no explanation when this tenant has
+                         no resource servers — looked broken, not empty. -->
+                    <EmptyState
+                      v-if="resourceServers.length === 0"
+                      title="This tenant has no resource servers yet."
+                      description="Create one from the Resource servers section to assign application roles here."
+                    />
+
+                    <div v-else class="flex flex-col gap-1.5 max-w-xs">
                       <Label for="app-role-rs-select">Resource server</Label>
                       <select
                         id="app-role-rs-select"
@@ -604,22 +714,41 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                         class="border-input h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                       >
                         <option value="">Select a resource server…</option>
-                        <option v-for="rs in resourceServers" :key="rs.id" :value="rs.id">{{ rs.name }}</option>
+                        <option v-for="rs in resourceServers" :key="rs.id" :value="rs.id">
+                          {{ rs.name }}
+                        </option>
                       </select>
                     </div>
 
-                    <QueryState v-if="selectedRsId" :loading="isAppRolesLoading" :error="appRolesError">
+                    <QueryState
+                      v-if="selectedRsId"
+                      :loading="isAppRolesLoading"
+                      :error="appRolesError"
+                      :retryable="appRolesErrorRetryable"
+                      @retry="loadApplicationRoles"
+                    >
                       <div class="flex flex-col gap-3">
-                        <p v-if="appCatalogTruncated" role="alert" class="text-sm text-muted-foreground">
-                          This resource server has more than {{ appRoleCatalog.length }} roles; only the first
-                          {{ appRoleCatalog.length }} are shown here.
+                        <p
+                          v-if="appCatalogTruncated"
+                          role="alert"
+                          class="text-sm text-muted-foreground"
+                        >
+                          This resource server has more than {{ appRoleCatalog.length }} roles; only
+                          the first {{ appRoleCatalog.length }} are shown here.
                         </p>
 
-                        <p v-if="appRoleCatalog.length === 0 && appUnresolvedHeld.length === 0" class="text-sm text-muted-foreground">
+                        <p
+                          v-if="appRoleCatalog.length === 0 && appUnresolvedHeld.length === 0"
+                          class="text-sm text-muted-foreground"
+                        >
                           This resource server has no application roles defined yet.
                         </p>
 
-                        <div v-for="{ role, held } in appCatalogRows" :key="role.id" class="flex items-center gap-2">
+                        <div
+                          v-for="{ role, held } in appCatalogRows"
+                          :key="role.id"
+                          class="flex items-center gap-2"
+                        >
                           <Checkbox
                             :id="`app-role-${role.id}`"
                             :model-value="held"
@@ -629,15 +758,22 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                           <Label :for="`app-role-${role.id}`">{{ role.name }}</Label>
                         </div>
 
-                        <div v-for="unresolved in appUnresolvedHeld" :key="unresolved.name" class="flex items-center gap-2">
+                        <div
+                          v-for="unresolved in appUnresolvedHeld"
+                          :key="unresolved.name"
+                          class="flex items-center gap-2"
+                        >
                           <Checkbox :model-value="true" disabled />
                           <Label class="text-muted-foreground">{{ unresolved.name }}</Label>
                           <span role="alert" class="text-xs text-destructive">
-                            held — not in this resource server's role catalog, cannot be changed here
+                            held — not in this resource server's role catalog, cannot be changed
+                            here
                           </span>
                         </div>
 
-                        <p v-if="appRolesActionError" role="alert" class="text-sm text-destructive">{{ appRolesActionError }}</p>
+                        <p v-if="appRolesActionError" role="alert" class="text-sm text-destructive">
+                          {{ appRolesActionError }}
+                        </p>
                       </div>
                     </QueryState>
                   </div>
@@ -661,9 +797,16 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                 </Button>
               </div>
 
-              <QueryState :loading="isSessionsLoading" :error="sessionsError">
+              <QueryState
+                :loading="isSessionsLoading"
+                :error="sessionsError"
+                :retryable="sessionsErrorRetryable"
+                @retry="loadSessions"
+              >
                 <div class="flex flex-col gap-3">
-                  <p v-if="sessions.length === 0" class="text-sm text-muted-foreground">No active sessions.</p>
+                  <p v-if="sessions.length === 0" class="text-sm text-muted-foreground">
+                    No active sessions.
+                  </p>
 
                   <div
                     v-for="session in sessions"
@@ -672,9 +815,12 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                     class="flex items-center justify-between gap-3 rounded-md border border-line p-3"
                   >
                     <div class="flex flex-col gap-1 text-sm">
-                      <span class="font-mono text-xs">{{ session.userAgent ?? 'Unknown device' }}</span>
+                      <span class="font-mono text-xs">{{
+                        session.userAgent ?? 'Unknown device'
+                      }}</span>
                       <span class="text-xs text-muted-foreground">
-                        {{ session.ipAddress ?? 'Unknown IP' }} · last active <RelativeTime :value="session.lastAccessedAt" />
+                        {{ session.ipAddress ?? 'Unknown IP' }} · last active
+                        <RelativeTime :value="session.lastAccessedAt" />
                       </span>
                     </div>
                     <Button
@@ -688,7 +834,9 @@ const actionLabels: Record<UserLifecycleAction, string> = {
                     </Button>
                   </div>
 
-                  <p v-if="sessionsActionError" role="alert" class="text-sm text-destructive">{{ sessionsActionError }}</p>
+                  <p v-if="sessionsActionError" role="alert" class="text-sm text-destructive">
+                    {{ sessionsActionError }}
+                  </p>
                 </div>
               </QueryState>
             </div>
@@ -703,7 +851,11 @@ const actionLabels: Record<UserLifecycleAction, string> = {
       :description="confirmDescription"
       :confirm-label="confirmAction === 'suspend' ? 'Suspend' : 'Delete'"
       :pending="actionPending"
-      @update:open="(open: boolean) => { if (!open) confirmAction = null }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) confirmAction = null
+        }
+      "
       @confirm="() => confirmAction && runLifecycle(confirmAction)"
     />
 
@@ -713,7 +865,11 @@ const actionLabels: Record<UserLifecycleAction, string> = {
       description="The device signed out immediately — any in-progress request on it fails as soon as it's made."
       confirm-label="Revoke"
       :pending="sessionActionPending"
-      @update:open="(open: boolean) => { if (!open) revokeSessionTarget = null }"
+      @update:open="
+        (open: boolean) => {
+          if (!open) revokeSessionTarget = null
+        }
+      "
       @confirm="confirmRevokeSession"
     />
 

@@ -31,7 +31,9 @@ import { useRoute } from 'vue-router'
 import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
 import NewPasswordFields from '@/components/common/NewPasswordFields.vue'
-import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
+import TenantBrandingProvider, {
+  type Branding,
+} from '@/components/common/TenantBrandingProvider.vue'
 import { confirmPasswordRotation } from '@/api/authPasswordRotation'
 import { hostedAuthPath } from '@/lib/hostedAuthPath'
 
@@ -97,7 +99,8 @@ async function handleSubmit(password: string): Promise<void> {
       // but the recovery path differs: rotation has no self-service resend
       // (reissue is platform-admin-only), so pointing the user at "request
       // a new one" would send them to a door that doesn't exist.
-      bannerMessage.value = 'This link is invalid or has expired. Ask your administrator to send you a new one.'
+      bannerMessage.value =
+        'This link is invalid or has expired. Ask your administrator to send you a new one.'
       break
     case 'missingRedirect':
       succeededWithoutRedirect.value = true
@@ -113,47 +116,54 @@ async function handleSubmit(password: string): Promise<void> {
 
 <template>
   <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
-  <AuthShell>
-    <template #above>
-      <div class="flex flex-col items-center gap-2 text-center">
-        <img
-          v-if="hasLogo"
-          :src="branding.logoUrl"
-          :alt="companyLabel(branding)"
-          class="h-10 w-auto object-contain"
-        >
-        <h1 class="text-xl font-semibold tracking-tight">Set your password for {{ companyLabel(branding) }}</h1>
-        <p class="text-sm text-muted-foreground">Choose a password to finish setting up your account.</p>
+    <AuthShell>
+      <template #above>
+        <div class="flex flex-col items-center gap-2 text-center">
+          <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. -->
+          <div class="h-10">
+            <img
+              v-if="hasLogo"
+              :src="branding.logoUrl"
+              :alt="companyLabel(branding)"
+              class="h-10 w-auto object-contain"
+            />
+          </div>
+          <h1 class="text-xl font-semibold tracking-tight">
+            Set your password for {{ companyLabel(branding) }}
+          </h1>
+          <p class="text-sm text-muted-foreground">
+            Choose a password to finish setting up your account.
+          </p>
+        </div>
+      </template>
+
+      <!-- Incomplete link: token/client_id missing — never rendered as a form. -->
+      <div v-if="linkIncomplete" class="flex flex-col gap-4 text-center">
+        <p role="alert" class="text-sm text-destructive">
+          This link is incomplete. Please use the link from your email.
+        </p>
       </div>
-    </template>
 
-    <!-- Incomplete link: token/client_id missing — never rendered as a form. -->
-    <div v-if="linkIncomplete" class="flex flex-col gap-4 text-center">
-      <p role="alert" class="text-sm text-destructive">
-        This link is incomplete. Please use the link from your email.
-      </p>
-    </div>
+      <!-- Password was changed but we couldn't resolve where to send the user next. -->
+      <div v-else-if="succeededWithoutRedirect" class="flex flex-col gap-4 text-center">
+        <p class="text-sm text-foreground">
+          Your password was updated, but we couldn't return you to your app. Try signing in.
+        </p>
+        <RouterLink :to="loginPath">
+          <Button class="w-full">Continue to sign in</Button>
+        </RouterLink>
+      </div>
 
-    <!-- Password was changed but we couldn't resolve where to send the user next. -->
-    <div v-else-if="succeededWithoutRedirect" class="flex flex-col gap-4 text-center">
-      <p class="text-sm text-foreground">
-        Your password was updated, but we couldn't return you to your app. Try signing in.
-      </p>
-      <RouterLink :to="loginPath">
-        <Button class="w-full">Continue to sign in</Button>
-      </RouterLink>
-    </div>
-
-    <NewPasswordFields
-      v-else
-      id-prefix="password-rotation"
-      submit-label="Set password and continue"
-      submitting-label="Setting password…"
-      :is-submitting="isSubmitting"
-      :banner-message="bannerMessage"
-      :min-length="8"
-      @submit="handleSubmit"
-    />
-  </AuthShell>
+      <NewPasswordFields
+        v-else
+        id-prefix="password-rotation"
+        submit-label="Set password and continue"
+        submitting-label="Setting password…"
+        :is-submitting="isSubmitting"
+        :banner-message="bannerMessage"
+        :min-length="8"
+        @submit="handleSubmit"
+      />
+    </AuthShell>
   </TenantBrandingProvider>
 </template>

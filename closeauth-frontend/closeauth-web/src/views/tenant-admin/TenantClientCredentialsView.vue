@@ -90,17 +90,29 @@ function handleContinue(): void {
 
 <template>
   <div class="flex flex-col gap-6 max-w-2xl">
-    <div v-if="!credentials" id="client-credentials-unavailable" class="rounded-xl border border-border p-6 flex flex-col gap-3">
-      <h1 class="text-xl font-semibold tracking-tight">These credentials are no longer available</h1>
+    <div
+      v-if="!credentials"
+      id="client-credentials-unavailable"
+      class="rounded-xl border border-border p-6 flex flex-col gap-3"
+    >
+      <h1 class="text-xl font-semibold tracking-tight">
+        These credentials are no longer available
+      </h1>
       <p class="text-sm text-muted-foreground">
-        A client secret is shown exactly once, right after it's issued. This page only has something to show
-        immediately after registering a client or regenerating its secret — a refresh, a bookmark, or a second visit
-        loses it, by design; only the backend's hash survives, and the plaintext cannot be recovered.
+        A client secret is shown exactly once, right after it's issued. This page only has something
+        to show immediately after registering a client or regenerating its secret — a refresh, a
+        bookmark, or a second visit loses it, by design; only the backend's hash survives, and the
+        plaintext cannot be recovered.
       </p>
       <p class="text-sm text-muted-foreground">
-        If you still need the secret, issue a new one from the client's detail page — that invalidates the old one.
+        If you still need the secret, issue a new one from the client's detail page — that
+        invalidates the old one.
       </p>
-      <Button variant="outline" class="self-start" @click="router.push({ name: 'tenant-admin-clients', params: { slug } })">
+      <Button
+        variant="outline"
+        class="self-start"
+        @click="router.push({ name: 'tenant-admin-clients', params: { slug } })"
+      >
         &larr; Back to clients
       </Button>
     </div>
@@ -111,17 +123,22 @@ function handleContinue(): void {
           {{ context === 'regenerate' ? 'New secret issued' : 'Client registered' }}
         </h1>
         <p role="alert" class="text-sm font-medium text-destructive mt-1">
-          These credentials are shown ONE TIME ONLY. Once you leave this page, the secret cannot be retrieved again —
-          only its hash is stored. Copy or download it now.
+          These credentials are shown once. Once you leave this page, the secret cannot be retrieved
+          again — only its hash is stored. Copy or download it now.
         </p>
       </div>
 
       <div class="rounded-xl border border-border p-6 flex flex-col gap-5">
         <div class="flex flex-col gap-1.5">
           <Label>OAuth2 client_id</Label>
-          <p class="text-xs text-muted-foreground">Put this in your application's OAuth configuration.</p>
+          <p class="text-xs text-muted-foreground">
+            Put this in your application's OAuth configuration.
+          </p>
           <div class="flex items-center gap-2">
-            <code id="client-credentials-client-id" class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all">
+            <code
+              id="client-credentials-client-id"
+              class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all"
+            >
               {{ credentials.client.clientId }}
             </code>
             <Button
@@ -139,11 +156,14 @@ function handleContinue(): void {
         <div class="flex flex-col gap-1.5">
           <Label>Console record id</Label>
           <p class="text-xs text-muted-foreground">
-            Use this to look the client up in this console, or to issue a new secret later. This is NOT the same
-            value as the client_id above.
+            Use this to look the client up in this console, or to issue a new secret later. This is
+            NOT the same value as the client_id above.
           </p>
           <div class="flex items-center gap-2">
-            <code id="client-credentials-record-id" class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all">
+            <code
+              id="client-credentials-record-id"
+              class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all"
+            >
               {{ credentials.client.id }}
             </code>
             <Button
@@ -160,10 +180,17 @@ function handleContinue(): void {
 
         <div v-if="credentials.clientSecret" class="flex flex-col gap-1.5">
           <Label>client_secret</Label>
-          <p class="text-xs text-muted-foreground">Shown once. It cannot be retrieved after you leave this page.</p>
+          <p class="text-xs text-muted-foreground">
+            Shown once. It cannot be retrieved after you leave this page.
+          </p>
           <div class="flex items-center gap-2">
-            <code id="client-credentials-secret" class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all">
-              {{ secretRevealed ? credentials.clientSecret : maskedSecret(credentials.clientSecret) }}
+            <code
+              id="client-credentials-secret"
+              class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono break-all"
+            >
+              {{
+                secretRevealed ? credentials.clientSecret : maskedSecret(credentials.clientSecret)
+              }}
             </code>
             <Button
               id="client-credentials-reveal"
@@ -184,15 +211,28 @@ function handleContinue(): void {
               {{ copiedField === 'secret' ? 'Copied' : 'Copy' }}
             </Button>
           </div>
-          <Button id="client-credentials-download" type="button" variant="outline" class="self-start mt-1" @click="downloadCredentials">
+          <Button
+            id="client-credentials-download"
+            type="button"
+            variant="outline"
+            class="self-start mt-1"
+            @click="downloadCredentials"
+          >
             Download credentials (.json)
           </Button>
         </div>
 
-        <p v-if="context === 'create'" class="text-sm text-muted-foreground border-t border-border pt-4">
-          Registering this client also automatically created a resource server for it, with a default
+        <p
+          v-if="context === 'create'"
+          class="text-sm text-muted-foreground border-t border-border pt-4"
+        >
+          Registering this client also automatically created a resource server for it, with a
+          default
           <code class="font-mono">read</code> scope — see the
-          <RouterLink :to="{ name: 'tenant-admin-resource-servers', params: { slug } }" class="underline underline-offset-2">
+          <RouterLink
+            :to="{ name: 'tenant-admin-resource-servers', params: { slug } }"
+            class="underline underline-offset-2"
+          >
             resource servers list
           </RouterLink>
           to find it.
@@ -211,7 +251,12 @@ function handleContinue(): void {
             I have saved these credentials. I understand the secret cannot be shown again.
           </Label>
         </div>
-        <Button id="client-credentials-continue" :disabled="!canContinue" class="self-start" @click="handleContinue">
+        <Button
+          id="client-credentials-continue"
+          :disabled="!canContinue"
+          class="self-start"
+          @click="handleContinue"
+        >
           Continue
         </Button>
       </div>

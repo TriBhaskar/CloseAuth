@@ -19,12 +19,12 @@ const reason = computed(() => {
 })
 
 const MESSAGES: Record<string, string> = {
-  invalid_state: 'Your sign-in attempt could not be verified. Please try again.',
+  invalid_state: "We couldn't verify your sign-in attempt. Please try again.",
   invalid_slug: 'That tenant address is not valid.',
   unknown_tenant: 'This tenant does not have an admin console configured yet.',
-  token_exchange_failed: 'Your sign-in attempt could not be completed. Please try again.',
+  token_exchange_failed: "We couldn't complete your sign-in attempt. Please try again.",
   bff_unreachable: 'The admin console could not reach its backend. Please try again shortly.',
-  access_denied: 'The sign-in attempt was cancelled.',
+  access_denied: 'You cancelled the sign-in attempt.',
   // FE-2a: the tenant resolver's own rate limiter (routes.go's
   // authorizeStartLimiter) rejected the sign-in attempt. Retryable — unlike
   // login_loop below, this is a transient window, not a structural problem.
@@ -33,11 +33,14 @@ const MESSAGES: Record<string, string> = {
   // this reason means /admin/login or /admin/reauth was hit repeatedly
   // without a successful callback, a structural problem a retry link would
   // just repeat.
-  login_loop: 'Something is preventing sign-in from completing. Please contact support if this keeps happening.',
+  login_loop:
+    'Something is preventing sign-in from completing. Please contact support if this keeps happening.',
 }
 
 const message = computed(() => MESSAGES[reason.value] ?? 'Something went wrong while signing in.')
-const showRetry = computed(() => reason.value !== 'login_loop' && slug.value !== '' && slug.value !== 'unknown')
+const showRetry = computed(
+  () => reason.value !== 'login_loop' && slug.value !== '' && slug.value !== 'unknown',
+)
 </script>
 
 <template>
@@ -53,7 +56,9 @@ const showRetry = computed(() => reason.value !== 'login_loop' && slug.value !==
       <a v-if="showRetry" :href="`/t/${slug}/admin/login`">
         <Button variant="outline" class="w-full">Try again</Button>
       </a>
-      <RouterLink to="/" class="text-sm text-muted-foreground hover:underline">Back to home</RouterLink>
+      <RouterLink to="/" class="text-sm text-muted-foreground hover:underline"
+        >Back to home</RouterLink
+      >
     </div>
   </AuthShell>
 </template>

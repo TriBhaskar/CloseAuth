@@ -99,7 +99,15 @@ onMounted(async () => {
   <TenantBrandingProvider v-if="resolved" :client-id="clientId" v-slot="{ branding, hasLogo }">
     <AuthShell>
       <div class="flex flex-col items-center gap-4 text-center">
-        <img v-if="hasLogo" :src="branding.logoUrl" :alt="branding.companyName" class="h-10 w-auto object-contain">
+        <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. -->
+        <div class="h-10">
+          <img
+            v-if="hasLogo"
+            :src="branding.logoUrl"
+            :alt="branding.companyName"
+            class="h-10 w-auto object-contain"
+          />
+        </div>
         <p class="text-sm text-muted-foreground" aria-live="polite">Signing you in…</p>
       </div>
     </AuthShell>

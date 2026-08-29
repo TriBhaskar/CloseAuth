@@ -27,7 +27,13 @@ const dialogStubs = {
 async function createAdminsRouter() {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/platform/console/admins', name: 'platform-admin-admins', component: PlatformAdminsView }],
+    routes: [
+      {
+        path: '/platform/console/admins',
+        name: 'platform-admin-admins',
+        component: PlatformAdminsView,
+      },
+    ],
   })
   await router.push('/platform/console/admins')
   await router.isReady()
@@ -71,7 +77,9 @@ function signInAs(adminId: string): void {
 }
 
 async function mountView(router: Awaited<ReturnType<typeof createAdminsRouter>>) {
-  const wrapper = mount(PlatformAdminsView, { global: { plugins: [router, pinia], stubs: dialogStubs } })
+  const wrapper = mount(PlatformAdminsView, {
+    global: { plugins: [router, pinia], stubs: dialogStubs },
+  })
   await flushPromises()
   return wrapper
 }
@@ -81,12 +89,18 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
             json: () =>
-              Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
@@ -106,16 +120,26 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
             json: () =>
-              Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(['PLATFORM_ADMIN']) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(['PLATFORM_ADMIN']),
+          })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),
@@ -128,27 +152,135 @@ describe('PlatformAdminsView', () => {
     expect(wrapper.text()).toContain('PLATFORM_ADMIN')
   })
 
-  it('platform_admin.last_admin renders its specific message on suspend, not a generic conflict banner', async () => {
+  it('FE-6.1: a failed per-admin roles fetch renders "Couldn\'t load roles", never the false claim "No roles — cannot sign in yet"', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+      vi.fn((url: string) => {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
             json: () =>
-              Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(['PLATFORM_ADMIN']) })
+          return Promise.resolve({
+            ok: false,
+            status: 502,
+            json: () =>
+              Promise.resolve({
+                error: 'bad_gateway',
+                error_description: 'Could not reach the backend.',
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createAdminsRouter()
+    const wrapper = await mountView(router)
+
+    expect(wrapper.text()).toContain("Couldn't load roles")
+    expect(wrapper.text()).not.toContain('No roles — cannot sign in yet')
+  })
+
+  it('FE-6.1: the search box actually filters by email or name (was rendered but silently non-functional)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/platform/api/admins?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  adminFixture({
+                    id: 'admin-1',
+                    email: 'alice@closeauth.test',
+                    firstName: 'Alice',
+                    lastName: 'Admin',
+                  }),
+                  adminFixture({
+                    id: 'admin-2',
+                    email: 'bob@closeauth.test',
+                    firstName: 'Bob',
+                    lastName: 'Ops',
+                  }),
+                ],
+                page: 0,
+                size: 200,
+                totalElements: 2,
+                totalPages: 1,
+              }),
+          })
+        }
+        if (
+          url === '/platform/api/admins/admin-1/roles' ||
+          url === '/platform/api/admins/admin-2/roles'
+        ) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createAdminsRouter()
+    const wrapper = await mountView(router)
+
+    expect(wrapper.text()).toContain('alice@closeauth.test')
+    expect(wrapper.text()).toContain('bob@closeauth.test')
+
+    await wrapper.find('input[type="search"]').setValue('alice')
+    await new Promise((resolve) => setTimeout(resolve, 350)) // DataTable debounces search 300ms
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('alice@closeauth.test')
+    expect(wrapper.text()).not.toContain('bob@closeauth.test')
+  })
+
+  it('platform_admin.last_admin renders its specific message on suspend, not a generic conflict banner', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/platform/api/admins?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
+          })
+        }
+        if (url === '/platform/api/admins/admin-1/roles') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(['PLATFORM_ADMIN']),
+          })
         }
         if (url === '/platform/api/admins/admin-1/suspend' && init?.method === 'POST') {
           return Promise.resolve({
             ok: false,
             status: 409,
             json: () =>
-              Promise.resolve({ error: 'platform_admin.last_admin', error_description: 'Cannot remove the last active PLATFORM_ADMIN' }),
+              Promise.resolve({
+                error: 'platform_admin.last_admin',
+                error_description: 'Cannot remove the last active PLATFORM_ADMIN',
+              }),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
@@ -172,11 +304,18 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [adminFixture({ status })], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+            json: () =>
+              Promise.resolve({
+                items: [adminFixture({ status })],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
@@ -184,7 +323,11 @@ describe('PlatformAdminsView', () => {
         }
         if (url === '/platform/api/admins/admin-1/activate' && init?.method === 'POST') {
           status = 'ACTIVE'
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(adminFixture({ status })) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(adminFixture({ status })),
+          })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),
@@ -208,11 +351,12 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
+            json: () =>
+              Promise.resolve({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
           })
         }
         if (url === '/platform/api/admins' && init?.method === 'POST') {
@@ -244,10 +388,18 @@ describe('PlatformAdminsView', () => {
 
   it('Manage roles: toggling a checkbox does not call the API until Save is clicked', async () => {
     const fetchMock = vi.fn((url: string) => {
-      if (url === '/platform/api/admins?page=0&size=20') {
+      if (url === '/platform/api/admins?page=0&size=200') {
         return Promise.resolve({
-          ok: true, status: 200,
-          json: () => Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              items: [adminFixture()],
+              page: 0,
+              size: 20,
+              totalElements: 1,
+              totalPages: 1,
+            }),
         })
       }
       if (url === '/platform/api/admins/admin-1/roles') {
@@ -276,20 +428,38 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
-            ok: true, status: 200,
-            json: () => Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(['PLATFORM_SUPPORT']) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(['PLATFORM_SUPPORT']),
+          })
         }
-        if (url === '/platform/api/admins/admin-1/roles/PLATFORM_ADMIN' && init?.method === 'POST') {
+        if (
+          url === '/platform/api/admins/admin-1/roles/PLATFORM_ADMIN' &&
+          init?.method === 'POST'
+        ) {
           calls.push('assign:PLATFORM_ADMIN')
           return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) })
         }
-        if (url === '/platform/api/admins/admin-1/roles/PLATFORM_SUPPORT' && init?.method === 'DELETE') {
+        if (
+          url === '/platform/api/admins/admin-1/roles/PLATFORM_SUPPORT' &&
+          init?.method === 'DELETE'
+        ) {
           calls.push('revoke:PLATFORM_SUPPORT')
           return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) })
         }
@@ -318,14 +488,26 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
-            ok: true, status: 200,
-            json: () => Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(['PLATFORM_ADMIN']) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(['PLATFORM_ADMIN']),
+          })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),
@@ -348,14 +530,26 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
-            ok: true, status: 200,
-            json: () => Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(['PLATFORM_ADMIN']) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(['PLATFORM_ADMIN']),
+          })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
       }),
@@ -376,19 +570,36 @@ describe('PlatformAdminsView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/platform/api/admins?page=0&size=20') {
+        if (url === '/platform/api/admins?page=0&size=200') {
           return Promise.resolve({
-            ok: true, status: 200,
-            json: () => Promise.resolve({ items: [adminFixture()], page: 0, size: 20, totalElements: 1, totalPages: 1 }),
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [adminFixture()],
+                page: 0,
+                size: 20,
+                totalElements: 1,
+                totalPages: 1,
+              }),
           })
         }
         if (url === '/platform/api/admins/admin-1/roles') {
-          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(['PLATFORM_ADMIN']) })
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(['PLATFORM_ADMIN']),
+          })
         }
         if (url === '/platform/api/admins/admin-1/suspend' && init?.method === 'POST') {
           return Promise.resolve({
-            ok: false, status: 403,
-            json: () => Promise.resolve({ error: 'platform_admin.self_action_refused', error_description: 'refused' }),
+            ok: false,
+            status: 403,
+            json: () =>
+              Promise.resolve({
+                error: 'platform_admin.self_action_refused',
+                error_description: 'refused',
+              }),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))

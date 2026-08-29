@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import StateBadge, { tenantStatusTone, userStatusTone } from './StateBadge.vue'
+import StateBadge, { tenantStatusTone, userStatusTone, auditOutcomeTone } from './StateBadge.vue'
 
 describe('StateBadge', () => {
   it('renders the label uppercase-styled (via class, not text transform of the string itself)', () => {
@@ -41,5 +41,13 @@ describe('userStatusTone', () => {
     expect(userStatusTone('ACTIVE')).toBe('ok')
     expect(userStatusTone('SUSPENDED')).toBe('danger')
     expect(userStatusTone('DELETED')).toBe('muted')
+  })
+})
+
+describe('auditOutcomeTone', () => {
+  it('maps every AuditOutcome value to a tone', () => {
+    expect(auditOutcomeTone('SUCCESS')).toBe('ok')
+    expect(auditOutcomeTone('FAILURE')).toBe('warn')
+    expect(auditOutcomeTone('ERROR')).toBe('danger')
   })
 })

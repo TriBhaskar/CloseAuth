@@ -46,9 +46,11 @@ interface DataTableTestProps {
   totalPages: number
   hasActiveFilters?: boolean
   errorMessage?: string
+  errorRetryable?: boolean
   emptyTitle?: string
   filteredEmptyTitle?: string
   onRowClick?: (row: Row) => void
+  hideSearch?: boolean
 }
 
 // Vue Test Utils' mount() can't infer a generic SFC's type param from the
@@ -59,7 +61,11 @@ interface DataTableTestProps {
 // this only narrows what TypeScript believes mount()'s props parameter is.
 type DataTableRowComponent = new () => { $props: DataTableTestProps }
 
-async function mountTable(props: Partial<DataTableTestProps> = {}, desktop = true) {
+async function mountTable(
+  props: Partial<DataTableTestProps> = {},
+  desktop = true,
+  slots: Record<string, string> = {},
+) {
   stubMatchMedia(desktop)
   const router = createRouter({
     history: createWebHistory(),
@@ -80,6 +86,7 @@ async function mountTable(props: Partial<DataTableTestProps> = {}, desktop = tru
       totalPages: 1,
       ...props,
     },
+    slots,
     global: { plugins: [router] },
   })
 }
@@ -104,15 +111,61 @@ describe('DataTable', () => {
   })
 
   it('shows ErrorState with retry when state is error, and emits retry', async () => {
-    const wrapper = await mountTable({ state: 'error', data: [], errorMessage: 'Could not reach the backend.' })
+    const wrapper = await mountTable({
+      state: 'error',
+      data: [],
+      errorMessage: 'Could not reach the backend.',
+    })
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Could not reach the backend.')
     await wrapper.find('[role="alert"] button').trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
 
+  it('FE-6.1: errorRetryable=false suppresses the retry action — a 403 must not offer a retry', async () => {
+    const wrapper = await mountTable({
+      state: 'error',
+      data: [],
+      errorMessage: "You don't have access to this.",
+      errorRetryable: false,
+    })
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.find('[role="alert"] button').exists()).toBe(false)
+  })
+
+  it('FE-6.1: the pager stays visible when the current (filtered) view is empty but the server has more pages', async () => {
+    const wrapper = await mountTable({
+      data: [],
+      hasActiveFilters: true,
+      totalPages: 2,
+      totalElements: 5,
+    })
+    expect(wrapper.find('#admin-pagination-next').exists()).toBe(true)
+  })
+
+  it('the pager is hidden when the view is empty and there is genuinely only one server page', async () => {
+    const wrapper = await mountTable({
+      data: [],
+      hasActiveFilters: false,
+      totalPages: 1,
+      totalElements: 0,
+    })
+    expect(wrapper.find('#admin-pagination-next').exists()).toBe(false)
+  })
+
+  it('FE-6.2: the mobile empty state forwards the #action slot, same as desktop', async () => {
+    const wrapper = await mountTable({ data: [] }, false, {
+      action: '<button id="mobile-empty-action">Create one</button>',
+    })
+    expect(wrapper.find('#mobile-empty-action').exists()).toBe(true)
+  })
+
   it('shows the first-run empty state when data is empty and no filters are active', async () => {
-    const wrapper = await mountTable({ data: [], hasActiveFilters: false, emptyTitle: 'No tenants yet' })
+    const wrapper = await mountTable({
+      data: [],
+      hasActiveFilters: false,
+      emptyTitle: 'No tenants yet',
+    })
     expect(wrapper.text()).toContain('No tenants yet')
   })
 
@@ -163,6 +216,11 @@ describe('DataTable', () => {
     vi.advanceTimersByTime(1)
     await flushPromises()
     expect(wrapper.emitted('update:search')).toEqual([['acme']])
+  })
+
+  it('hideSearch suppresses the search input entirely — FE-5.1, callers with no free-text backend filter', async () => {
+    const wrapper = await mountTable({ hideSearch: true })
+    expect(wrapper.find('input[type="search"]').exists()).toBe(false)
   })
 
   it('renders the mobile stacked-card layout instead of a <table> below 768px', async () => {

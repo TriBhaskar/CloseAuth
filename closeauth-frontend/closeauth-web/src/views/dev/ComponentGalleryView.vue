@@ -11,7 +11,11 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import IdentifierChip, { type ChipKind } from '@/components/common/IdentifierChip.vue'
-import StateBadge, { tenantStatusTone, userStatusTone, type Tone } from '@/components/common/StateBadge.vue'
+import StateBadge, {
+  tenantStatusTone,
+  userStatusTone,
+  type Tone,
+} from '@/components/common/StateBadge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
@@ -94,11 +98,50 @@ const SAMPLE_JSON = {
 // actually renders, not exercising a network path.
 type ErrorResult = Extract<AdminResult<unknown>, { kind: 'error' }>
 const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
-  { label: '403 forbidden', result: { kind: 'error', status: 403, code: 'access_denied', message: 'nope', category: 'forbidden' } },
-  { label: '404 not found', result: { kind: 'error', status: 404, code: 'user.not_found', message: 'No such user.', category: 'notFound' } },
-  { label: '429 rate limited', result: { kind: 'error', status: 429, code: 'rate_limited', message: 'slow down', category: 'rateLimited' } },
-  { label: '5xx server', result: { kind: 'error', status: 500, code: 'internal_error', message: 'Something broke.', category: 'server' } },
-  { label: 'network unreachable', result: { kind: 'error', status: 503, code: '', message: 'unreachable', category: 'network' } },
+  {
+    label: '403 forbidden',
+    result: {
+      kind: 'error',
+      status: 403,
+      code: 'access_denied',
+      message: 'nope',
+      category: 'forbidden',
+    },
+  },
+  {
+    label: '404 not found',
+    result: {
+      kind: 'error',
+      status: 404,
+      code: 'user.not_found',
+      message: 'No such user.',
+      category: 'notFound',
+    },
+  },
+  {
+    label: '429 rate limited',
+    result: {
+      kind: 'error',
+      status: 429,
+      code: 'rate_limited',
+      message: 'slow down',
+      category: 'rateLimited',
+    },
+  },
+  {
+    label: '5xx server',
+    result: {
+      kind: 'error',
+      status: 500,
+      code: 'internal_error',
+      message: 'Something broke.',
+      category: 'server',
+    },
+  },
+  {
+    label: 'network unreachable',
+    result: { kind: 'error', status: 503, code: '', message: 'unreachable', category: 'network' },
+  },
 ]
 </script>
 
@@ -126,7 +169,11 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
       </div>
       <div class="flex flex-wrap gap-3">
         <span class="text-meta text-ink-muted">with href:</span>
-        <IdentifierChip kind="role" value="role_tenant-admin" href="/t/acme/console/roles/role_tenant-admin" />
+        <IdentifierChip
+          kind="role"
+          value="role_tenant-admin"
+          href="/t/acme/console/roles/role_tenant-admin"
+        />
       </div>
     </section>
 
@@ -135,7 +182,9 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
       <div class="flex flex-wrap gap-2">
         <StateBadge v-for="t in TONES" :key="t" :tone="t" :label="t" />
       </div>
-      <p class="text-meta text-ink-muted">muted has no fill — border only, everything else above turns confetti.</p>
+      <p class="text-meta text-ink-muted">
+        muted has no fill — border only, everything else above turns confetti.
+      </p>
       <div class="flex flex-wrap gap-2">
         <StateBadge :tone="tenantStatusTone('PROVISIONING')" label="PROVISIONING" />
         <StateBadge :tone="tenantStatusTone('ACTIVE')" label="ACTIVE" />
@@ -155,7 +204,10 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
         </EmptyState>
       </div>
       <div class="border border-line rounded-lg">
-        <EmptyState title="No events match these filters" description="Try widening the date range." />
+        <EmptyState
+          title="No events match these filters"
+          description="Try widening the date range."
+        />
       </div>
     </section>
 
@@ -165,10 +217,14 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
         <p class="text-meta text-ink-muted px-3 pt-2">
           {{ s.label }} — retryable: {{ errorStateProps(s.result).retryable }}
         </p>
-        <ErrorState :message="errorStateProps(s.result).message" :trace-id="errorStateProps(s.result).traceId" />
+        <ErrorState
+          :message="errorStateProps(s.result).message"
+          :trace-id="errorStateProps(s.result).traceId"
+        />
       </div>
       <p class="text-meta text-ink-muted">
-        trace_id doesn't exist end-to-end yet (tracked backend dependency) — shown here for layout only.
+        trace_id doesn't exist end-to-end yet (tracked backend dependency) — shown here for layout
+        only.
       </p>
       <div class="border border-line rounded-lg">
         <ErrorState message="Something went wrong on our end." trace-id="tr_9f3c1a8b2e4d" />
@@ -186,7 +242,10 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
 
     <section class="flex flex-col gap-3">
       <h2 class="text-section-title font-semibold">CopyButton</h2>
-      <CopyButton value="ten_acme-inc" class="border border-line rounded px-2 py-1 text-body w-fit" />
+      <CopyButton
+        value="ten_acme-inc"
+        class="border border-line rounded px-2 py-1 text-body w-fit"
+      />
     </section>
 
     <section class="flex flex-col gap-3">
@@ -196,7 +255,12 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
 
     <section class="flex flex-col gap-3">
       <h2 class="text-section-title font-semibold">FormField</h2>
-      <FormField id="gallery-field" label="Email" :error="formFieldError" hint="A hint, replaced by the error above it when one is set.">
+      <FormField
+        id="gallery-field"
+        label="Email"
+        :error="formFieldError"
+        hint="A hint, replaced by the error above it when one is set."
+      >
         <template #default="{ hasError, describedBy }">
           <Input
             id="gallery-field"
@@ -206,19 +270,41 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
           />
         </template>
       </FormField>
-      <Button size="sm" variant="outline" class="w-fit" @click="formFieldError = formFieldError ? '' : 'That email is already taken.'">
+      <Button
+        size="sm"
+        variant="outline"
+        class="w-fit"
+        @click="formFieldError = formFieldError ? '' : 'That email is already taken.'"
+      >
         Toggle error
       </Button>
     </section>
 
     <section class="flex flex-col gap-3">
-      <h2 class="text-section-title font-semibold">DataTable — all five states, sort, paging, mobile card layout</h2>
+      <h2 class="text-section-title font-semibold">
+        DataTable — all five states, sort, paging, mobile card layout
+      </h2>
       <div class="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" @click="tableState = 'loading'">loading</Button>
         <Button size="sm" variant="outline" @click="tableState = 'error'">error</Button>
-        <Button size="sm" variant="outline" @click="((tableState = 'loaded'), (tableHasData = false), (tableHasFilters = false))">empty (first-run)</Button>
-        <Button size="sm" variant="outline" @click="((tableState = 'loaded'), (tableHasData = false), (tableHasFilters = true))">empty (filtered)</Button>
-        <Button size="sm" variant="outline" @click="((tableState = 'loaded'), (tableHasData = true))">loaded</Button>
+        <Button
+          size="sm"
+          variant="outline"
+          @click="((tableState = 'loaded'), (tableHasData = false), (tableHasFilters = false))"
+          >empty (first-run)</Button
+        >
+        <Button
+          size="sm"
+          variant="outline"
+          @click="((tableState = 'loaded'), (tableHasData = false), (tableHasFilters = true))"
+          >empty (filtered)</Button
+        >
+        <Button
+          size="sm"
+          variant="outline"
+          @click="((tableState = 'loaded'), (tableHasData = true))"
+          >loaded</Button
+        >
       </div>
       <DataTable
         :columns="galleryColumns"
@@ -239,19 +325,28 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
         <template #card="{ row }">
           <div class="flex items-center justify-between">
             <span>{{ (row as GalleryUser).name }}</span>
-            <StateBadge :tone="userStatusTone((row as GalleryUser).status)" :label="(row as GalleryUser).status" />
+            <StateBadge
+              :tone="userStatusTone((row as GalleryUser).status)"
+              :label="(row as GalleryUser).status"
+            />
           </div>
         </template>
       </DataTable>
-      <p class="text-meta text-ink-muted">Resize the window below 768px to see the stacked-card layout.</p>
+      <p class="text-meta text-ink-muted">
+        Resize the window below 768px to see the stacked-card layout.
+      </p>
     </section>
 
     <section class="flex flex-col gap-3">
       <h2 class="text-section-title font-semibold">Dialog family</h2>
       <div class="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" @click="confirmOpen = true">Open ConfirmDialog</Button>
-        <Button size="sm" variant="outline" @click="typedConfirmOpen = true">Open TypedConfirmDialog</Button>
-        <Button size="sm" variant="outline" @click="secretPanelOpen = true">Open SecretRevealPanel</Button>
+        <Button size="sm" variant="outline" @click="typedConfirmOpen = true"
+          >Open TypedConfirmDialog</Button
+        >
+        <Button size="sm" variant="outline" @click="secretPanelOpen = true"
+          >Open SecretRevealPanel</Button
+        >
       </div>
       <ConfirmDialog
         :open="confirmOpen"
@@ -270,10 +365,20 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
       <SecretRevealPanel
         :open="secretPanelOpen"
         title="Client registered"
-        warning-message="These credentials are shown ONE TIME ONLY. Once you leave this page, the secret cannot be retrieved again."
+        warning-message="These credentials are shown once. Once you leave this page, the secret cannot be retrieved again."
         :fields="[
-          { id: 'client-id', label: 'client_id', value: 'admin-console-acme', hint: 'Put this in your app config.' },
-          { id: 'secret', label: 'client_secret', value: 'sk_live_9f3c1a8b2e4d7f6a', maskable: true },
+          {
+            id: 'client-id',
+            label: 'client_id',
+            value: 'admin-console-acme',
+            hint: 'Put this in your app config.',
+          },
+          {
+            id: 'secret',
+            label: 'client_secret',
+            value: 'sk_live_9f3c1a8b2e4d7f6a',
+            maskable: true,
+          },
         ]"
         @continue="secretPanelOpen = false"
       />
@@ -282,11 +387,13 @@ const ERROR_CATEGORY_SAMPLES: Array<{ label: string; result: ErrorResult }> = [
     <section class="flex flex-col gap-2 border-t border-line pt-6">
       <h2 class="text-section-title font-semibold">Shells</h2>
       <p class="text-meta text-ink-muted">
-        AuthShell/EntryShell/ConsoleShell are full-page layouts, not meaningfully embeddable inline in this gallery
-        alongside everything above (a nested sidebar-within-a-page reads as broken, not as a demo). Exercise them
-        directly: EntryShell at <code class="font-mono">/</code>, AuthShell at <code class="font-mono">/login</code>,
-        ConsoleShell at <code class="font-mono">/t/acme/console</code> (tenant, with the icon-rail/Sheet breakpoints)
-        and <code class="font-mono">/platform/console</code> (platform, no tenant identity chip).
+        AuthShell/EntryShell/ConsoleShell are full-page layouts, not meaningfully embeddable inline
+        in this gallery alongside everything above (a nested sidebar-within-a-page reads as broken,
+        not as a demo). Exercise them directly: EntryShell at <code class="font-mono">/</code>,
+        AuthShell at <code class="font-mono">/login</code>, ConsoleShell at
+        <code class="font-mono">/t/acme/console</code> (tenant, with the icon-rail/Sheet
+        breakpoints) and <code class="font-mono">/platform/console</code> (platform, no tenant
+        identity chip).
       </p>
     </section>
   </div>

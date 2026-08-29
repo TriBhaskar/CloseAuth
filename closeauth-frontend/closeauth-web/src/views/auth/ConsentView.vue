@@ -52,8 +52,14 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthShell from '@/shells/AuthShell.vue'
 import { Button } from '@/components/ui/button'
-import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
-import { fetchConsentContext, type ConsentContext, type ConsentScope } from '@/api/authConsentContext'
+import TenantBrandingProvider, {
+  type Branding,
+} from '@/components/common/TenantBrandingProvider.vue'
+import {
+  fetchConsentContext,
+  type ConsentContext,
+  type ConsentScope,
+} from '@/api/authConsentContext'
 import { fetchBranding } from '@/api/publicBranding'
 
 // client_id is parsed straight off the same captured query string used for
@@ -85,7 +91,11 @@ async function loadContext(): Promise<void> {
   if (result.kind === 'ok') {
     context.value = result.value
   } else {
-    error.value = 'Failed to load this authorization request.'
+    // FE-6.1/6.2: names the fix (retry) rather than just stating the
+    // failure — there was previously no way back from this short of
+    // abandoning the OAuth flow entirely.
+    error.value =
+      "We couldn't load this authorization request. Check your connection and try again."
   }
   isLoading.value = false
 }
@@ -114,7 +124,9 @@ onMounted(() => {
 // consentAutoGrantProviders customizer grants these unconditionally
 // regardless of what's submitted, so this is purely cosmetic consistency
 // between what's displayed and what's sent, not a security-relevant choice.
-const autoGrantedScopes = computed(() => context.value?.scopes.filter((s) => !s.requiresConsent) ?? [])
+const autoGrantedScopes = computed(
+  () => context.value?.scopes.filter((s) => !s.requiresConsent) ?? [],
+)
 
 // FE-2.10: alreadyGranted consumption. Built despite being empty through the
 // BFF proxy in every production deployment today (see the plan's own
@@ -140,97 +152,128 @@ function scopeLabel(s: ConsentScope): string {
 
 <template>
   <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
-  <AuthShell>
-    <template #above>
-      <div class="flex flex-col items-center gap-2 text-center">
-        <img
-          v-if="hasLogo"
-          :src="branding.logoUrl"
-          :alt="companyLabel(branding)"
-          class="h-10 w-auto object-contain"
-        >
-        <!-- No client-logo capability exists anywhere in the system — the
-             initial avatar is the wireframe's own named fallback. -->
-        <div
-          v-else-if="context?.clientName"
-          class="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground"
-          aria-hidden="true"
-        >
-          {{ clientInitial(context.clientName) }}
+    <AuthShell>
+      <template #above>
+        <div class="flex flex-col items-center gap-2 text-center">
+          <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. Wraps
+             BOTH the logo and its initial-avatar fallback (neither renders
+             during the initial loading window, when hasLogo is false and
+             context.clientName isn't resolved yet either), so the box is
+             held even before either conditional branch has anything to show. -->
+          <div class="h-10">
+            <img
+              v-if="hasLogo"
+              :src="branding.logoUrl"
+              :alt="companyLabel(branding)"
+              class="h-10 w-auto object-contain"
+            />
+            <!-- No client-logo capability exists anywhere in the system — the
+               initial avatar is the wireframe's own named fallback. -->
+            <div
+              v-else-if="context?.clientName"
+              class="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground"
+              aria-hidden="true"
+            >
+              {{ clientInitial(context.clientName) }}
+            </div>
+          </div>
+          <h1 class="text-xl font-semibold tracking-tight">
+            {{
+              context?.clientName
+                ? `${context.clientName} wants access to your account`
+                : 'This application wants access to your account'
+            }}
+          </h1>
+          <p class="text-sm text-muted-foreground">
+            This app is requesting access to your {{ companyLabel(branding) }} account.
+          </p>
         </div>
-        <h1 class="text-xl font-semibold tracking-tight">
-          {{ context?.clientName ? `${context.clientName} wants access to your account` : 'This application wants access to your account' }}
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          This app is requesting access to your {{ companyLabel(branding) }} account.
-        </p>
+      </template>
+
+      <p v-if="isLoading" class="text-sm text-muted-foreground text-center">Loading…</p>
+
+      <div v-else-if="error" class="flex flex-col items-center gap-2 text-center">
+        <p role="alert" class="text-sm text-destructive">{{ error }}</p>
+        <button
+          type="button"
+          class="text-sm font-medium text-primary hover:underline"
+          @click="loadContext"
+        >
+          Retry
+        </button>
       </div>
-    </template>
 
-    <p v-if="isLoading" class="text-sm text-muted-foreground text-center">Loading…</p>
-
-    <p v-else-if="error" role="alert" class="text-sm text-destructive text-center">
-      {{ error }}
-    </p>
-
-    <div v-else-if="context" class="flex flex-col gap-4">
-      <!--
+      <div v-else-if="context" class="flex flex-col gap-4">
+        <!--
         Approve form: a genuine native POST to the backend's own origin (see
         the script header comment — no @submit handler, ever). Submits
         client_id, state, one `scope` field per checked requires-consent
         scope, plus a hidden `scope` field for every auto-granted scope
         (harmless/cosmetic — see above).
       -->
-      <form
-        method="post"
-        :action="context.authorizeUrl"
-        class="flex flex-col gap-4"
-        data-testid="approve-form"
-      >
-        <input type="hidden" name="client_id" :value="context.clientId">
-        <input type="hidden" name="state" :value="context.state">
-        <input
-          v-for="s in autoGrantedScopes"
-          :key="s.scope"
-          type="hidden"
-          name="scope"
-          :value="s.scope"
+        <form
+          method="post"
+          :action="context.authorizeUrl"
+          class="flex flex-col gap-4"
+          data-testid="approve-form"
         >
+          <input type="hidden" name="client_id" :value="context.clientId" />
+          <input type="hidden" name="state" :value="context.state" />
+          <input
+            v-for="s in autoGrantedScopes"
+            :key="s.scope"
+            type="hidden"
+            name="scope"
+            :value="s.scope"
+          />
 
-        <!-- "Requested access" box (spec §6.2.8's wireframe): every scope,
+          <!-- "Requested access" box (spec §6.2.8's wireframe): every scope,
              auto-granted or not, shown for transparency — description plus
              the raw scope string in mono, right-aligned. -->
-        <div class="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Requested access</p>
+          <div class="flex flex-col gap-3 rounded-lg border border-border p-4">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Requested access
+            </p>
 
-          <div
-            v-for="s in context.scopes"
-            :key="s.scope"
-            class="flex items-start justify-between gap-3 text-sm"
-          >
-            <label v-if="s.requiresConsent" class="flex items-start gap-2">
-              <input
-                type="checkbox"
-                name="scope"
-                :value="s.scope"
-                :checked="isAlreadyGranted(s.scope)"
-                class="mt-0.5"
-              >
-              <span>
-                {{ scopeLabel(s) }}
-                <span v-if="isAlreadyGranted(s.scope)" class="text-xs text-muted-foreground">· Previously approved</span>
-              </span>
-            </label>
-            <span v-else>{{ scopeLabel(s) }}</span>
+            <!-- FE-6.1: an empty scopes array used to render this box with
+               nothing in it, beside an enabled Allow button — approving
+               nothing. Named explicitly instead. -->
+            <p v-if="context.scopes.length === 0" class="text-sm text-muted-foreground">
+              This request doesn't ask for any specific access.
+            </p>
 
-            <span class="shrink-0 font-mono text-xs text-muted-foreground">{{ s.scope }}</span>
+            <div
+              v-for="s in context.scopes"
+              :key="s.scope"
+              class="flex items-start justify-between gap-3 text-sm"
+            >
+              <label v-if="s.requiresConsent" class="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  name="scope"
+                  :value="s.scope"
+                  :checked="isAlreadyGranted(s.scope)"
+                  class="mt-0.5"
+                />
+                <span>
+                  {{ scopeLabel(s) }}
+                  <span v-if="isAlreadyGranted(s.scope)" class="text-xs text-muted-foreground"
+                    >· Previously approved</span
+                  >
+                </span>
+              </label>
+              <span v-else>{{ scopeLabel(s) }}</span>
+
+              <span class="shrink-0 font-mono text-xs text-muted-foreground">{{ s.scope }}</span>
+            </div>
           </div>
-        </div>
 
-        <Button type="submit" class="w-full">Allow</Button>
-      </form>
+          <Button type="submit" class="w-full" :disabled="context.scopes.length === 0"
+            >Allow</Button
+          >
+        </form>
 
-      <!--
+        <!--
         Deny form: deliberately a SEPARATE <form>, carrying ONLY client_id +
         state — structurally incapable of submitting any `scope` param
         regardless of the approve form's checkbox state. This matches the
@@ -238,12 +281,12 @@ function scopeLabel(s: ConsentScope): string {
         returns error=access_denied) and is never merged with the approve
         form above, so "deny" can never accidentally carry an approved scope.
       -->
-      <form method="post" :action="context.authorizeUrl" data-testid="deny-form">
-        <input type="hidden" name="client_id" :value="context.clientId">
-        <input type="hidden" name="state" :value="context.state">
-        <Button type="submit" variant="ghost" class="w-full">Deny</Button>
-      </form>
-    </div>
-  </AuthShell>
+        <form method="post" :action="context.authorizeUrl" data-testid="deny-form">
+          <input type="hidden" name="client_id" :value="context.clientId" />
+          <input type="hidden" name="state" :value="context.state" />
+          <Button type="submit" variant="ghost" class="w-full">Deny</Button>
+        </form>
+      </div>
+    </AuthShell>
   </TenantBrandingProvider>
 </template>

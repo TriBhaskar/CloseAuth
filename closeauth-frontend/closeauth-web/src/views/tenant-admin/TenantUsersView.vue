@@ -22,14 +22,22 @@ import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import StateBadge, { userStatusTone } from '@/components/common/StateBadge.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import FormField from '@/components/common/FormField.vue'
 import SecretRevealPanel, { type SecretField } from '@/components/common/SecretRevealPanel.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import { useToast } from '@/composables/useToast'
 import {
   listUsers,
@@ -50,13 +58,19 @@ const { toast } = useToast()
 // ---- list state, seeded from the URL so a reload restores the view -------
 
 const page = ref(Number(route.query.page) || 0)
-const statusFilter = ref<UserStatus | ''>(typeof route.query.status === 'string' ? (route.query.status as UserStatus) : '')
+const statusFilter = ref<UserStatus | ''>(
+  typeof route.query.status === 'string' ? (route.query.status as UserStatus) : '',
+)
 const roleFilter = ref<string>(typeof route.query.role === 'string' ? route.query.role : '')
 const searchQuery = ref<string>(typeof route.query.q === 'string' ? route.query.q : '')
 
 const pageData = ref<PageView<UserView> | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+// FE-6.1 (spec §7.3): true unless the failure was a 403/404/429 — retrying
+// one of those would just fail identically, so DataTable's Retry action is
+// suppressed for exactly those categories via errorStateProps().
+const errorRetryable = ref(true)
 const roleCatalog = ref<TenantRoleView[]>([])
 
 async function load(): Promise<void> {
@@ -77,11 +91,14 @@ async function load(): Promise<void> {
       // reauth — stay in the loading state rather than flashing an error
       // the user will never get to act on.
       break
-    default:
+    default: {
       pageData.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -104,7 +121,12 @@ watch(page, load)
 // query DataTable's own q/page sync already wrote, never clobbering it.
 watch([statusFilter, roleFilter], () => {
   page.value = 0
-  const query = { ...route.query, status: statusFilter.value || undefined, role: roleFilter.value || undefined, page: undefined }
+  const query = {
+    ...route.query,
+    status: statusFilter.value || undefined,
+    role: roleFilter.value || undefined,
+    page: undefined,
+  }
   void router.replace({ query })
   void load()
 })
@@ -116,7 +138,8 @@ function handleSearchUpdate(q: string): void {
 }
 
 const hasActiveFilters = computed(
-  () => Boolean(statusFilter.value) || Boolean(roleFilter.value) || searchQuery.value.trim().length > 0,
+  () =>
+    Boolean(statusFilter.value) || Boolean(roleFilter.value) || searchQuery.value.trim().length > 0,
 )
 
 const dataTableState = computed<'loading' | 'error' | 'loaded'>(() => {
@@ -264,18 +287,27 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
   {
     id: 'status',
     header: 'Status',
-    cell: ({ row }) => h(StateBadge, { tone: userStatusTone(row.original.status), label: row.original.status }),
+    cell: ({ row }) =>
+      h(StateBadge, { tone: userStatusTone(row.original.status), label: row.original.status }),
   },
   {
     id: 'roles',
     header: 'Roles',
     cell: ({ row }) => {
       const roles = row.original.roles
-      if (roles.length === 0) return h('span', { class: 'text-xs text-muted-foreground' }, 'No roles')
+      if (roles.length === 0)
+        return h('span', { class: 'text-xs text-muted-foreground' }, 'No roles')
       const shown = roles.slice(0, 2)
       const rest = roles.length - shown.length
       const chips = shown.map((name) =>
-        h('span', { class: 'inline-flex items-center rounded border border-line px-1.5 py-0.5 text-[0.6875rem]' }, name),
+        h(
+          'span',
+          {
+            class:
+              'inline-flex items-center rounded border border-line px-1.5 py-0.5 text-[0.6875rem]',
+          },
+          name,
+        ),
       )
       if (rest > 0) chips.push(h('span', { class: 'text-xs text-muted-foreground' }, `+${rest}`))
       return h('div', { class: 'flex flex-wrap items-center gap-1' }, chips)
@@ -299,7 +331,9 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight">Users</h1>
-        <p class="text-sm text-muted-foreground">Manage this tenant's users, lifecycle, and role assignments.</p>
+        <p class="text-sm text-muted-foreground">
+          Manage this tenant's users, lifecycle, and role assignments.
+        </p>
       </div>
       <Dialog :open="isCreateOpen" @update:open="handleCreateOpenChange">
         <DialogTrigger as-child>
@@ -313,7 +347,10 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
           <form class="flex flex-col gap-4" novalidate @submit.prevent="handleCreate">
             <fieldset class="flex flex-col gap-2">
               <legend class="sr-only">Create mode</legend>
-              <label class="flex items-start gap-2 rounded-md border border-line p-3 cursor-pointer" :class="createMode === 'invite' ? 'border-primary' : ''">
+              <label
+                class="flex items-start gap-2 rounded-md border border-line p-3 cursor-pointer"
+                :class="createMode === 'invite' ? 'border-primary' : ''"
+              >
                 <input
                   id="new-user-mode-invite"
                   v-model="createMode"
@@ -326,11 +363,15 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
                 <span class="flex flex-col gap-0.5">
                   <span class="text-sm font-medium">Send an invitation</span>
                   <span class="text-xs text-muted-foreground">
-                    They receive an invite email and set their own password. Roles are assigned afterward.
+                    They receive an invite email and set their own password. Roles are assigned
+                    afterward.
                   </span>
                 </span>
               </label>
-              <label class="flex items-start gap-2 rounded-md border border-line p-3 cursor-pointer" :class="createMode === 'temp-password' ? 'border-primary' : ''">
+              <label
+                class="flex items-start gap-2 rounded-md border border-line p-3 cursor-pointer"
+                :class="createMode === 'temp-password' ? 'border-primary' : ''"
+              >
                 <input
                   id="new-user-mode-temp-password"
                   v-model="createMode"
@@ -343,7 +384,8 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
                 <span class="flex flex-col gap-0.5">
                   <span class="text-sm font-medium">Set a temporary password</span>
                   <span class="text-xs text-muted-foreground">
-                    Generates a password shown once. The account must change it within 7 days at next sign-in.
+                    Generates a password shown once. The account must change it within 7 days at
+                    next sign-in.
                   </span>
                 </span>
               </label>
@@ -366,7 +408,11 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
 
             <template v-if="createMode === 'temp-password'">
               <div class="grid grid-cols-2 gap-3">
-                <FormField id="new-user-first-name" label="First name" :error="createErrors.firstName">
+                <FormField
+                  id="new-user-first-name"
+                  label="First name"
+                  :error="createErrors.firstName"
+                >
                   <template #default="{ hasError, describedBy }">
                     <Input
                       id="new-user-first-name"
@@ -417,16 +463,28 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
                   class="border-input h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                 >
                   <option value="">None</option>
-                  <option v-for="role in roleCatalog" :key="role.id" :value="role.id">{{ role.name }}</option>
+                  <option v-for="role in roleCatalog" :key="role.id" :value="role.id">
+                    {{ role.name }}
+                  </option>
                 </select>
               </div>
             </template>
 
-            <p v-if="createBanner" role="alert" class="text-sm text-destructive">{{ createBanner }}</p>
+            <p v-if="createBanner" role="alert" class="text-sm text-destructive">
+              {{ createBanner }}
+            </p>
 
             <DialogFooter>
               <Button type="submit" :disabled="isCreating">
-                {{ isCreating ? (createMode === 'invite' ? 'Sending…' : 'Creating…') : createMode === 'invite' ? 'Send invitation' : 'Create user' }}
+                {{
+                  isCreating
+                    ? createMode === 'invite'
+                      ? 'Sending…'
+                      : 'Creating…'
+                    : createMode === 'invite'
+                      ? 'Send invitation'
+                      : 'Create user'
+                }}
               </Button>
             </DialogFooter>
           </form>
@@ -457,7 +515,9 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
           class="border-input h-9 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
         >
           <option value="">Any</option>
-          <option v-for="role in roleCatalog" :key="role.id" :value="role.name">{{ role.name }}</option>
+          <option v-for="role in roleCatalog" :key="role.id" :value="role.name">
+            {{ role.name }}
+          </option>
         </select>
       </div>
     </div>
@@ -474,6 +534,7 @@ const columns = computed<ColumnDef<UserView, unknown>[]>(() => [
       :total-elements="pageData?.totalElements ?? 0"
       :total-pages="pageData?.totalPages ?? 0"
       :error-message="errorMessage ?? undefined"
+      :error-retryable="errorRetryable"
       :has-active-filters="hasActiveFilters"
       empty-title="No users yet."
       empty-description="Create one to get started."

@@ -28,13 +28,21 @@ import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import DataTable, { type ColumnDef } from '@/components/common/DataTable.vue'
 import IdentifierChip from '@/components/common/IdentifierChip.vue'
 import RelativeTime from '@/components/common/RelativeTime.vue'
 import CopyButton from '@/components/common/CopyButton.vue'
 import FormField from '@/components/common/FormField.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import {
   createResourceServer,
   listResourceServers,
@@ -56,6 +64,7 @@ const page = ref(0)
 const pageData = ref<PageView<ResourceServerView> | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 const searchQuery = ref('')
 
 async function load(): Promise<void> {
@@ -69,11 +78,14 @@ async function load(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       pageData.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -82,11 +94,19 @@ watch(page, load)
 
 const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0)
 
+// FE-6.1: filtered client-side over one loaded page (see the header
+// comment) — honest about the search's real scope, same as the clients list.
+const searchScopeLimited = computed(
+  () => hasActiveFilters.value && (pageData.value?.totalPages ?? 0) > 1,
+)
+
 const filteredItems = computed<ResourceServerView[]>(() => {
   const items = pageData.value?.items ?? []
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return items
-  return items.filter((rs) => rs.name.toLowerCase().includes(q) || rs.slug.toLowerCase().includes(q))
+  return items.filter(
+    (rs) => rs.name.toLowerCase().includes(q) || rs.slug.toLowerCase().includes(q),
+  )
 })
 
 function openDetail(rs: ResourceServerView): void {
@@ -181,10 +201,10 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
     cell: ({ row }): VNode =>
       h('div', { class: 'flex items-center gap-2 max-w-xs' }, [
         h('code', { class: 'font-mono text-xs truncate' }, row.original.audienceIdentifier),
-        h(
-          CopyButton,
-          { value: row.original.audienceIdentifier, class: 'text-xs text-muted-foreground shrink-0 hover:text-foreground' },
-        ),
+        h(CopyButton, {
+          value: row.original.audienceIdentifier,
+          class: 'text-xs text-muted-foreground shrink-0 hover:text-foreground',
+        }),
       ]),
   },
   {
@@ -196,8 +216,11 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
     id: 'source',
     header: 'Source',
     cell: ({ row }) =>
-      h(Badge, { variant: row.original.autoCreated ? 'secondary' : 'outline' },
-        { default: () => (row.original.autoCreated ? 'Created with a client' : 'Standalone') }),
+      h(
+        Badge,
+        { variant: row.original.autoCreated ? 'secondary' : 'outline' },
+        { default: () => (row.original.autoCreated ? 'Created with a client' : 'Standalone') },
+      ),
   },
   {
     id: 'created',
@@ -212,7 +235,9 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold tracking-tight">Resource servers</h1>
-        <p class="text-sm text-muted-foreground">Manage this tenant's resource servers and their scope catalogs.</p>
+        <p class="text-sm text-muted-foreground">
+          Manage this tenant's resource servers and their scope catalogs.
+        </p>
       </div>
       <Dialog :open="isCreateOpen" @update:open="handleOpenChange">
         <DialogTrigger as-child>
@@ -222,7 +247,8 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
           <DialogHeader>
             <DialogTitle>Create a resource server</DialogTitle>
             <DialogDescription>
-              A standalone resource server, independent of any client. Slug and audience must be unique.
+              A standalone resource server, independent of any client. Slug and audience must be
+              unique.
             </DialogDescription>
           </DialogHeader>
           <form class="flex flex-col gap-4" novalidate @submit.prevent="handleCreate">
@@ -240,7 +266,12 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
               </template>
             </FormField>
 
-            <FormField id="new-rs-slug" label="Slug" :error="errors.slug" hint="Lowercase letters, digits, hyphens. Used in scope prefixes.">
+            <FormField
+              id="new-rs-slug"
+              label="Slug"
+              :error="errors.slug"
+              hint="Lowercase letters, digits, hyphens. Used in scope prefixes."
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="new-rs-slug"
@@ -285,6 +316,15 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
       </Dialog>
     </div>
 
+    <p
+      v-if="searchScopeLimited"
+      id="resource-servers-search-scope-notice"
+      class="text-xs text-muted-foreground"
+    >
+      Searching only this page's {{ pageData?.items.length ?? 0 }} resource servers — there may be
+      more on other pages.
+    </p>
+
     <DataTable
       :columns="columns"
       :data="filteredItems"
@@ -297,6 +337,7 @@ const columns = computed<ColumnDef<ResourceServerView, unknown>[]>(() => [
       :total-elements="pageData?.totalElements ?? 0"
       :total-pages="pageData?.totalPages ?? 0"
       :error-message="errorMessage ?? undefined"
+      :error-retryable="errorRetryable"
       :has-active-filters="hasActiveFilters"
       empty-title="No resource servers yet."
       empty-description="Create one to get started."

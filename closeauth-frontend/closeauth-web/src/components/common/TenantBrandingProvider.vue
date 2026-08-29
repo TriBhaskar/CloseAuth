@@ -12,9 +12,22 @@
 // rule 2 — no component-level fetch survives). This component keeps the
 // validation logic below, since that's the actual security boundary (what
 // reaches a CSS custom property), not the transport.
+//
+// FE-5.3: the validation/contrast helpers themselves moved to
+// lib/brandingValidation.ts, so the settings page's live login-card preview
+// (BrandingLoginPreview.vue) can run the identical rules instead of a second
+// copy. This component still owns WHEN they run (watchEffect, scoped
+// setProperty injection) — only the pure functions moved.
 import { computed, ref, useTemplateRef, watchEffect } from 'vue'
 import { fetchBranding, type Branding } from '@/api/publicBranding'
 import { hasBrandingLogo } from '@/lib/branding'
+import {
+  isValidHexColor,
+  isValidLogoUrl,
+  contrastRatio,
+  CANVAS_LUMINANCE,
+  MIN_CONTRAST,
+} from '@/lib/brandingValidation'
 import { useThemeStore } from '@/stores/theme'
 
 export type { Branding }
@@ -31,59 +44,9 @@ const PLATFORM_DEFAULT: Branding = {
   registrationMode: null,
 }
 
-// §3.2 rule 3: validate every branding value client-side before injection,
-// even though the backend validates on write. Tenant branding is attacker-
-// controlled input rendered into CSS/markup — treat it as such. Anything
-// invalid falls back to the CloseAuth default SILENTLY (no error surfaced
-// to the tenant's end user over a cosmetic default).
-const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
-
-function isValidHexColor(value: string): boolean {
-  return HEX_COLOR.test(value)
-}
-
-function isValidLogoUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
-// WCAG relative-luminance contrast, sRGB hex only (branding colours are
-// always #RRGGBB/#RGB by the validation above). Canvas constants are the
-// well-known sRGB hex equivalents of tokens.css's --ca-canvas literals
-// (zinc-50 / zinc-950) — kept as constants rather than reading computed
-// styles from the DOM, which would add a paint-timing dependency for no
-// benefit: these two values are the source of truth already.
-function hexToRgb(hex: string): [number, number, number] {
-  const full = hex.length === 4 ? `#${hex.slice(1).replace(/./g, (c) => c + c)}` : hex
-  const int = Number.parseInt(full.slice(1), 16)
-  return [(int >> 16) & 255, (int >> 8) & 255, int & 255]
-}
-
-function relativeLuminance([r, g, b]: [number, number, number]): number {
-  const [rs, gs, bs] = [r, g, b].map((c) => {
-    const s = c / 255
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
-  }) as [number, number, number]
-  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs
-}
-
-function contrastRatio(hex: string, otherLuminance: number): number {
-  const luminance = relativeLuminance(hexToRgb(hex))
-  const lighter = Math.max(luminance, otherLuminance)
-  const darker = Math.min(luminance, otherLuminance)
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
-const CANVAS_LUMINANCE = {
-  light: relativeLuminance(hexToRgb('#fafafa')), // zinc-50
-  dark: relativeLuminance(hexToRgb('#09090b')), // zinc-950
-} as const
-
-const MIN_CONTRAST = 4.5
-
+// Anything invalid falls back to the CloseAuth default SILENTLY (no error
+// surfaced to the tenant's end user over a cosmetic default) — the
+// validation itself now lives in lib/brandingValidation.ts.
 const themeStore = useThemeStore()
 const rootRef = useTemplateRef<HTMLElement>('root')
 
@@ -106,7 +69,7 @@ async function load(): Promise<void> {
   if (result.kind === 'ok') {
     branding.value = result.value
   } else {
-    error.value = 'Failed to load branding'
+    error.value = "Couldn't load this tenant's branding. Try reloading the page."
   }
   isLoading.value = false
 }
@@ -126,7 +89,8 @@ watchEffect(() => {
   const b = branding.value
   if (b.primaryColor && isValidHexColor(b.primaryColor)) {
     root.style.setProperty('--brand-primary', b.primaryColor)
-    const canvasLuminance = themeStore.resolved === 'dark' ? CANVAS_LUMINANCE.dark : CANVAS_LUMINANCE.light
+    const canvasLuminance =
+      themeStore.resolved === 'dark' ? CANVAS_LUMINANCE.dark : CANVAS_LUMINANCE.light
     const safe = contrastRatio(b.primaryColor, canvasLuminance) >= MIN_CONTRAST
     root.style.setProperty('--brand-primary-text', safe ? b.primaryColor : 'var(--ca-accent)')
   } else {

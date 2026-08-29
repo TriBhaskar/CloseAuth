@@ -31,7 +31,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import PinInput from '@/components/common/PinInput.vue'
-import TenantBrandingProvider, { type Branding } from '@/components/common/TenantBrandingProvider.vue'
+import TenantBrandingProvider, {
+  type Branding,
+} from '@/components/common/TenantBrandingProvider.vue'
 import { confirmVerification, requestVerificationResend } from '@/api/authVerifyEmail'
 import { hostedAuthPath } from '@/lib/hostedAuthPath'
 
@@ -154,77 +156,89 @@ onMounted(() => {
 
 <template>
   <TenantBrandingProvider :client-id="clientId" v-slot="{ branding, hasLogo }">
-  <AuthShell>
-    <template #above>
-      <div class="flex flex-col items-center gap-2 text-center">
-        <img
-          v-if="hasLogo"
-          :src="branding.logoUrl"
-          :alt="companyLabel(branding)"
-          class="h-10 w-auto object-contain"
-        >
-        <h1 class="text-xl font-semibold tracking-tight">Verify your email</h1>
-        <p v-if="phase === 'idle'" class="text-sm text-muted-foreground">
-          Enter the code we sent to your email address.
-        </p>
-      </div>
-    </template>
+    <AuthShell>
+      <template #above>
+        <div class="flex flex-col items-center gap-2 text-center">
+          <!-- FE-6.5: reserved box — see LoginView.vue's identical fix. -->
+          <div class="h-10">
+            <img
+              v-if="hasLogo"
+              :src="branding.logoUrl"
+              :alt="companyLabel(branding)"
+              class="h-10 w-auto object-contain"
+            />
+          </div>
+          <h1 class="text-xl font-semibold tracking-tight">Verify your email</h1>
+          <p v-if="phase === 'idle'" class="text-sm text-muted-foreground">
+            Enter the code we sent to your email address.
+          </p>
+        </div>
+      </template>
 
-    <!-- Link-triggered auto-consume: no form ever renders, not even for one frame. -->
-    <div v-if="cameFromLink && phase === 'verifying'" class="flex flex-col items-center gap-4 text-center">
-      <p class="text-sm text-muted-foreground" aria-live="polite">Verifying your email…</p>
-    </div>
-
-    <!-- Success: fresh verification AND an already-used code both land here. -->
-    <div v-else-if="phase === 'verified'" class="flex flex-col gap-4 text-center">
-      <p class="text-sm text-foreground">Your email has been verified. Continuing…</p>
-      <RouterLink :to="loginPath">
-        <Button class="w-full">Continue to sign in</Button>
-      </RouterLink>
-    </div>
-
-    <!-- Expired: its own terminal-ish state with a real recovery action. -->
-    <div v-else-if="phase === 'expired'" class="flex flex-col gap-4 text-center">
-      <p role="alert" class="text-sm text-foreground">This link has expired.</p>
-      <Button class="w-full" :disabled="isResending" @click="handleResend">
-        {{ isResending ? 'Sending…' : 'Send a new one' }}
-      </Button>
-    </div>
-
-    <form v-else class="flex flex-col gap-4" novalidate @submit.prevent="handleConfirm">
-      <div class="flex flex-col gap-1.5">
-        <Label for="verify-email-address">Email</Label>
-        <Input
-          id="verify-email-address"
-          v-model="email"
-          type="email"
-          autocomplete="email"
-          required
-          :disabled="phase === 'verifying'"
-        />
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <Label id="verify-email-code-label" for="verify-email-code-0">Verification code</Label>
-        <PinInput v-model="code" id-prefix="verify-email-code" :disabled="phase === 'verifying'" />
-      </div>
-
-      <p v-if="errorMessage" role="alert" class="text-sm text-destructive">{{ errorMessage }}</p>
-      <p v-if="resendMessage" role="status" class="text-sm text-muted-foreground">{{ resendMessage }}</p>
-
-      <Button type="submit" class="w-full" :disabled="phase === 'verifying'">
-        {{ phase === 'verifying' ? 'Verifying…' : 'Verify email' }}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        class="w-full"
-        :disabled="isResending || phase === 'verifying'"
-        @click="handleResend"
+      <!-- Link-triggered auto-consume: no form ever renders, not even for one frame. -->
+      <div
+        v-if="cameFromLink && phase === 'verifying'"
+        class="flex flex-col items-center gap-4 text-center"
       >
-        {{ isResending ? 'Resending…' : 'Resend code' }}
-      </Button>
-    </form>
-  </AuthShell>
+        <p class="text-sm text-muted-foreground" aria-live="polite">Verifying your email…</p>
+      </div>
+
+      <!-- Success: fresh verification AND an already-used code both land here. -->
+      <div v-else-if="phase === 'verified'" class="flex flex-col gap-4 text-center">
+        <p class="text-sm text-foreground">Your email has been verified. Continuing…</p>
+        <RouterLink :to="loginPath">
+          <Button class="w-full">Continue to sign in</Button>
+        </RouterLink>
+      </div>
+
+      <!-- Expired: its own terminal-ish state with a real recovery action. -->
+      <div v-else-if="phase === 'expired'" class="flex flex-col gap-4 text-center">
+        <p role="alert" class="text-sm text-foreground">This link has expired.</p>
+        <Button class="w-full" :disabled="isResending" @click="handleResend">
+          {{ isResending ? 'Sending…' : 'Send a new one' }}
+        </Button>
+      </div>
+
+      <form v-else class="flex flex-col gap-4" novalidate @submit.prevent="handleConfirm">
+        <div class="flex flex-col gap-1.5">
+          <Label for="verify-email-address">Email</Label>
+          <Input
+            id="verify-email-address"
+            v-model="email"
+            type="email"
+            autocomplete="email"
+            required
+            :disabled="phase === 'verifying'"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <Label id="verify-email-code-label" for="verify-email-code-0">Verification code</Label>
+          <PinInput
+            v-model="code"
+            id-prefix="verify-email-code"
+            :disabled="phase === 'verifying'"
+          />
+        </div>
+
+        <p v-if="errorMessage" role="alert" class="text-sm text-destructive">{{ errorMessage }}</p>
+        <p v-if="resendMessage" role="status" class="text-sm text-muted-foreground">
+          {{ resendMessage }}
+        </p>
+
+        <Button type="submit" class="w-full" :disabled="phase === 'verifying'">
+          {{ phase === 'verifying' ? 'Verifying…' : 'Verify email' }}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          class="w-full"
+          :disabled="isResending || phase === 'verifying'"
+          @click="handleResend"
+        >
+          {{ isResending ? 'Resending…' : 'Resend code' }}
+        </Button>
+      </form>
+    </AuthShell>
   </TenantBrandingProvider>
 </template>

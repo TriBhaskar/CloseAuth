@@ -34,7 +34,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import QueryState from '@/components/admin/QueryState.vue'
 import FormField from '@/components/common/FormField.vue'
-import { describeAdminError } from '@/api/problem'
+import { describeAdminError, errorStateProps } from '@/api/problem'
 import {
   addScopeToRole,
   getApplicationRole,
@@ -60,6 +60,7 @@ const roleId = String(route.params.roleId ?? '')
 const role = ref<ApplicationRoleView | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
+const errorRetryable = ref(true)
 
 async function loadRole(): Promise<void> {
   isLoading.value = true
@@ -73,11 +74,14 @@ async function loadRole(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       role.value = null
-      errorMessage.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      errorMessage.value = props.message
+      errorRetryable.value = props.retryable
       isLoading.value = false
       break
+    }
   }
 }
 
@@ -86,6 +90,7 @@ async function loadRole(): Promise<void> {
 const assignees = ref<RoleAssigneeView[]>([])
 const isAssigneesLoading = ref(true)
 const assigneesError = ref<string | null>(null)
+const assigneesErrorRetryable = ref(true)
 
 async function loadAssignees(): Promise<void> {
   isAssigneesLoading.value = true
@@ -98,11 +103,14 @@ async function loadAssignees(): Promise<void> {
       break
     case 'reauth':
       break
-    default:
+    default: {
       assignees.value = []
-      assigneesError.value = describeAdminError(result)
+      const props = errorStateProps(result)
+      assigneesError.value = props.message
+      assigneesErrorRetryable.value = props.retryable
       isAssigneesLoading.value = false
       break
+    }
   }
 }
 
@@ -175,6 +183,7 @@ const rsScopes = ref<ScopeView[]>([])
 const bundledScopeIds = ref<Set<string>>(new Set())
 const isScopesLoading = ref(true)
 const scopesError = ref<string | null>(null)
+const scopesErrorRetryable = ref(true)
 const scopesTruncated = ref(false)
 // FE-4b: per-scope pending (§7.5) — replaces the old panel-wide boolean.
 const pendingScopeIds = ref<Set<string>>(new Set())
@@ -191,12 +200,16 @@ async function loadScopeBundle(): Promise<void> {
 
   if (catalogResult.kind === 'reauth' || bundleResult.kind === 'reauth') return
   if (catalogResult.kind !== 'ok') {
-    scopesError.value = describeAdminError(catalogResult)
+    const props = errorStateProps(catalogResult)
+    scopesError.value = props.message
+    scopesErrorRetryable.value = props.retryable
     isScopesLoading.value = false
     return
   }
   if (bundleResult.kind !== 'ok') {
-    scopesError.value = describeAdminError(bundleResult)
+    const props = errorStateProps(bundleResult)
+    scopesError.value = props.message
+    scopesErrorRetryable.value = props.retryable
     isScopesLoading.value = false
     return
   }
@@ -209,7 +222,9 @@ async function loadScopeBundle(): Promise<void> {
 
 onMounted(loadScopeBundle)
 
-const scopeRows = computed(() => rsScopes.value.map((scope) => ({ scope, bundled: bundledScopeIds.value.has(scope.id) })))
+const scopeRows = computed(() =>
+  rsScopes.value.map((scope) => ({ scope, bundled: bundledScopeIds.value.has(scope.id) })),
+)
 
 async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise<void> {
   if (pendingScopeIds.value.has(scope.id)) return
@@ -253,20 +268,39 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
 
 <template>
   <div class="flex flex-col gap-6 max-w-3xl">
-    <Button variant="ghost" size="sm" class="self-start" @click="backToResourceServer">&larr; Back to resource server</Button>
+    <Button variant="ghost" size="sm" class="self-start" @click="backToResourceServer"
+      >&larr; Back to resource server</Button
+    >
 
-    <QueryState :loading="isLoading" :error="errorMessage">
+    <QueryState
+      :loading="isLoading"
+      :error="errorMessage"
+      :retryable="errorRetryable"
+      @retry="loadRole"
+    >
       <div v-if="role" class="flex flex-col gap-6">
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <div class="flex flex-col gap-1.5">
             <Label>Name</Label>
-            <code id="app-role-name-readonly" class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono">
+            <code
+              id="app-role-name-readonly"
+              class="rounded-md border border-border bg-muted px-3 py-2 text-sm font-mono"
+            >
               {{ role.name }}
             </code>
           </div>
 
-          <form id="app-role-edit-form" class="flex flex-col gap-4 border-t border-border pt-4" novalidate @submit.prevent="handleSaveEdit">
-            <FormField id="app-role-edit-description" label="Description" :error="editErrors.description">
+          <form
+            id="app-role-edit-form"
+            class="flex flex-col gap-4 border-t border-border pt-4"
+            novalidate
+            @submit.prevent="handleSaveEdit"
+          >
+            <FormField
+              id="app-role-edit-description"
+              label="Description"
+              :error="editErrors.description"
+            >
               <template #default="{ hasError, describedBy }">
                 <Input
                   id="app-role-edit-description"
@@ -286,12 +320,20 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
                 :disabled="isSaving"
                 @update:model-value="(v) => (editForm.isDefault = Boolean(v))"
               />
-              <Label for="app-role-edit-is-default" class="font-normal">Default (auto-granted to new users)</Label>
+              <Label for="app-role-edit-is-default" class="font-normal"
+                >Default (auto-granted to new users)</Label
+              >
             </div>
 
             <p v-if="editBanner" role="alert" class="text-sm text-destructive">{{ editBanner }}</p>
 
-            <Button id="app-role-save-edit" type="submit" variant="outline" class="self-start" :disabled="isSaving">
+            <Button
+              id="app-role-save-edit"
+              type="submit"
+              variant="outline"
+              class="self-start"
+              :disabled="isSaving"
+            >
               {{ isSaving ? 'Saving…' : 'Save changes' }}
             </Button>
           </form>
@@ -300,40 +342,60 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <h2 class="text-lg font-semibold tracking-tight">Scope bundle</h2>
           <p class="text-sm text-muted-foreground">
-            Scopes from this role's own resource server only. Toggling calls the backend immediately — there is no
-            separate save step.
+            Scopes from this role's own resource server only. Toggling calls the backend immediately
+            — there is no separate save step.
           </p>
 
-          <QueryState :loading="isScopesLoading" :error="scopesError">
+          <QueryState
+            :loading="isScopesLoading"
+            :error="scopesError"
+            :retryable="scopesErrorRetryable"
+            @retry="loadScopeBundle"
+          >
             <div class="flex flex-col gap-3">
               <p v-if="scopesTruncated" role="alert" class="text-sm text-muted-foreground">
                 This resource server has more than {{ rsScopes.length }} scopes; only the first
                 {{ rsScopes.length }} are shown here.
               </p>
 
-              <div v-for="{ scope, bundled } in scopeRows" :key="scope.id" class="flex items-center gap-2">
+              <div
+                v-for="{ scope, bundled } in scopeRows"
+                :key="scope.id"
+                class="flex items-center gap-2"
+              >
                 <Checkbox
                   :id="`app-role-scope-${scope.id}`"
                   :model-value="bundled"
                   :disabled="pendingScopeIds.has(scope.id)"
                   @update:model-value="() => toggleScope(scope, bundled)"
                 />
-                <Label :for="`app-role-scope-${scope.id}`" class="font-mono text-sm">{{ scope.scopeName }}</Label>
+                <Label :for="`app-role-scope-${scope.id}`" class="font-mono text-sm">{{
+                  scope.scopeName
+                }}</Label>
               </div>
 
               <p v-if="rsScopes.length === 0" class="text-sm text-muted-foreground">
                 This resource server has no scopes defined yet.
               </p>
 
-              <p v-if="scopeActionError" role="alert" class="text-sm text-destructive">{{ scopeActionError }}</p>
+              <p v-if="scopeActionError" role="alert" class="text-sm text-destructive">
+                {{ scopeActionError }}
+              </p>
             </div>
           </QueryState>
         </div>
 
         <div class="rounded-xl border border-border p-6 flex flex-col gap-4">
           <h2 class="text-lg font-semibold tracking-tight">Assignees</h2>
-          <QueryState :loading="isAssigneesLoading" :error="assigneesError">
-            <p v-if="assignees.length === 0" class="text-sm text-muted-foreground">No one holds this role yet.</p>
+          <QueryState
+            :loading="isAssigneesLoading"
+            :error="assigneesError"
+            :retryable="assigneesErrorRetryable"
+            @retry="loadAssignees"
+          >
+            <p v-if="assignees.length === 0" class="text-sm text-muted-foreground">
+              No one holds this role yet.
+            </p>
             <ul v-else class="flex flex-col gap-2">
               <li
                 v-for="a in assignees"
@@ -342,7 +404,9 @@ async function toggleScope(scope: ScopeView, currentlyBundled: boolean): Promise
                 class="flex flex-col gap-0.5 rounded-md border border-line p-2 text-sm"
               >
                 <span>{{ a.email }}</span>
-                <span class="text-xs text-muted-foreground">{{ assigneeName(a) }} · {{ a.status }}</span>
+                <span class="text-xs text-muted-foreground"
+                  >{{ assigneeName(a) }} · {{ a.status }}</span
+                >
               </li>
             </ul>
           </QueryState>

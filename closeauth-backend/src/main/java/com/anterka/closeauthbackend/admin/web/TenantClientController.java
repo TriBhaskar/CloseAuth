@@ -6,6 +6,7 @@ import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.ClientSecretView;
 import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
+import com.anterka.closeauthbackend.client.dto.UpdateClientCommand;
 import com.anterka.closeauthbackend.client.service.ClientRegistrationService;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.web.PageView;
@@ -14,7 +15,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,14 +38,21 @@ import java.util.UUID;
  *
  * <p><b>FE-4.10: the list gap flagged in STAGE_7B_REPORT.md is now closed.</b> {@code GET} (no path) lists a
  * tenant's clients via {@code TenantAwareRegisteredClientRepository.findByTenantId}, hand-built JDBC reusing SAS's
- * own row mapper (see its javadoc) — the same pattern {@code save()} already used for the INSERT side. Update /
- * delete of clients are still NOT implemented — SAS's {@code RegisteredClientRepository} exposes no tenant-scoped
- * delete, and there is no update use case yet either (flagged, not silently built).
+ * own row mapper (see its javadoc) — the same pattern {@code save()} already used for the INSERT side.
+ *
+ * <p><b>Update / delete are now implemented too</b> (the gap this class's javadoc used to flag): {@code PATCH}
+ * replaces the mutable field set ({@code clientId}/{@code tenantId}/{@code publicClient}/{@code grantTypes}
+ * are structurally immutable — see {@link UpdateClientCommand}); {@code DELETE} hard-deletes the client, its
+ * 1:1 auto-created resource server, and its SAS-native authorization/consent rows. Both refuse the tenant's
+ * platform-managed {@code admin-console-*} client with 409 {@code client.platform_managed} (deleting or
+ * mis-editing it would strand the tenant's own console).
  *
  * <h2>HTTP contract</h2>
  * {@code GET /v1/tenants/{tenantId}/clients} (paged list, no secrets) ·
  * {@code POST /v1/tenants/{tenantId}/clients} (create, 201, secret once — confidential clients only) ·
  * {@code GET .../clients/{clientId}} (no secret) ·
+ * {@code PATCH .../clients/{clientId}} (replace mutable fields) ·
+ * {@code DELETE .../clients/{clientId}} (hard delete, 204; cascades the auto-created RS) ·
  * {@code POST .../clients/{clientId}/client-secret} (regenerate, 200, new secret once; 409 for a public client).
  */
 @RestController
@@ -86,6 +96,18 @@ public class TenantClientController {
     public ClientView get(@PathVariable String tenantId, @PathVariable String clientId) {
         RegisteredClient client = clientRegistrationService.loadClientOrThrow(ctx(tenantId), clientId);
         return ClientView.from(client); // no secret
+    }
+
+    @PatchMapping("/{clientId}")
+    public ClientView update(@PathVariable String tenantId, @PathVariable String clientId,
+                             @Valid @RequestBody UpdateClientCommand command) {
+        return clientRegistrationService.updateClient(ctx(tenantId), clientId, command);
+    }
+
+    @DeleteMapping("/{clientId}")
+    public ResponseEntity<Void> delete(@PathVariable String tenantId, @PathVariable String clientId) {
+        clientRegistrationService.deleteClient(ctx(tenantId), clientId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{clientId}/client-secret")

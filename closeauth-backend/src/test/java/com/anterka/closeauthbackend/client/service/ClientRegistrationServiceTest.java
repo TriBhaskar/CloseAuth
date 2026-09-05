@@ -2,8 +2,11 @@ package com.anterka.closeauthbackend.client.service;
 
 import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.ClientSecretView;
+import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
+import com.anterka.closeauthbackend.client.dto.UpdateClientCommand;
 import com.anterka.closeauthbackend.common.exception.ClientNotFoundException;
+import com.anterka.closeauthbackend.common.exception.ClientPlatformManagedException;
 import com.anterka.closeauthbackend.common.exception.ClientPublicNoSecretException;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -21,6 +24,7 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -287,6 +291,164 @@ class ClientRegistrationServiceTest {
                 .isInstanceOf(ClientNotFoundException.class);
     }
 
+    // ---- update: full replacement of the mutable set ----------------------
+
+    @Test
+    void updateClient_ReplacesScopesAndUris_FullReplacementNotAppend() {
+        RegisteredClient existing = confidentialClient(TENANT, "{bcrypt}old-secret");
+        // Seed it with a redirect URI/scope that the update command does NOT repeat — proving the consumer
+        // overloads clear-then-repopulate rather than the single-value overloads, which only ADD.
+        RegisteredClient seeded = RegisteredClient.from(existing)
+                .redirectUri("https://old.example.com/callback")
+                .scope("old-scope")
+                .build();
+        when(registeredClientRepository.findById(seeded.getId())).thenReturn(seeded);
+
+        var command = new UpdateClientCommand("Renamed Client", List.of("new-scope"),
+                List.of("https://new.example.com/callback"), List.of("https://new.example.com/logged-out"),
+                true, false);
+        ClientView result = service.updateClient(ctx, seeded.getId(), command);
+
+        assertThat(result.scopes()).containsExactly("new-scope");
+        assertThat(result.redirectUris()).containsExactly("https://new.example.com/callback");
+        assertThat(result.postLogoutRedirectUris()).containsExactly("https://new.example.com/logged-out");
+        assertThat(result.clientName()).isEqualTo("Renamed Client");
+
+        ArgumentCaptor<RegisteredClient> captor = ArgumentCaptor.forClass(RegisteredClient.class);
+        verify(registeredClientRepository).save(captor.capture());
+        assertThat(captor.getValue().getScopes()).containsExactly("new-scope");
+        assertThat(captor.getValue().getRedirectUris()).containsExactly("https://new.example.com/callback");
+    }
+
+    @Test
+    void updateClient_EmptyListsClearThePreviousValues() {
+        RegisteredClient existing = RegisteredClient.from(confidentialClient(TENANT, "{bcrypt}s"))
+                .scope("read").redirectUri("https://old.example.com/callback").build();
+        when(registeredClientRepository.findById(existing.getId())).thenReturn(existing);
+
+        var command = new UpdateClientCommand("Name", null, null, null, false, true);
+        ClientView result = service.updateClient(ctx, existing.getId(), command);
+
+        assertThat(result.scopes()).isEmpty();
+        assertThat(result.redirectUris()).isEmpty();
+        assertThat(result.postLogoutRedirectUris()).isEmpty();
+    }
+
+    @Test
+    void updateClient_PreservesTenantIdAndSecretRotatedAt() {
+        RegisteredClient existing = confidentialClient(TENANT, "{bcrypt}s");
+        ClientSettings.Builder rotatedSettings = ClientSettings.withSettings(existing.getClientSettings().getSettings());
+        CloseAuthClientSettings.withSecretRotatedAt(rotatedSettings, Instant.now());
+        RegisteredClient withRotation = RegisteredClient.from(existing).clientSettings(rotatedSettings.build()).build();
+        when(registeredClientRepository.findById(withRotation.getId())).thenReturn(withRotation);
+
+        var command = new UpdateClientCommand("Name", List.of("read"), null, null, false, true);
+        service.updateClient(ctx, withRotation.getId(), command);
+
+        ArgumentCaptor<RegisteredClient> captor = ArgumentCaptor.forClass(RegisteredClient.class);
+        verify(registeredClientRepository).save(captor.capture());
+        // Losing TENANT_ID here would break every tenant-scoped lookup for this client; losing
+        // SECRET_ROTATED_AT would make the credentials tab silently forget a prior rotation.
+        assertThat(CloseAuthClientSettings.getTenantId(captor.getValue())).isEqualTo(TENANT);
+        assertThat(CloseAuthClientSettings.getSecretRotatedAt(captor.getValue())).isNotNull();
+    }
+
+    @Test
+    void updateClient_DoesNotChangePublicClientOrGrantTypes() {
+        // publicClient/grantTypes have no field on UpdateClientCommand at all — this proves the persisted
+        // client's fundamental type is untouched by an update, not merely "the command didn't ask to change it".
+        RegisteredClient existing = confidentialClient(TENANT, "{bcrypt}s");
+        when(registeredClientRepository.findById(existing.getId())).thenReturn(existing);
+
+        var command = new UpdateClientCommand("Renamed", List.of("read"), null, null, true, true);
+        ClientView result = service.updateClient(ctx, existing.getId(), command);
+
+        assertThat(result.publicClient()).isFalse();
+        assertThat(result.grantTypes()).containsExactly("client_credentials");
+    }
+
+    @Test
+    void updateClient_RequireProofKeyAndTrustedAreApplied() {
+        RegisteredClient existing = publicClient(TENANT); // requireProofKey=true, trusted=default(false) initially
+        when(registeredClientRepository.findById(existing.getId())).thenReturn(existing);
+
+        var command = new UpdateClientCommand("Name", null, List.of("http://127.0.0.1/callback"), null, false, true);
+        ClientView result = service.updateClient(ctx, existing.getId(), command);
+
+        assertThat(result.requireProofKey()).isFalse();
+        assertThat(result.trusted()).isTrue();
+    }
+
+    @Test
+    void updateClient_CrossTenant_NotFoundNotForbidden() {
+        RegisteredClient othersClient = confidentialClient(OTHER_TENANT, "{bcrypt}their-secret");
+        when(registeredClientRepository.findById(othersClient.getId())).thenReturn(othersClient);
+
+        var command = new UpdateClientCommand("New Name", null, null, null, false, true);
+        assertThatThrownBy(() -> service.updateClient(ctx, othersClient.getId(), command))
+                .isInstanceOf(ClientNotFoundException.class);
+        verify(registeredClientRepository, Mockito.never()).save(any());
+    }
+
+    @Test
+    void updateClient_PlatformManagedClient_RefusedBeforeMutation() {
+        RegisteredClient consoleClient = adminConsoleClient(TENANT);
+        when(registeredClientRepository.findById(consoleClient.getId())).thenReturn(consoleClient);
+
+        var command = new UpdateClientCommand("Hijacked Name", null, null, null, false, true);
+        assertThatThrownBy(() -> service.updateClient(ctx, consoleClient.getId(), command))
+                .isInstanceOf(ClientPlatformManagedException.class)
+                .hasMessageContaining(consoleClient.getId());
+        verify(registeredClientRepository, Mockito.never()).save(any());
+    }
+
+    // ---- delete: ordering, cross-tenant, and the platform-managed guard ---
+
+    @Test
+    void deleteClient_RemovesAutoRsAndSasTablesBeforeTheClientRow_ThenEmitsAudit() {
+        RegisteredClient existing = confidentialClient(TENANT, "{bcrypt}s");
+        when(registeredClientRepository.findById(existing.getId())).thenReturn(existing);
+        TenantAwareRegisteredClientRepository tenantAware = Mockito.mock(TenantAwareRegisteredClientRepository.class);
+        com.anterka.closeauthbackend.audit.service.AuditEmitter auditEmitter =
+                Mockito.mock(com.anterka.closeauthbackend.audit.service.AuditEmitter.class);
+        ClientRegistrationService withMocks = new ClientRegistrationService(registeredClientRepository,
+                resourceServerService, Mockito.mock(TenantService.class),
+                new CommandValidator(Validation.buildDefaultValidatorFactory().getValidator()),
+                Mockito.mock(PasswordEncoder.class), new ClientSecretGenerator(), new ClientIdGenerator(),
+                new com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties(),
+                auditEmitter, tenantAware);
+
+        withMocks.deleteClient(ctx, existing.getId());
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(resourceServerService, tenantAware, auditEmitter);
+        order.verify(resourceServerService).deleteAutoCreatedForClient(ctx, existing.getId());
+        order.verify(tenantAware).deleteSasAuthorizationsFor(existing.getId());
+        order.verify(tenantAware).deleteSasConsentsFor(existing.getId());
+        order.verify(tenantAware).deleteByIdAndTenantId(existing.getId(), TENANT);
+        order.verify(auditEmitter).emit(any());
+    }
+
+    @Test
+    void deleteClient_CrossTenant_NotFoundNotForbidden() {
+        RegisteredClient othersClient = confidentialClient(OTHER_TENANT, "{bcrypt}their-secret");
+        when(registeredClientRepository.findById(othersClient.getId())).thenReturn(othersClient);
+
+        assertThatThrownBy(() -> service.deleteClient(ctx, othersClient.getId()))
+                .isInstanceOf(ClientNotFoundException.class);
+        verify(resourceServerService, Mockito.never()).deleteAutoCreatedForClient(any(), any());
+    }
+
+    @Test
+    void deleteClient_PlatformManagedClient_RefusedBeforeMutation() {
+        RegisteredClient consoleClient = adminConsoleClient(TENANT);
+        when(registeredClientRepository.findById(consoleClient.getId())).thenReturn(consoleClient);
+
+        assertThatThrownBy(() -> service.deleteClient(ctx, consoleClient.getId()))
+                .isInstanceOf(ClientPlatformManagedException.class)
+                .hasMessageContaining(consoleClient.getId());
+        verify(resourceServerService, Mockito.never()).deleteAutoCreatedForClient(any(), any());
+    }
+
     private static RegisteredClient confidentialClient(UUID tenantId, String encodedSecret) {
         ClientSettings.Builder settings = ClientSettings.builder();
         CloseAuthClientSettings.withTenantId(settings, tenantId);
@@ -309,6 +471,20 @@ class ClientRegistrationServiceTest {
                 .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                 .redirectUri("http://127.0.0.1/callback")
+                .clientSettings(settings.build())
+                .build();
+    }
+
+    /** A tenant's auto-provisioned admin-console client — the platform-managed guard's target. */
+    private static RegisteredClient adminConsoleClient(UUID tenantId) {
+        ClientSettings.Builder settings = ClientSettings.builder().requireProofKey(true);
+        CloseAuthClientSettings.withTenantId(settings, tenantId);
+        return RegisteredClient.withId(UUID.randomUUID().toString())
+                .clientId(AdminConsoleClientProvisioningCallback.CLIENT_ID_PREFIX + "acme")
+                .clientName("Admin Console — Acme")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .redirectUri("https://bff.example.com/admin/callback")
                 .clientSettings(settings.build())
                 .build();
     }

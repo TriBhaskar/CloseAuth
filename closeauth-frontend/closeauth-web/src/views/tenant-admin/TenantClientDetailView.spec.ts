@@ -59,6 +59,9 @@ function clientFixture(overrides: Partial<Record<string, unknown>> = {}) {
     postLogoutRedirectUris: [],
     createdAt: '2026-01-01T00:00:00Z',
     secretRotatedAt: null,
+    requireProofKey: false,
+    trusted: true,
+    platformManaged: false,
     ...overrides,
   }
 }
@@ -106,7 +109,24 @@ describe('TenantClientDetailView', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve(clientFixture({ postLogoutRedirectUris: ['https://app.example.com/logged-out'] })),
+            // Client update/delete: post-logout URIs are only rendered (in the
+            // edit form's UriListField) when the client's grantTypes include
+            // authorization_code — RegisterClientCommand's javadoc: "ignored
+            // otherwise."
+            json: () =>
+              Promise.resolve(
+                clientFixture({
+                  grantTypes: ['authorization_code'],
+                  postLogoutRedirectUris: ['https://app.example.com/logged-out'],
+                }),
+              ),
+          })
+        }
+        if (url === '/t/acme/api/resource-servers?page=0&size=200') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [], page: 0, size: 200, totalElements: 0, totalPages: 0 }),
           })
         }
         return Promise.reject(new Error(`unexpected fetch: ${url}`))
@@ -118,7 +138,10 @@ describe('TenantClientDetailView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('billing-api')
-    expect(wrapper.text()).toContain('https://app.example.com/logged-out')
+    // The URI lives in an <input>'s value property, not text content — assert
+    // on the element itself, same as UriListField.spec.ts does elsewhere.
+    const postLogoutInput = wrapper.find('#client-edit-post-logout-0').element as HTMLInputElement
+    expect(postLogoutInput.value).toBe('https://app.example.com/logged-out')
   })
 
   it('Credentials tab shows "Never rotated" before any rotation', async () => {
@@ -306,6 +329,191 @@ describe('TenantClientDetailView', () => {
 
     expect(wrapper.text()).toContain('This is a public client — it has no secret to regenerate.')
     expect(wrapper.text()).not.toContain('This action conflicts with the current state.')
+  })
+
+  // ---- Client update/delete -----------------------------------------
+
+  function stubEmptyCatalog(url: string): { ok: boolean; status: number; json: () => Promise<unknown> } | null {
+    if (url === '/t/acme/api/resource-servers?page=0&size=200') {
+      return {
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ items: [], page: 0, size: 200, totalElements: 0, totalPages: 0 }),
+      }
+    }
+    return null
+  }
+
+  it('a normal client offers the edit form; saving PATCHes and re-seeds from the response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const catalogStub = stubEmptyCatalog(url)
+        if (catalogStub) return Promise.resolve(catalogStub)
+        if (url === '/t/acme/api/clients/record-1' && (!init || init.method === undefined)) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(clientFixture()) })
+        }
+        if (url === '/api/csrf') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+        }
+        if (url === '/t/acme/api/clients/record-1' && init?.method === 'PATCH') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(clientFixture({ clientName: 'Renamed Client' })),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantClientDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    expect(wrapper.find('#client-edit-form').exists()).toBe(true)
+    await wrapper.find('#client-edit-name').setValue('Renamed Client')
+    await wrapper.find('#client-edit-form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('#client-detail-name').text()).toBe('Renamed Client')
+  })
+
+  it('a 400 validation-errors response lands the field error on the edit form', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const catalogStub = stubEmptyCatalog(url)
+        if (catalogStub) return Promise.resolve(catalogStub)
+        if (url === '/t/acme/api/clients/record-1' && (!init || init.method === undefined)) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(clientFixture()) })
+        }
+        if (url === '/api/csrf') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+        }
+        if (url === '/t/acme/api/clients/record-1' && init?.method === 'PATCH') {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            json: () =>
+              Promise.resolve({
+                error: 'validation.failed',
+                error_description: 'Request validation failed',
+                errors: { clientName: 'must not be blank' },
+              }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantClientDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#client-edit-form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('#client-edit-name-error').text()).toBe('must not be blank')
+  })
+
+  it('the platform-managed admin-console client hides both the edit form and the delete button', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/t/acme/api/clients/record-1') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve(
+                clientFixture({ clientId: 'admin-console-acme', publicClient: true, platformManaged: true }),
+              ),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantClientDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    expect(wrapper.find('#client-edit-form').exists()).toBe(false)
+    expect(wrapper.text()).toContain('platform-managed and cannot be edited')
+    expect(wrapper.find('#client-delete-button').exists()).toBe(false)
+    expect(wrapper.text()).toContain('platform-managed and cannot be deleted')
+  })
+
+  it('delete is gated behind TypedConfirmDialog; a successful delete navigates back to the client list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const catalogStub = stubEmptyCatalog(url)
+        if (catalogStub) return Promise.resolve(catalogStub)
+        if (url === '/t/acme/api/clients/record-1' && (!init || init.method === undefined)) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(clientFixture()) })
+        }
+        if (url === '/api/csrf') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+        }
+        if (url === '/t/acme/api/clients/record-1' && init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(undefined) })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantClientDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#client-delete-button').trigger('click')
+    expect(wrapper.find('#typed-confirm-dialog-confirm').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('#typed-confirm-input').setValue('billing-api')
+    expect(wrapper.find('#typed-confirm-dialog-confirm').attributes('disabled')).toBeUndefined()
+    await wrapper.find('#typed-confirm-dialog-confirm').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('tenant-admin-clients')
+  })
+
+  it('a 409 on delete surfaces the message without navigating away', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const catalogStub = stubEmptyCatalog(url)
+        if (catalogStub) return Promise.resolve(catalogStub)
+        if (url === '/t/acme/api/clients/record-1' && (!init || init.method === undefined)) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(clientFixture()) })
+        }
+        if (url === '/api/csrf') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ token: 'csrf-token' }) })
+        }
+        if (url === '/t/acme/api/clients/record-1' && init?.method === 'DELETE') {
+          return Promise.resolve({
+            ok: false,
+            status: 409,
+            json: () =>
+              Promise.resolve({ error: 'client.platform_managed', error_description: 'Client is platform-managed.' }),
+          })
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url} ${init?.method}`))
+      }),
+    )
+
+    const router = await createDetailRouter()
+    const wrapper = mount(TenantClientDetailView, { global: { plugins: [router], stubs: dialogStubs } })
+    await flushPromises()
+
+    await wrapper.find('#client-delete-button').trigger('click')
+    await wrapper.find('#typed-confirm-input').setValue('billing-api')
+    await wrapper.find('#typed-confirm-dialog-confirm').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Client is platform-managed.')
+    expect(router.currentRoute.value.name).toBe('tenant-admin-client-detail')
   })
 
   it('Branding tab renders an honest placeholder naming the gap, not a broken form', async () => {

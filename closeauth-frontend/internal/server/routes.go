@@ -314,8 +314,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 				// Stage UI-3c: clients (create/get/regenerate-secret) and resource
 				// servers + scopes (full CRUD). FE-4.10 added the client list once
-				// the backend gained one. See handlers_admin_clients.go /
-				// handlers_admin_resource_servers.go.
+				// the backend gained one. Client update/delete added once
+				// TenantClientController gained PATCH/DELETE too. See
+				// handlers_admin_clients.go / handlers_admin_resource_servers.go.
 				pr.Get("/clients", s.handleAdminClientsList)
 				pr.Post("/clients", s.handleAdminClientCreate)
 				// FE-4d: declared before /{clientId} for readability — chi
@@ -324,6 +325,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 				// above).
 				pr.Get("/clients/count", s.handleAdminClientCount)
 				pr.Get("/clients/{clientId}", s.handleAdminClientGet)
+				pr.Patch("/clients/{clientId}", s.handleAdminClientUpdate)
+				pr.Delete("/clients/{clientId}", s.handleAdminClientDelete)
 				pr.Post("/clients/{clientId}/client-secret", s.handleAdminClientSecretRegenerate)
 
 				pr.Get("/resource-servers", s.handleAdminResourceServersList)

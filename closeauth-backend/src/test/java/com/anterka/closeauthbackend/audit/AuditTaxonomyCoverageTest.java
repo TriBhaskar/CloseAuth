@@ -34,10 +34,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li>{@code AGENT_*} — Phase 4; the {@code agents} table is schema-only (no entities to audit).</li>
  *   <li>{@code MFA_ENROLLED}/{@code MFA_REMOVED} — Phase 2; MFA is not built.</li>
- *   <li>{@code CLIENT_UPDATED}/{@code CLIENT_DELETED} — their admin endpoints (client update/delete) are the flagged
- *       7b follow-up, not yet built.</li>
  *   <li>{@code USER_UPDATED} — no generic user-update / profile-PATCH endpoint yet (the other flagged 7b follow-up).</li>
  * </ul>
+ * {@code CLIENT_UPDATED}/{@code CLIENT_DELETED} were the third flagged 7b follow-up (client update/delete) —
+ * now wired via {@code ClientRegistrationService.updateClient}/{@code deleteClient}, so they are no longer
+ * excluded here.
  * When those surfaces are built, wiring their emission and removing them from this set is the enforced next step.
  */
 class AuditTaxonomyCoverageTest {
@@ -52,8 +53,6 @@ class AuditTaxonomyCoverageTest {
             AuditEventType.AGENT_TOKEN_EXCHANGED,
             AuditEventType.MFA_ENROLLED,
             AuditEventType.MFA_REMOVED,
-            AuditEventType.CLIENT_UPDATED,
-            AuditEventType.CLIENT_DELETED,
             AuditEventType.USER_UPDATED);
 
     @Test

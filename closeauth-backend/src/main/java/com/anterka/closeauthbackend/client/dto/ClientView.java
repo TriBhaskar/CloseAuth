@@ -1,5 +1,6 @@
 package com.anterka.closeauthbackend.client.dto;
 
+import com.anterka.closeauthbackend.client.service.AdminConsoleClientProvisioningCallback;
 import com.anterka.closeauthbackend.client.service.CloseAuthClientSettings;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
@@ -25,6 +26,15 @@ import java.util.stream.Collectors;
  * {@code secretRotatedAt} is {@code null} until the first {@link
  * com.anterka.closeauthbackend.client.service.ClientRegistrationService#regenerateClientSecret} call — see {@link
  * CloseAuthClientSettings#getSecretRotatedAt}.
+ *
+ * <p><b>Client update/delete additions: {@code requireProofKey}, {@code trusted}, {@code platformManaged}.</b>
+ * The first two are free — SAS already tracks both as {@link org.springframework.security.oauth2.server.authorization.settings.ClientSettings}
+ * booleans, and the console's edit form needs them to seed itself. {@code platformManaged} is {@code true} for
+ * the tenant's auto-provisioned {@code admin-console-{slug}} client (see
+ * {@link AdminConsoleClientProvisioningCallback}) — the same "never offer an action the backend would refuse"
+ * invariant {@code publicClient} serves above: {@code ClientRegistrationService.updateClient}/{@code
+ * deleteClient} both 409 on this client ({@code client.platform_managed}), so the console must know to hide
+ * both controls rather than let an admin discover the refusal by clicking.
  */
 public record ClientView(
         String id,
@@ -37,7 +47,10 @@ public record ClientView(
         Set<String> redirectUris,
         Set<String> postLogoutRedirectUris,
         Instant createdAt,
-        Instant secretRotatedAt
+        Instant secretRotatedAt,
+        boolean requireProofKey,
+        boolean trusted,
+        boolean platformManaged
 ) {
 
     public static ClientView from(RegisteredClient client) {
@@ -53,7 +66,10 @@ public record ClientView(
                 client.getRedirectUris(),
                 client.getPostLogoutRedirectUris(),
                 client.getClientIdIssuedAt(),
-                CloseAuthClientSettings.getSecretRotatedAt(client)
+                CloseAuthClientSettings.getSecretRotatedAt(client),
+                client.getClientSettings().isRequireProofKey(),
+                !client.getClientSettings().isRequireAuthorizationConsent(),
+                client.getClientId().startsWith(AdminConsoleClientProvisioningCallback.CLIENT_ID_PREFIX)
         );
     }
 }

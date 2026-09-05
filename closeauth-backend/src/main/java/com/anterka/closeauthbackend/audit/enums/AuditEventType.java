@@ -21,9 +21,10 @@ package com.anterka.closeauthbackend.audit.enums;
  * <p><b>Not-yet-emitted values</b> (no call site; deliberately un-wired, tracked by
  * {@code AuditTaxonomyCoverageTest}'s documented exclusion set): the {@code AGENT_*}
  * family (Phase 4 — {@code agents} is schema-only), {@code MFA_*} (Phase 2 — MFA is not
- * built), and {@code CLIENT_UPDATED}/{@code CLIENT_DELETED} and {@code USER_UPDATED}
- * (their admin endpoints — client update/delete, user profile PATCH — are the two small
- * 7b follow-ups, not yet built).
+ * built), and {@code USER_UPDATED} (user profile PATCH is not yet built).
+ * {@code CLIENT_UPDATED}/{@code CLIENT_DELETED} are wired — see
+ * {@code ClientRegistrationService.updateClient}/{@code deleteClient} and
+ * {@code AuditEvents.clientUpdated}/{@code clientDeleted}.
  */
 public enum AuditEventType {
 

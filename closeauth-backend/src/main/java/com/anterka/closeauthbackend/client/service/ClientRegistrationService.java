@@ -6,8 +6,10 @@ import com.anterka.closeauthbackend.client.dto.ClientCreatedView;
 import com.anterka.closeauthbackend.client.dto.ClientSecretView;
 import com.anterka.closeauthbackend.client.dto.ClientView;
 import com.anterka.closeauthbackend.client.dto.RegisterClientCommand;
+import com.anterka.closeauthbackend.client.dto.UpdateClientCommand;
 import com.anterka.closeauthbackend.common.config.properties.CloseAuthProperties;
 import com.anterka.closeauthbackend.common.exception.ClientNotFoundException;
+import com.anterka.closeauthbackend.common.exception.ClientPlatformManagedException;
 import com.anterka.closeauthbackend.common.exception.ClientPublicNoSecretException;
 import com.anterka.closeauthbackend.common.security.TenantContext;
 import com.anterka.closeauthbackend.common.validation.CommandValidator;
@@ -122,9 +124,112 @@ public class ClientRegistrationService {
     }
 
     /**
-     * Tenant-scoped lookup shared by {@link #regenerateClientSecret} and {@code TenantClientController.get} — a
-     * client that exists but belongs to a different tenant 404s exactly like one that doesn't exist at all
-     * (defense in depth, never distinguish the two to a caller).
+     * Replaces a client's mutable fields (name, scopes, redirect/post-logout URIs, PKCE requirement, trusted
+     * flag) — a full replacement of that set, not a sparse merge, same convention {@code
+     * ResourceServerService.updateResourceServer} uses. {@code clientId}, {@code tenantId}, {@code
+     * publicClient}, and {@code grantTypes} are structurally immutable ({@link UpdateClientCommand} has no
+     * fields for them at all), so there is nothing here that could silently change a client's fundamental type.
+     *
+     * <p>Refuses the platform-managed {@code admin-console-*} client ({@link ClientPlatformManagedException})
+     * before any mutation — editing its redirect URI would strand the tenant's own console.
+     *
+     * <p>Same persistence path as {@link #regenerateClientSecret}: {@code registeredClientRepository.save}
+     * already routes an existing id to SAS's plain {@code UPDATE} (SAS columns only, {@code tenant_id}
+     * untouched) — no repository change needed. Two of that method's traps apply here too: the builder's
+     * {@code .scope(x)}/{@code .redirectUri(x)} ADD to the copied collection (a full replacement needs the
+     * consumer overloads, {@code .scopes(s -> {...})} etc.), and {@link ClientSettings} must be rebuilt from
+     * the EXISTING settings map (not a fresh builder) so {@code TENANT_ID}/{@code SECRET_ROTATED_AT} survive.
+     */
+    @Transactional
+    public ClientView updateClient(TenantContext context, String clientRegisteredId, UpdateClientCommand command) {
+        commandValidator.validate(command);
+        tenantService.requireActiveTenant(context);
+        RegisteredClient existing = loadClientOrThrow(context, clientRegisteredId);
+        requireNotPlatformManaged(existing);
+
+        ClientSettings.Builder clientSettings = ClientSettings.withSettings(existing.getClientSettings().getSettings())
+                .requireProofKey(command.requireProofKey())
+                .requireAuthorizationConsent(!command.trusted());
+
+        RegisteredClient.Builder builder = RegisteredClient.from(existing)
+                .clientName(command.clientName())
+                .clientSettings(clientSettings.build())
+                // Full replacement, not append: RegisteredClient.from(existing) seeds the builder with the
+                // existing collections, and the single-value overloads (.scope/.redirectUri/...) only ADD to
+                // them. The consumer overloads below clear-then-repopulate instead.
+                .scopes(scopes -> {
+                    scopes.clear();
+                    if (!CollectionUtils.isEmpty(command.scopes())) {
+                        scopes.addAll(command.scopes());
+                    }
+                })
+                .redirectUris(uris -> {
+                    uris.clear();
+                    if (!CollectionUtils.isEmpty(command.redirectUris())) {
+                        uris.addAll(command.redirectUris());
+                    }
+                })
+                .postLogoutRedirectUris(uris -> {
+                    uris.clear();
+                    if (!CollectionUtils.isEmpty(command.postLogoutUris())) {
+                        uris.addAll(command.postLogoutUris());
+                    }
+                });
+
+        RegisteredClient updated = builder.build();
+        registeredClientRepository.save(updated);
+
+        auditEmitter.emit(AuditEvents.clientUpdated(context.tenantId(), updated.getId(), updated.getClientId()));
+        return ClientView.from(updated);
+    }
+
+    /**
+     * Hard-deletes a client and everything scoped to it: its 1:1 auto-created resource server (nothing else
+     * cascades that — {@code resource_servers} carries no FK to the client), the SAS-native {@code
+     * oauth2_authorization}/{@code oauth2_authorization_consent} rows (no FK either, so they'd otherwise be
+     * silently orphaned), then the client row itself (the DDL cascades {@code
+     * client_authorized_resource_servers} and {@code refresh_tokens} from there). Outstanding access tokens are
+     * stateless 5-minute JWTs — they simply expire; there is no per-client revocation marker to write.
+     *
+     * <p>Refuses the platform-managed {@code admin-console-*} client ({@link ClientPlatformManagedException})
+     * before any mutation — deleting it would strand the tenant's own console with no self-service recovery.
+     *
+     * <p>{@code audit_events.actor_client_id}'s {@code ON DELETE RESTRICT} was relaxed in {@code
+     * V3__relax_audit_actor_fks.sql} for exactly this method: every client already carries a {@code
+     * CLIENT_REGISTERED} row pointing at itself, so a hard delete was previously impossible outright.
+     */
+    @Transactional
+    public void deleteClient(TenantContext context, String clientRegisteredId) {
+        tenantService.requireActiveTenant(context);
+        RegisteredClient existing = loadClientOrThrow(context, clientRegisteredId);
+        requireNotPlatformManaged(existing);
+
+        resourceServerService.deleteAutoCreatedForClient(context, clientRegisteredId);
+        tenantAwareRegisteredClientRepository.deleteSasAuthorizationsFor(clientRegisteredId);
+        tenantAwareRegisteredClientRepository.deleteSasConsentsFor(clientRegisteredId);
+        tenantAwareRegisteredClientRepository.deleteByIdAndTenantId(clientRegisteredId, context.tenantId());
+
+        auditEmitter.emit(AuditEvents.clientDeleted(context.tenantId(), existing.getId(), existing.getClientId()));
+    }
+
+    /**
+     * Guards {@link #updateClient} and {@link #deleteClient}: the tenant's auto-provisioned {@code
+     * admin-console-{slug}} client (see {@link AdminConsoleClientProvisioningCallback}) is what the tenant
+     * admin console itself authenticates with — mutating or removing it would lock the tenant's admins out
+     * with no recovery path, so both operations refuse it outright rather than letting an admin discover the
+     * consequence after the fact.
+     */
+    private void requireNotPlatformManaged(RegisteredClient client) {
+        if (client.getClientId().startsWith(AdminConsoleClientProvisioningCallback.CLIENT_ID_PREFIX)) {
+            throw new ClientPlatformManagedException(client.getId());
+        }
+    }
+
+    /**
+     * Tenant-scoped lookup shared by {@link #regenerateClientSecret}, {@link #updateClient}, {@link
+     * #deleteClient}, and {@code TenantClientController.get} — a client that exists but belongs to a different
+     * tenant 404s exactly like one that doesn't exist at all (defense in depth, never distinguish the two to a
+     * caller).
      */
     public RegisteredClient loadClientOrThrow(TenantContext context, String clientRegisteredId) {
         RegisteredClient client = registeredClientRepository.findById(clientRegisteredId);

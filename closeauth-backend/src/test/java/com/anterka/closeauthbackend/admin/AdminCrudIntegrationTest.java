@@ -193,6 +193,101 @@ class AdminCrudIntegrationTest {
         assertThat(mapper.readTree(regenerate.body()).get("code").asText()).isEqualTo("client.public_no_secret");
     }
 
+    // ---- client update/delete ---------------------------------------------
+
+    @Test
+    void updateClientReplacesMutableFieldsAndAttemptedImmutableChangesAreIgnored() throws Exception {
+        String platform = platformToken();
+        UUID tenant = provisionAndActivateTenant();
+
+        HttpResponse<String> created = postJson("/v1/tenants/" + tenant + "/clients",
+                "{\"clientName\":\"Original Name\",\"publicClient\":false,"
+                        + "\"grantTypes\":[\"client_credentials\"],\"scopes\":[\"svc:read\"],"
+                        + "\"requireProofKey\":false,\"trusted\":true}", platform);
+        assertThat(created.statusCode()).isEqualTo(201);
+        JsonNode createdBody = mapper.readTree(created.body());
+        String internalId = createdBody.get("client").get("id").asText();
+        String originalClientId = createdBody.get("client").get("clientId").asText();
+
+        // clientId/tenantId/publicClient/grantTypes have no field on UpdateClientCommand at all — an attempt to
+        // sneak one in via extra JSON properties must be silently ignored (structural immutability), not rejected.
+        HttpResponse<String> patched = patchJson("/v1/tenants/" + tenant + "/clients/" + internalId,
+                "{\"clientName\":\"Renamed\",\"scopes\":[\"svc:write\"],\"redirectUris\":[],"
+                        + "\"postLogoutUris\":[],\"requireProofKey\":true,\"trusted\":false,"
+                        + "\"clientId\":\"hijacked-client-id\",\"publicClient\":true}", platform);
+        assertThat(patched.statusCode()).isEqualTo(200);
+        JsonNode patchedBody = mapper.readTree(patched.body());
+        assertThat(patchedBody.get("clientName").asText()).isEqualTo("Renamed");
+        assertThat(patchedBody.get("scopes").get(0).asText()).isEqualTo("svc:write");
+        assertThat(patchedBody.get("requireProofKey").asBoolean()).isTrue();
+        assertThat(patchedBody.get("trusted").asBoolean()).isFalse();
+        assertThat(patchedBody.get("clientId").asText()).isEqualTo(originalClientId); // unchanged
+        assertThat(patchedBody.get("publicClient").asBoolean()).isFalse(); // unchanged
+
+        // Re-GET, not just the PATCH echo, to prove it persisted.
+        HttpResponse<String> reread = get("/v1/tenants/" + tenant + "/clients/" + internalId, platform);
+        JsonNode rereadBody = mapper.readTree(reread.body());
+        assertThat(rereadBody.get("clientName").asText()).isEqualTo("Renamed");
+        assertThat(rereadBody.get("scopes").get(0).asText()).isEqualTo("svc:write");
+    }
+
+    @Test
+    void deletingAClientAlsoRemovesItsAutoCreatedResourceServer() throws Exception {
+        String platform = platformToken();
+        UUID tenant = provisionAndActivateTenant();
+
+        HttpResponse<String> created = postJson("/v1/tenants/" + tenant + "/clients",
+                "{\"clientName\":\"Deletable\",\"publicClient\":false,"
+                        + "\"grantTypes\":[\"client_credentials\"],\"requireProofKey\":false,\"trusted\":true}",
+                platform);
+        assertThat(created.statusCode()).isEqualTo(201);
+        String internalId = mapper.readTree(created.body()).get("client").get("id").asText();
+
+        JsonNode rsPage = mapper.readTree(
+                get("/v1/tenants/" + tenant + "/resource-servers?page=0&size=100", platform).body());
+        String autoRsId = null;
+        for (JsonNode rs : rsPage.get("items")) {
+            if (rs.get("autoCreated").asBoolean() && "Deletable".equals(rs.get("name").asText())) {
+                autoRsId = rs.get("id").asText();
+            }
+        }
+        assertThat(autoRsId).as("auto-created RS for the new client").isNotNull();
+
+        assertThat(delete("/v1/tenants/" + tenant + "/clients/" + internalId, platform).statusCode())
+                .isEqualTo(204);
+
+        assertThat(get("/v1/tenants/" + tenant + "/clients/" + internalId, platform).statusCode())
+                .isEqualTo(404);
+        assertThat(get("/v1/tenants/" + tenant + "/resource-servers/" + autoRsId, platform).statusCode())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void platformManagedAdminConsoleClientRefusesUpdateAndDelete() throws Exception {
+        String platform = platformToken();
+        UUID tenant = provisionAndActivateTenant();
+
+        JsonNode clientsPage = mapper.readTree(
+                get("/v1/tenants/" + tenant + "/clients?page=0&size=100", platform).body());
+        String consoleClientId = null;
+        for (JsonNode c : clientsPage.get("items")) {
+            if (c.get("clientId").asText().startsWith("admin-console-")) {
+                consoleClientId = c.get("id").asText();
+            }
+        }
+        assertThat(consoleClientId).as("auto-provisioned admin-console client").isNotNull();
+
+        HttpResponse<String> patch = patchJson("/v1/tenants/" + tenant + "/clients/" + consoleClientId,
+                "{\"clientName\":\"Hijacked\",\"scopes\":[],\"redirectUris\":[],\"postLogoutUris\":[],"
+                        + "\"requireProofKey\":true,\"trusted\":true}", platform);
+        assertThat(patch.statusCode()).isEqualTo(409);
+        assertThat(mapper.readTree(patch.body()).get("code").asText()).isEqualTo("client.platform_managed");
+
+        HttpResponse<String> deleteResp = delete("/v1/tenants/" + tenant + "/clients/" + consoleClientId, platform);
+        assertThat(deleteResp.statusCode()).isEqualTo(409);
+        assertThat(mapper.readTree(deleteResp.body()).get("code").asText()).isEqualTo("client.platform_managed");
+    }
+
     // ---- self-service isolation -------------------------------------------
 
     @Test
@@ -422,6 +517,12 @@ class AdminCrudIntegrationTest {
         return send(auth(HttpRequest.newBuilder(URI.create(base() + path))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8)), bearer));
+    }
+
+    private HttpResponse<String> patchJson(String path, String json, String bearer) throws Exception {
+        return send(auth(HttpRequest.newBuilder(URI.create(base() + path))
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8)), bearer));
     }
 
     private HttpRequest.Builder auth(HttpRequest.Builder b, String bearer) {

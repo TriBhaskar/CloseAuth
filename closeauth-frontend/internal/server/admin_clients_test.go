@@ -34,9 +34,15 @@ type clientCreatedBody struct {
 }
 
 type clientViewBody struct {
-	ID         string `json:"id"`
-	ClientID   string `json:"clientId"`
-	ClientName string `json:"clientName"`
+	ID              string   `json:"id"`
+	ClientID        string   `json:"clientId"`
+	ClientName      string   `json:"clientName"`
+	PublicClient    bool     `json:"publicClient"`
+	Scopes          []string `json:"scopes"`
+	RedirectURIs    []string `json:"redirectUris"`
+	RequireProofKey bool     `json:"requireProofKey"`
+	Trusted         bool     `json:"trusted"`
+	PlatformManaged bool     `json:"platformManaged"`
 }
 
 func createClient(t *testing.T, client *http.Client, bffBase, slug string, publicClient bool) (int, clientCreatedBody, string) {
@@ -222,5 +228,208 @@ func TestAdminClients_RegenerateSecret_PublicClientRejected(t *testing.T) {
 	}
 	if regenErr.Error != "client.public_no_secret" {
 		t.Errorf("regenerate error code = %q, want client.public_no_secret (must not be flattened)", regenErr.Error)
+	}
+}
+
+// Client update/delete: PATCH replaces the mutable field set, then a real
+// re-GET proves persistence (not just an echoed response); DELETE removes
+// the client and its 1:1 auto-created resource server, and the
+// platform-managed admin-console client refuses both. Same shape as
+// TestAdminResourceServers_FullCRUDLifecycle in admin_resource_servers_test.go.
+func TestAdminClients_Update_ReplacesMutableFieldsAndPersists(t *testing.T) {
+	stack := testsupport.Get(t)
+	fixtures := testsupport.NewFixtures(stack)
+	ctx := context.Background()
+
+	_, slug, adminClientID, _, adminEmail, adminPassword, _ := newTenantWithAdmin(t, stack, fixtures, ctx, "client-update-admin")
+
+	s := newAdminConsoleServer(stack, 30*time.Second)
+	stack.ServeBFF(t, s.RegisterRoutes())
+	bffBase := stack.BFFBaseURL()
+	client := newBrowserLikeClient(t)
+	establishAdminSession(t, client, bffBase, slug, adminClientID, adminEmail, adminPassword)
+
+	status, created, createBodyStr := createClient(t, client, bffBase, slug, false)
+	if status != http.StatusCreated {
+		t.Fatalf("POST clients: status = %d, want 201, body=%s", status, createBodyStr)
+	}
+
+	patchBody, _ := json.Marshal(map[string]any{
+		"clientName":      "Renamed via PATCH",
+		"scopes":          []string{"read"},
+		"redirectUris":    []string{},
+		"postLogoutUris":  []string{},
+		"requireProofKey": true,
+		"trusted":         false,
+	})
+	patchResp := doWithCSRF(t, client, bffBase, http.MethodPatch, bffBase+"/t/"+slug+"/api/clients/"+created.Client.ID,
+		"application/json", bytes.NewReader(patchBody))
+	defer patchResp.Body.Close()
+	patchBodyStr, _ := readBody(patchResp.Body)
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH client: status = %d, want 200, body=%s", patchResp.StatusCode, patchBodyStr)
+	}
+	assertNoTokenLeak(t, "PATCH client", patchBodyStr)
+
+	// Re-GET (not just the PATCH echo) to prove the change actually persisted.
+	getResp, err := client.Get(bffBase + "/t/" + slug + "/api/clients/" + created.Client.ID)
+	if err != nil {
+		t.Fatalf("GET client (after patch): %v", err)
+	}
+	defer getResp.Body.Close()
+	getBodyStr, _ := readBody(getResp.Body)
+	var reread clientViewBody
+	if err := json.Unmarshal([]byte(getBodyStr), &reread); err != nil {
+		t.Fatalf("decode re-read client: %v (body=%s)", err, getBodyStr)
+	}
+	if reread.ClientName != "Renamed via PATCH" {
+		t.Errorf("re-read clientName = %q, want %q", reread.ClientName, "Renamed via PATCH")
+	}
+	if len(reread.Scopes) != 1 || reread.Scopes[0] != "read" {
+		t.Errorf("re-read scopes = %v, want [read]", reread.Scopes)
+	}
+	if !reread.RequireProofKey {
+		t.Errorf("re-read requireProofKey = false, want true")
+	}
+	if reread.Trusted {
+		t.Errorf("re-read trusted = true, want false")
+	}
+	// publicClient has no field on the update command at all — must survive untouched.
+	if reread.PublicClient {
+		t.Errorf("re-read publicClient = true, want false (unchanged — PATCH cannot flip it)")
+	}
+}
+
+func TestAdminClients_Delete_RemovesClientAndItsAutoCreatedResourceServer(t *testing.T) {
+	stack := testsupport.Get(t)
+	fixtures := testsupport.NewFixtures(stack)
+	ctx := context.Background()
+
+	_, slug, adminClientID, _, adminEmail, adminPassword, _ := newTenantWithAdmin(t, stack, fixtures, ctx, "client-delete-admin")
+
+	s := newAdminConsoleServer(stack, 30*time.Second)
+	stack.ServeBFF(t, s.RegisterRoutes())
+	bffBase := stack.BFFBaseURL()
+	client := newBrowserLikeClient(t)
+	establishAdminSession(t, client, bffBase, slug, adminClientID, adminEmail, adminPassword)
+
+	status, created, createBodyStr := createClient(t, client, bffBase, slug, false)
+	if status != http.StatusCreated {
+		t.Fatalf("POST clients: status = %d, want 201, body=%s", status, createBodyStr)
+	}
+
+	listResp, err := client.Get(bffBase + "/t/" + slug + "/api/resource-servers?page=0&size=100")
+	if err != nil {
+		t.Fatalf("GET resource-servers: %v", err)
+	}
+	defer listResp.Body.Close()
+	listBody, _ := readBody(listResp.Body)
+	var rsPage pageViewBody[resourceServerViewBody]
+	if err := json.Unmarshal([]byte(listBody), &rsPage); err != nil {
+		t.Fatalf("decode resource-servers: %v (body=%s)", err, listBody)
+	}
+	var autoRS *resourceServerViewBody
+	for i, rs := range rsPage.Items {
+		if rs.AutoCreated && rs.Name == created.Client.ClientName {
+			autoRS = &rsPage.Items[i]
+		}
+	}
+	if autoRS == nil {
+		t.Fatalf("no auto-created resource server named %q found in %v", created.Client.ClientName, rsPage.Items)
+	}
+
+	deleteResp := doWithCSRF(t, client, bffBase, http.MethodDelete, bffBase+"/t/"+slug+"/api/clients/"+created.Client.ID, "", nil)
+	defer deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusNoContent {
+		body, _ := readBody(deleteResp.Body)
+		t.Fatalf("DELETE client: status = %d, want 204, body=%s", deleteResp.StatusCode, body)
+	}
+
+	regetResp, err := client.Get(bffBase + "/t/" + slug + "/api/clients/" + created.Client.ID)
+	if err != nil {
+		t.Fatalf("GET client (after delete): %v", err)
+	}
+	defer regetResp.Body.Close()
+	if regetResp.StatusCode != http.StatusNotFound {
+		body, _ := readBody(regetResp.Body)
+		t.Fatalf("GET client (after delete): status = %d, want 404, body=%s", regetResp.StatusCode, body)
+	}
+
+	regetRSResp, err := client.Get(bffBase + "/t/" + slug + "/api/resource-servers/" + autoRS.ID)
+	if err != nil {
+		t.Fatalf("GET resource-server (after client delete): %v", err)
+	}
+	defer regetRSResp.Body.Close()
+	if regetRSResp.StatusCode != http.StatusNotFound {
+		body, _ := readBody(regetRSResp.Body)
+		t.Fatalf("GET auto-created resource-server (after client delete): status = %d, want 404, body=%s",
+			regetRSResp.StatusCode, body)
+	}
+}
+
+func TestAdminClients_PlatformManagedAdminConsoleClient_RefusesUpdateAndDelete(t *testing.T) {
+	stack := testsupport.Get(t)
+	fixtures := testsupport.NewFixtures(stack)
+	ctx := context.Background()
+
+	_, slug, adminClientID, _, adminEmail, adminPassword, _ := newTenantWithAdmin(t, stack, fixtures, ctx, "client-platform-admin")
+
+	s := newAdminConsoleServer(stack, 30*time.Second)
+	stack.ServeBFF(t, s.RegisterRoutes())
+	bffBase := stack.BFFBaseURL()
+	client := newBrowserLikeClient(t)
+	establishAdminSession(t, client, bffBase, slug, adminClientID, adminEmail, adminPassword)
+
+	listResp, err := client.Get(bffBase + "/t/" + slug + "/api/clients?page=0&size=100")
+	if err != nil {
+		t.Fatalf("GET clients: %v", err)
+	}
+	defer listResp.Body.Close()
+	listBody, _ := readBody(listResp.Body)
+	var page pageViewBody[clientViewBody]
+	if err := json.Unmarshal([]byte(listBody), &page); err != nil {
+		t.Fatalf("decode clients: %v (body=%s)", err, listBody)
+	}
+	var consoleClient *clientViewBody
+	for i, c := range page.Items {
+		if c.PlatformManaged {
+			consoleClient = &page.Items[i]
+		}
+	}
+	if consoleClient == nil {
+		t.Fatalf("no platform-managed (admin-console) client found in %v", page.Items)
+	}
+
+	patchBody, _ := json.Marshal(map[string]any{
+		"clientName": "Hijacked", "scopes": []string{}, "redirectUris": []string{}, "postLogoutUris": []string{},
+		"requireProofKey": true, "trusted": true,
+	})
+	patchResp := doWithCSRF(t, client, bffBase, http.MethodPatch, bffBase+"/t/"+slug+"/api/clients/"+consoleClient.ID,
+		"application/json", bytes.NewReader(patchBody))
+	defer patchResp.Body.Close()
+	patchBodyStr, _ := readBody(patchResp.Body)
+	if patchResp.StatusCode != http.StatusConflict {
+		t.Fatalf("PATCH admin-console client: status = %d, want 409, body=%s", patchResp.StatusCode, patchBodyStr)
+	}
+	var patchErr adminAPIErrorBody
+	if err := json.Unmarshal([]byte(patchBodyStr), &patchErr); err != nil {
+		t.Fatalf("decode patch error: %v (body=%s)", err, patchBodyStr)
+	}
+	if patchErr.Error != "client.platform_managed" {
+		t.Errorf("PATCH error code = %q, want client.platform_managed", patchErr.Error)
+	}
+
+	deleteResp := doWithCSRF(t, client, bffBase, http.MethodDelete, bffBase+"/t/"+slug+"/api/clients/"+consoleClient.ID, "", nil)
+	defer deleteResp.Body.Close()
+	deleteBodyStr, _ := readBody(deleteResp.Body)
+	if deleteResp.StatusCode != http.StatusConflict {
+		t.Fatalf("DELETE admin-console client: status = %d, want 409, body=%s", deleteResp.StatusCode, deleteBodyStr)
+	}
+	var deleteErr adminAPIErrorBody
+	if err := json.Unmarshal([]byte(deleteBodyStr), &deleteErr); err != nil {
+		t.Fatalf("decode delete error: %v (body=%s)", err, deleteBodyStr)
+	}
+	if deleteErr.Error != "client.platform_managed" {
+		t.Errorf("DELETE error code = %q, want client.platform_managed", deleteErr.Error)
 	}
 }

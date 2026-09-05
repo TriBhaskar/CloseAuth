@@ -6,10 +6,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Stage UI-3c: resource servers and their scope catalog — unlike clients,
-// the backend exposes full CRUD here (TenantResourceServerController: list/
-// create/get/update/delete + scopes list/add/update/delete), so this file is
-// a plain thin relay throughout, same shape as handlers_admin_users.go.
+// Stage UI-3c: resource servers and their scope catalog — the backend
+// exposes full CRUD here (TenantResourceServerController: list/create/get/
+// update/delete + scopes list/add/update/delete), so this file is a plain
+// thin relay throughout, same shape as handlers_admin_users.go. Clients
+// (handlers_admin_clients.go) gained the same update/delete shape once
+// TenantClientController did.
 // PATCH is used for both resource-server and scope updates — AdminClient's
 // PatchJSON (internal/backend/admin_client.go) already existed and was
 // unused before this stage; this is its first caller.

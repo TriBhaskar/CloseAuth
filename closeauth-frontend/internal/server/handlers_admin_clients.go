@@ -30,6 +30,14 @@ import (
 // (backend closed the gap the paragraph above used to describe) —
 // handleAdminClientsList below is a plain relay, same shape as
 // handleAdminResourceServersList in handlers_admin_resource_servers.go.
+//
+// Client update/delete: TenantClientController now exposes PATCH and DELETE
+// too. handleAdminClientUpdate/handleAdminClientDelete are copied line for
+// line from handleAdminResourceServerUpdate/handleAdminResourceServerDelete
+// in handlers_admin_resource_servers.go — same validUUID gate, same
+// PatchJSON/Delete calls, same writeAdminAPIResult forwarding (which passes
+// a 409 client.platform_managed straight through with its code intact, the
+// same way it already does for resource_server.deletion_not_allowed).
 
 // ---- clients ----------------------------------------------------------
 
@@ -99,6 +107,51 @@ func (s *Server) handleAdminClientGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := s.adminClient.Get(r.Context(), session.AccessToken, "/v1/tenants/"+session.TenantID+"/clients/"+clientID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
+
+func (s *Server) handleAdminClientUpdate(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	clientID := chi.URLParam(r, "clientId")
+	if !validUUID(clientID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid_client_id", "Malformed client id.")
+		return
+	}
+	body, err := readJSONBody(w, r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_json", "Request body must be valid JSON.")
+		return
+	}
+	resp, err := s.adminClient.PatchJSON(r.Context(), session.AccessToken,
+		"/v1/tenants/"+session.TenantID+"/clients/"+clientID, body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
+		return
+	}
+	s.writeAdminAPIResult(w, slug, session, resp)
+}
+
+func (s *Server) handleAdminClientDelete(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	session, ok := s.adminSessionOrError(w, r)
+	if !ok {
+		return
+	}
+	clientID := chi.URLParam(r, "clientId")
+	if !validUUID(clientID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid_client_id", "Malformed client id.")
+		return
+	}
+	resp, err := s.adminClient.Delete(r.Context(), session.AccessToken,
+		"/v1/tenants/"+session.TenantID+"/clients/"+clientID)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "bad_gateway", "Could not reach the backend.")
 		return

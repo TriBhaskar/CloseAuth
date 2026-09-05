@@ -53,10 +53,12 @@ import {
 } from '@/components/ui/dialog'
 import FormField from '@/components/common/FormField.vue'
 import ScopeSelector from '@/components/common/ScopeSelector.vue'
+import UriListField from '@/components/common/UriListField.vue'
 import { describeAdminError } from '@/api/problem'
 import { registerClient } from '@/api/tenantAdminClients'
 import { loadScopeCatalog, type ScopeCatalogGroup } from '@/api/tenantAdminScopeCatalog'
 import { useTenantAdminClientCredentialsStore } from '@/stores/tenantAdminClientCredentials'
+import { validateUriList } from '@/lib/uriValidation'
 
 const props = defineProps<{ open: boolean; slug: string }>()
 const emit = defineEmits<{ 'update:open': [open: boolean] }>()
@@ -181,38 +183,6 @@ function goToDetails(): void {
 
 // ---- step 2: details ----------------------------------------------------
 
-function addRedirectRow(): void {
-  redirectUris.value.push('')
-}
-function removeRedirectRow(index: number): void {
-  redirectUris.value.splice(index, 1)
-}
-function addPostLogoutRow(): void {
-  postLogoutUris.value.push('')
-}
-function removePostLogoutRow(index: number): void {
-  postLogoutUris.value.splice(index, 1)
-}
-
-// Spec's own rule: absolute URI, no fragment, https unless the host is
-// localhost/127.0.0.1 — applied uniformly, including Native/mobile (no
-// custom-scheme exception; see file header).
-function validateUri(value: string): string | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  let parsed: URL
-  try {
-    parsed = new URL(trimmed)
-  } catch {
-    return 'Must be an absolute URI.'
-  }
-  if (parsed.hash) return 'Must not include a fragment.'
-  const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
-  if (parsed.protocol !== 'https:' && !isLocal)
-    return 'Must use https, unless the host is localhost.'
-  return null
-}
-
 function validateDetails(): boolean {
   for (const key of Object.keys(detailErrors)) delete detailErrors[key]
   redirectErrors.value = {}
@@ -230,25 +200,11 @@ function validateDetails(): boolean {
       detailErrors.redirectUris = 'At least one redirect URI is required for this client type.'
       valid = false
     }
-    const nextRedirectErrors: Record<number, string> = {}
-    redirectUris.value.forEach((uri, index) => {
-      const error = validateUri(uri)
-      if (error) {
-        nextRedirectErrors[index] = error
-        valid = false
-      }
-    })
-    redirectErrors.value = nextRedirectErrors
-
-    const nextPostLogoutErrors: Record<number, string> = {}
-    postLogoutUris.value.forEach((uri, index) => {
-      const error = validateUri(uri)
-      if (error) {
-        nextPostLogoutErrors[index] = error
-        valid = false
-      }
-    })
-    postLogoutErrors.value = nextPostLogoutErrors
+    redirectErrors.value = validateUriList(redirectUris.value)
+    postLogoutErrors.value = validateUriList(postLogoutUris.value)
+    if (Object.keys(redirectErrors.value).length > 0 || Object.keys(postLogoutErrors.value).length > 0) {
+      valid = false
+    }
   }
 
   return valid
@@ -394,84 +350,24 @@ async function handleSubmit(): Promise<void> {
         </FormField>
 
         <template v-if="needsRedirects">
-          <div class="flex flex-col gap-2">
-            <Label>Redirect URIs</Label>
-            <div v-for="(uri, index) in redirectUris" :key="index" class="flex flex-col gap-1">
-              <div class="flex items-center gap-2">
-                <Input
-                  :id="`client-wizard-redirect-${index}`"
-                  v-model="redirectUris[index]"
-                  type="text"
-                  placeholder="https://app.example.com/callback"
-                  :aria-invalid="Boolean(redirectErrors[index])"
-                />
-                <Button
-                  v-if="redirectUris.length > 1"
-                  :id="`client-wizard-redirect-remove-${index}`"
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  @click="removeRedirectRow(index)"
-                >
-                  Remove
-                </Button>
-              </div>
-              <p v-if="redirectErrors[index]" role="alert" class="text-sm text-destructive">
-                {{ redirectErrors[index] }}
-              </p>
-            </div>
-            <Button
-              id="client-wizard-redirect-add"
-              type="button"
-              variant="outline"
-              size="sm"
-              class="self-start"
-              @click="addRedirectRow"
-            >
-              Add redirect URI
-            </Button>
-            <p v-if="detailErrors.redirectUris" role="alert" class="text-sm text-destructive">
-              {{ detailErrors.redirectUris }}
-            </p>
-          </div>
+          <UriListField
+            id-prefix="client-wizard-redirect"
+            label="Redirect URIs"
+            placeholder="https://app.example.com/callback"
+            add-label="Add redirect URI"
+            v-model="redirectUris"
+            :errors="redirectErrors"
+            :group-error="detailErrors.redirectUris"
+          />
 
-          <div class="flex flex-col gap-2">
-            <Label>Post-logout redirect URIs (optional)</Label>
-            <div v-for="(uri, index) in postLogoutUris" :key="index" class="flex flex-col gap-1">
-              <div class="flex items-center gap-2">
-                <Input
-                  :id="`client-wizard-post-logout-${index}`"
-                  v-model="postLogoutUris[index]"
-                  type="text"
-                  placeholder="https://app.example.com/logged-out"
-                  :aria-invalid="Boolean(postLogoutErrors[index])"
-                />
-                <Button
-                  v-if="postLogoutUris.length > 1"
-                  :id="`client-wizard-post-logout-remove-${index}`"
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  @click="removePostLogoutRow(index)"
-                >
-                  Remove
-                </Button>
-              </div>
-              <p v-if="postLogoutErrors[index]" role="alert" class="text-sm text-destructive">
-                {{ postLogoutErrors[index] }}
-              </p>
-            </div>
-            <Button
-              id="client-wizard-post-logout-add"
-              type="button"
-              variant="outline"
-              size="sm"
-              class="self-start"
-              @click="addPostLogoutRow"
-            >
-              Add post-logout URI
-            </Button>
-          </div>
+          <UriListField
+            id-prefix="client-wizard-post-logout"
+            label="Post-logout redirect URIs (optional)"
+            placeholder="https://app.example.com/logged-out"
+            add-label="Add post-logout URI"
+            v-model="postLogoutUris"
+            :errors="postLogoutErrors"
+          />
         </template>
 
         <div class="flex items-start gap-2">

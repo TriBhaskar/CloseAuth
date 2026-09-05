@@ -68,4 +68,40 @@ class TenantAwareRegisteredClientRepositoryTest {
 
         assertThat(repository.existsByTenantIdAndClientId(UUID.randomUUID(), "unused-client-id")).isFalse();
     }
+
+    // ---- client delete: deleteSasAuthorizationsFor / deleteSasConsentsFor / deleteByIdAndTenantId ----
+
+    @Test
+    void deleteSasAuthorizationsForIssuesTheExactDeleteStatement() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        repository.deleteSasAuthorizationsFor("client-record-id");
+
+        verify(jdbcTemplate).update(
+                "DELETE FROM oauth2_authorization WHERE registered_client_id = ?", "client-record-id");
+    }
+
+    @Test
+    void deleteSasConsentsForIssuesTheExactDeleteStatement() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        repository.deleteSasConsentsFor("client-record-id");
+
+        verify(jdbcTemplate).update(
+                "DELETE FROM oauth2_authorization_consent WHERE registered_client_id = ?", "client-record-id");
+    }
+
+    @Test
+    void deleteByIdAndTenantIdIssuesTheExactDeleteStatementScopedToTenant() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        UUID tenantId = UUID.randomUUID();
+        TenantAwareRegisteredClientRepository repository = new TenantAwareRegisteredClientRepository(jdbcTemplate);
+
+        repository.deleteByIdAndTenantId("client-record-id", tenantId);
+
+        verify(jdbcTemplate).update(
+                "DELETE FROM oauth2_registered_client WHERE id = ? AND tenant_id = ?", "client-record-id", tenantId);
+    }
 }

@@ -262,9 +262,26 @@ public final class AuditEvents {
                 .data(data("client_registered_id", clientRegisteredId, "client_id", clientId)).build();
     }
 
-    /** UI-3c: a confidential client's secret was rotated. Deliberately its own event, not folded into the still-unwired {@code CLIENT_UPDATED}. */
+    /** UI-3c: a confidential client's secret was rotated. Deliberately its own event, not folded into {@code CLIENT_UPDATED}. */
     public static CloseAuthAuditEvent clientSecretRegenerated(UUID tenantId, String clientRegisteredId, String clientId) {
         return base(AuditEventType.CLIENT_SECRET_REGENERATED).tenantId(tenantId).actorClientRegisteredId(clientRegisteredId)
+                .data(data("client_registered_id", clientRegisteredId, "client_id", clientId)).build();
+    }
+
+    /** Client update/delete: a client's mutable fields (name/scopes/redirect URIs/PKCE/trusted) were replaced. */
+    public static CloseAuthAuditEvent clientUpdated(UUID tenantId, String clientRegisteredId, String clientId) {
+        return base(AuditEventType.CLIENT_UPDATED).tenantId(tenantId).actorClientRegisteredId(clientRegisteredId)
+                .data(data("client_registered_id", clientRegisteredId, "client_id", clientId)).build();
+    }
+
+    /**
+     * Client update/delete: a client (and its 1:1 auto-created resource server) was hard-deleted. Recorded
+     * BEFORE the row is gone (this event is what makes {@code actor_client_id} on an already-deleted client
+     * legal — see {@code V3__relax_audit_actor_fks.sql}, which relaxed that FK to RESTRICT-free for exactly
+     * this reason).
+     */
+    public static CloseAuthAuditEvent clientDeleted(UUID tenantId, String clientRegisteredId, String clientId) {
+        return base(AuditEventType.CLIENT_DELETED).tenantId(tenantId).actorClientRegisteredId(clientRegisteredId)
                 .data(data("client_registered_id", clientRegisteredId, "client_id", clientId)).build();
     }
 

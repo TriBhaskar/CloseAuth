@@ -191,9 +191,10 @@ const router = createRouter({
           component: () => import('@/views/tenant-admin/TenantUserDetailView.vue'),
           meta: { guard: 'tenantAdmin', title: 'User' },
         },
-        // Stage UI-3c: clients (no list — the backend has none, see
-        // TenantClientsView.vue) and resource servers + scopes (full CRUD
-        // list-then-detail, same pattern as users above).
+        // Stage UI-3c: clients and resource servers + scopes (full CRUD
+        // list-then-detail, same pattern as users above). Client update/
+        // delete were added once the backend gained PATCH/DELETE — see
+        // TenantClientDetailView.vue's edit form and danger zone.
         // clients/credentials is declared before clients/:clientId for
         // readability; Vue Router ranks static segments over dynamic ones
         // regardless of declaration order, so the two never actually race.

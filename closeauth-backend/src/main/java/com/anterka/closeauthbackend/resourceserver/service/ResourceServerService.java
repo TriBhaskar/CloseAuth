@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -101,11 +102,13 @@ public class ResourceServerService {
 
     /**
      * Hard-deletes a standalone resource server; the DDL cascades its scopes and client authorizations.
-     * Direct deletion of an auto-created RS is refused (its lifecycle is tied to its client).
+     * Direct deletion of an auto-created RS is refused — its lifecycle is tied to its client, see
+     * {@link #deleteAutoCreatedForClient}, the reachable path this exception's message points to.
      *
-     * <p>Note: once audit is wired (Stage 8), {@code audit_events.resource_server_id} is {@code ON DELETE
-     * RESTRICT}, so an RS referenced by audit events will not be hard-deletable — the correct posture for an
-     * audited entity. Application-role dependencies (3c-ii) cascade per the DDL.
+     * <p>{@code audit_events.resource_server_id}'s {@code ON DELETE RESTRICT} was relaxed in
+     * {@code V3__relax_audit_actor_fks.sql} for exactly this reason: an RS with any audit history
+     * (create, {@code SCOPE_DEFINED}/{@code SCOPE_REMOVED}) would otherwise never be hard-deletable.
+     * Application-role dependencies (3c-ii) cascade per the DDL.
      */
     @Transactional
     public void deleteResourceServer(TenantContext context, UUID resourceServerId) {
@@ -115,6 +118,28 @@ public class ResourceServerService {
             throw new ResourceServerDeletionNotAllowedException(resourceServerId);
         }
         resourceServerRepository.delete(rs);
+    }
+
+    /**
+     * The reachable path {@link ResourceServerDeletionNotAllowedException} points operators to: removes a
+     * client's 1:1 auto-created resource server as part of {@code ClientRegistrationService.deleteClient}.
+     * Nothing else cascades this — {@code resource_servers} carries no FK to the client, only the
+     * {@code client_authorized_resource_servers} join row does (and that row cascades from EITHER side, so
+     * deleting the RS here is sufficient; the join row disappears with it). Idempotent: a client with no
+     * auto-created RS (the platform-managed {@code admin-console-*} client, or one predating this callback)
+     * is a no-op, not an error.
+     *
+     * <p>Tenant-scoped defense in depth, same posture as every other lookup in this module: a link pointing
+     * at another tenant's RS (should never happen — a client belongs to exactly one tenant) is filtered out
+     * rather than trusted.
+     */
+    @Transactional
+    public void deleteAutoCreatedForClient(TenantContext context, String clientRegisteredId) {
+        clientAuthorizationRepository.findByClientRegisteredId(clientRegisteredId).stream()
+                .map(link -> resourceServerRepository.findById(link.getResourceServerId()))
+                .flatMap(Optional::stream)
+                .filter(rs -> rs.isAutoCreated() && context.tenantId().equals(rs.getTenantId()))
+                .forEach(resourceServerRepository::delete);
     }
 
     @Transactional(readOnly = true)

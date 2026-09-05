@@ -118,4 +118,40 @@ public class TenantAwareRegisteredClientRepository extends JdbcRegisteredClientR
                         + "FROM oauth2_registered_client WHERE tenant_id = ? ORDER BY client_id_issued_at DESC",
                 getRegisteredClientRowMapper(), tenantId);
     }
+
+    /**
+     * Client-delete step 1 of 3 (see {@code ClientRegistrationService.deleteClient}). SAS's own
+     * {@code oauth2_authorization} table carries {@code registered_client_id} as a plain {@code VARCHAR}
+     * with NO foreign key to {@code oauth2_registered_client} (verified against the DDL — it's an SAS-native
+     * column, unlike the CloseAuth-added {@code tenant_id} on the same table). So it neither cascades on
+     * client delete nor blocks it — without this explicit cleanup, deleting a client would silently orphan
+     * every authorization it ever issued.
+     */
+    public void deleteSasAuthorizationsFor(String registeredClientId) {
+        getJdbcOperations().update(
+                "DELETE FROM oauth2_authorization WHERE registered_client_id = ?", registeredClientId);
+    }
+
+    /**
+     * Client-delete step 2 of 3 — the consent-table counterpart to {@link #deleteSasAuthorizationsFor}. Same
+     * reasoning: {@code oauth2_authorization_consent.registered_client_id} has no FK to this table either.
+     */
+    public void deleteSasConsentsFor(String registeredClientId) {
+        getJdbcOperations().update(
+                "DELETE FROM oauth2_authorization_consent WHERE registered_client_id = ?", registeredClientId);
+    }
+
+    /**
+     * Client-delete step 3 of 3 — the actual row, tenant-scoped in the {@code WHERE} clause as defense in
+     * depth on top of the service layer's {@code loadClientOrThrow} tenant check. The DDL cascades
+     * {@code client_authorized_resource_servers} and {@code refresh_tokens} for this row; the auto-created
+     * resource server itself is NOT cascaded (no FK from {@code resource_servers} to the client) and must be
+     * removed separately by the caller (see {@code ResourceServerService.deleteAutoCreatedForClient}) —
+     * before this call, so its own {@code client_authorized_resource_servers} link doesn't need to survive
+     * either deletion order, though it would either way (that join row cascades from both sides).
+     */
+    public void deleteByIdAndTenantId(String id, UUID tenantId) {
+        getJdbcOperations().update(
+                "DELETE FROM oauth2_registered_client WHERE id = ? AND tenant_id = ?", id, tenantId);
+    }
 }

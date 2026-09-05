@@ -273,6 +273,8 @@ func TestAdminClientsAndResourceServersRoutes_MutatingWithoutCSRFToken_Returns40
 
 	cases := []struct{ method, path string }{
 		{http.MethodPost, "/t/acme/api/clients"},
+		{http.MethodPatch, "/t/acme/api/clients/" + clientID},
+		{http.MethodDelete, "/t/acme/api/clients/" + clientID},
 		{http.MethodPost, "/t/acme/api/clients/" + clientID + "/client-secret"},
 		{http.MethodPost, "/t/acme/api/resource-servers"},
 		{http.MethodPatch, "/t/acme/api/resource-servers/" + rsID},
